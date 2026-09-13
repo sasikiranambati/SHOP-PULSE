@@ -1,0 +1,90 @@
+import { Activity, LogOut, Store } from 'lucide-react';
+import type { PageRoute } from '../types';
+
+interface NavbarProps {
+  activePage: PageRoute;
+  setActivePage: (page: PageRoute) => void;
+  shopName?: string;
+  isLoggedIn?: boolean;
+  onLogout?: () => void;
+}
+
+export const Navbar: React.FC<NavbarProps> = ({
+  setActivePage,
+  shopName = 'Gupta Kirana Store',
+  isLoggedIn = true,
+  onLogout,
+}) => {
+  return (
+    <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-xs">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        
+        {/* Brand Logo & Tagline */}
+        <div 
+          onClick={() => setActivePage(isLoggedIn ? 'dashboard' : 'landing')}
+          className="flex items-center gap-2.5 cursor-pointer group"
+        >
+          <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-sm group-hover:bg-emerald-700 transition-colors">
+            <Activity className="w-6 h-6 animate-pulse" />
+          </div>
+          <div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-xl font-extrabold text-slate-900 tracking-tight">Shop</span>
+              <span className="text-xl font-extrabold text-emerald-600 tracking-tight">Pulse</span>
+            </div>
+            <p className="hidden sm:block text-[10px] font-semibold text-slate-600 leading-none">
+              Know what to do next
+            </p>
+          </div>
+        </div>
+
+        {/* Action Controls & Store Info */}
+        <div className="flex items-center gap-3">
+          {isLoggedIn ? (
+            <>
+              {/* Store Tag */}
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
+                <Store className="w-4 h-4 text-emerald-600" />
+                <span>{shopName}</span>
+              </div>
+
+              {/* Login/Signup switch or Profile */}
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setActivePage('landing')}
+                  className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  Landing Page
+                </button>
+                <button
+                  onClick={onLogout}
+                  title="Logout"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-rose-200"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span className="hidden sm:inline">Logout</span>
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setActivePage('login')}
+                className="px-4 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                Log In
+              </button>
+              <button
+                onClick={() => setActivePage('signup')}
+                className="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors shadow-xs"
+              >
+                Create Account
+              </button>
+            </div>
+          )}
+        </div>
+
+      </div>
+    </header>
+  );
+};
