@@ -13,37 +13,52 @@ import {
 import { StatCard } from '../components/StatCard';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
-import type { PageRoute, Product } from '../types';
-import { MOCK_RECOMMENDATIONS, MOCK_RECENT_SALES } from '../data/mockData';
+import { BUSINESS_TYPE_OPTIONS } from '../data/mockData/businessTypes';
+import type { PageRoute, Product, ActionRecommendation, RecentSale, StoreProfile } from '../types';
 
 interface DashboardProps {
   setActivePage: (page: PageRoute) => void;
+  profile: StoreProfile;
   products: Product[];
-  shopName: string;
+  recommendations: ActionRecommendation[];
+  recentSales: RecentSale[];
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
   setActivePage,
+  profile,
   products,
-  shopName,
+  recommendations,
+  recentSales,
 }) => {
+  const activeOption = BUSINESS_TYPE_OPTIONS.find(b => b.id === profile.businessTypeId) || BUSINESS_TYPE_OPTIONS[0];
+
   const lowStockCount = products.filter(p => p.status === 'Low Stock' || p.status === 'Out of Stock').length;
-  const totalProducts = products.length + 233; // Realistic total sum (245)
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-sans">
       
       {/* Header Greeting */}
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
-            {shopName}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 flex items-center gap-1.5">
+              <span>{activeOption.emoji}</span>
+              <span>{profile.shopName}</span>
+            </span>
+            <button
+              onClick={() => setActivePage('select-store')}
+              className="text-[11px] font-bold text-slate-500 hover:text-emerald-700 underline"
+            >
+              Switch Store Type
+            </button>
+          </div>
+          
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 mt-2">
             Good Morning 👋
           </h1>
-          <p className="text-base text-slate-600 font-medium">
-            Here is your shop's stock & sales summary for today.
+          <p className="text-base text-slate-600 font-medium mt-0.5">
+            {activeOption.greetingWording}
           </p>
         </div>
 
@@ -54,59 +69,64 @@ export const Dashboard: React.FC<DashboardProps> = ({
             onClick={() => setActivePage('sales')}
             icon={<ShoppingCart className="w-5 h-5" />}
           >
-            + Add New Sale
+            + New Sale Counter
           </Button>
         </div>
       </div>
 
-      {/* 4 Primary Key Stat Cards */}
+      {/* 4 Key Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Today's Sales"
           value="₹4,850"
           subtitle="Updated 10m ago"
           icon={<IndianRupee className="w-6 h-6 text-emerald-600" />}
-          badgeText="+14% vs yesterday"
+          badgeText="+14% today"
           badgeColor="emerald"
           onClick={() => setActivePage('sales')}
         />
         <StatCard
-          title="Products"
-          value={totalProducts}
-          subtitle="In your inventory catalog"
+          title="Total Products"
+          value={products.length}
+          subtitle={`In ${activeOption.name} catalog`}
           icon={<Package className="w-6 h-6 text-blue-600" />}
           badgeText="Active Catalog"
           badgeColor="blue"
           onClick={() => setActivePage('inventory')}
         />
         <StatCard
-          title="Low Stock"
+          title="Low Stock Alert"
           value={lowStockCount}
-          subtitle="Items near zero"
+          subtitle="Items needing reorder"
           icon={<AlertTriangle className="w-6 h-6 text-amber-600" />}
-          badgeText="Restock Soon"
+          badgeText="Action Required"
           badgeColor="amber"
           onClick={() => setActivePage('inventory')}
         />
         <StatCard
           title="Needs Attention"
-          value="3"
-          subtitle="Action items today"
+          value={recommendations.length}
+          subtitle="Daily store priorities"
           icon={<AlertCircle className="w-6 h-6 text-rose-600" />}
-          badgeText="High Priority"
+          badgeText="Priority"
           badgeColor="rose"
         />
       </div>
 
-      {/* TODAY'S ACTIONS Banner / Card */}
+      {/* TODAY'S ACTIONS Banner */}
       <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-white rounded-3xl border-2 border-amber-300 p-6 shadow-sm">
-        <div className="flex items-center gap-2 text-amber-900 font-black text-lg uppercase tracking-wide">
-          <AlertTriangle className="w-6 h-6 text-amber-600" />
-          <span>Today's Restock Actions</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-amber-900 font-black text-lg uppercase tracking-wide">
+            <AlertTriangle className="w-6 h-6 text-amber-600" />
+            <span>Today's Stock & Reorder Actions ({activeOption.name})</span>
+          </div>
+          <span className="text-xs font-bold text-slate-500 bg-amber-100/80 px-2.5 py-1 rounded-md">
+            Smart Recommendations
+          </span>
         </div>
 
         <div className="mt-4 space-y-3">
-          {MOCK_RECOMMENDATIONS.map((rec) => (
+          {recommendations.map((rec) => (
             <div 
               key={rec.id}
               className="bg-white rounded-2xl p-4 border border-amber-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3"
@@ -130,7 +150,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 onClick={() => setActivePage('inventory')}
                 icon={<PackageCheck className="w-4 h-4" />}
               >
-                View Stock
+                View Inventory
               </Button>
             </div>
           ))}
@@ -185,7 +205,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </div>
 
-      {/* Grid: Low Stock Alert & Recent Sales */}
+      {/* Grid: Low Stock Alert & Recent Sales Stream */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
         {/* Low Stock Items List */}
@@ -206,12 +226,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="divide-y divide-slate-100 mt-2">
             {products
               .filter((p) => p.status === 'Low Stock' || p.status === 'Out of Stock')
-              .slice(0, 5)
               .map((item) => (
                 <div key={item.id} className="py-3 flex items-center justify-between gap-2">
                   <div>
                     <p className="font-bold text-slate-900 text-sm">{item.name}</p>
-                    <p className="text-xs text-slate-500">{item.category} • ₹{item.price}</p>
+                    <p className="text-xs text-slate-500">{item.category} • Selling: ₹{item.price} | Cost: ₹{item.purchasePrice}</p>
                   </div>
                   <div className="text-right">
                     <span
@@ -226,6 +245,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </div>
                 </div>
               ))}
+
+            {products.filter((p) => p.status === 'Low Stock' || p.status === 'Out of Stock').length === 0 && (
+              <div className="py-8 text-center text-slate-500 text-sm">
+                ✅ All stock levels healthy for {activeOption.name}!
+              </div>
+            )}
           </div>
         </Card>
 
@@ -245,7 +270,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           <div className="divide-y divide-slate-100 mt-2">
-            {MOCK_RECENT_SALES.map((sale) => (
+            {recentSales.map((sale) => (
               <div key={sale.id} className="py-3 flex items-center justify-between gap-2">
                 <div>
                   <p className="font-bold text-slate-900 text-sm">{sale.items}</p>

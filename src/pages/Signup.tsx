@@ -1,37 +1,31 @@
-import React, { useState } from 'react';
-import { Activity, UserPlus, ArrowLeft } from 'lucide-react';
+import { useState } from 'react';
+import { Activity, ArrowLeft, ArrowRight } from 'lucide-react';
 import { Button } from '../components/Button';
-import type { PageRoute, BusinessType } from '../types';
+import type { PageRoute } from '../types';
 
 interface SignupProps {
   setActivePage: (page: PageRoute) => void;
-  onSignupSuccess: (shopName: string) => void;
+  onSignupDetails: (ownerName: string, shopName: string, contact: string) => void;
 }
 
-export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }) => {
+export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupDetails }) => {
   const [ownerName, setOwnerName] = useState('');
   const [shopName, setShopName] = useState('');
   const [contact, setContact] = useState('');
   const [password, setPassword] = useState('');
-  const [businessType, setBusinessType] = useState<BusinessType>('Kirana Store');
-
-  const businessOptions: BusinessType[] = [
-    'Kirana Store',
-    'Bakery',
-    'Pharmacy',
-    'Tea Stall',
-    'Supermarket',
-    'Other',
-  ];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSignupSuccess(shopName || 'My Retail Shop');
-    setActivePage('dashboard');
+    onSignupDetails(
+      ownerName || 'Retail Owner', 
+      shopName || 'My Retail Store',
+      contact || '+91 98765 43210'
+    );
+    setActivePage('select-store');
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4">
+    <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4 font-sans">
       
       {/* Top Back Link */}
       <button 
@@ -44,13 +38,13 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
 
       <div className="max-w-lg w-full bg-white rounded-3xl border border-slate-200 p-8 shadow-md my-8">
         
-        {/* Brand */}
+        {/* Brand Header */}
         <div className="flex flex-col items-center text-center mb-6">
           <div className="w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center text-white shadow-sm mb-3">
             <Activity className="w-7 h-7" />
           </div>
-          <h1 className="text-2xl font-black text-slate-900">Create Shop Account</h1>
-          <p className="text-sm text-slate-600 mt-1">Start managing your store with ShopPulse</p>
+          <h1 className="text-2xl font-black text-slate-900">Create ShopPulse Account</h1>
+          <p className="text-sm text-slate-600 mt-1">Step 1 of 2: Basic Store Details</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -76,7 +70,7 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
               <input
                 type="text"
                 required
-                placeholder="Gupta Kirana Store"
+                placeholder="Gupta Kirana / Sunrise Bakery"
                 value={shopName}
                 onChange={(e) => setShopName(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base"
@@ -86,29 +80,12 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
 
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1">
-              Business Type *
-            </label>
-            <select
-              value={businessType}
-              onChange={(e) => setBusinessType(e.target.value as BusinessType)}
-              className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base bg-white"
-            >
-              {businessOptions.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
               Phone Number or Email *
             </label>
             <input
               type="text"
               required
-              placeholder="9876543210"
+              placeholder="9876543210 or shop@pulse.com"
               value={contact}
               onChange={(e) => setContact(e.target.value)}
               className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base"
@@ -134,9 +111,9 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
             variant="primary" 
             size="lg" 
             className="w-full mt-2"
-            icon={<UserPlus className="w-5 h-5" />}
+            icon={<ArrowRight className="w-5 h-5" />}
           >
-            Create Shop Account
+            Next: Select Business Type
           </Button>
         </form>
 

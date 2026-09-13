@@ -2,19 +2,39 @@ export type PageRoute =
   | 'landing' 
   | 'login' 
   | 'signup' 
+  | 'select-store'
   | 'dashboard' 
   | 'sales' 
   | 'inventory' 
   | 'scanner' 
-  | 'insights';
+  | 'insights'
+  | 'profile';
 
-export type BusinessType = 
-  | 'Kirana Store' 
-  | 'Bakery' 
-  | 'Pharmacy' 
-  | 'Tea Stall' 
-  | 'Supermarket' 
-  | 'Other';
+export type BusinessTypeId = 
+  | 'grocery'
+  | 'bakery'
+  | 'pharmacy'
+  | 'teaCoffee'
+  | 'sweetShop'
+  | 'fruitVegetables'
+  | 'mobileAccessories'
+  | 'stationery'
+  | 'hardware'
+  | 'electrical'
+  | 'cosmetics'
+  | 'household'
+  | 'gardening'
+  | 'otherRetail';
+
+export interface BusinessTypeOption {
+  id: BusinessTypeId;
+  name: string;
+  emoji: string;
+  tagline: string;
+  defaultStoreName: string;
+  greetingWording: string;
+  categoryList: string[];
+}
 
 export type StockStatus = 'In Stock' | 'Low Stock' | 'Out of Stock';
 
@@ -22,10 +42,12 @@ export interface Product {
   id: string;
   name: string;
   category: string;
+  price: number;         // Selling Price
+  purchasePrice: number; // Purchase Price / Cost
   stock: number;
-  minStock: number;
+  minStock: number;      // Reorder Level
   unit: string;
-  price: number;
+  supplier: string;
   status: StockStatus;
   lastRestocked?: string;
 }
@@ -48,4 +70,12 @@ export interface ActionRecommendation {
   productName: string;
   message: string;
   recommendedOrder: string;
+}
+
+export interface StoreProfile {
+  shopName: string;
+  ownerName: string;
+  businessTypeId: BusinessTypeId;
+  location: string;
+  contact: string;
 }

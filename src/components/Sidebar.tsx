@@ -1,24 +1,31 @@
+import React from 'react';
 import { 
   LayoutDashboard, 
   ShoppingCart, 
   Package, 
   ScanLine, 
-  TrendingUp
+  TrendingUp,
+  User
 } from 'lucide-react';
-import type { PageRoute } from '../types';
+import { BUSINESS_TYPE_OPTIONS } from '../data/mockData/businessTypes';
+import type { PageRoute, StoreProfile } from '../types';
 
 interface SidebarProps {
   activePage: PageRoute;
   setActivePage: (page: PageRoute) => void;
+  profile: StoreProfile;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, profile }) => {
+  const activeOption = BUSINESS_TYPE_OPTIONS.find(b => b.id === profile.businessTypeId) || BUSINESS_TYPE_OPTIONS[0];
+
   const navItems = [
     { id: 'dashboard' as PageRoute, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'sales' as PageRoute, label: 'Sales', icon: ShoppingCart },
     { id: 'inventory' as PageRoute, label: 'Inventory', icon: Package },
     { id: 'scanner' as PageRoute, label: 'Scan Invoice', icon: ScanLine },
     { id: 'insights' as PageRoute, label: 'Insights', icon: TrendingUp },
+    { id: 'profile' as PageRoute, label: 'Store Profile', icon: User },
   ];
 
   return (
@@ -48,12 +55,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
         })}
       </div>
 
-      {/* Footer Support Info */}
+      {/* Active Business Personalization Card */}
       <div className="pt-4 border-t border-slate-200 space-y-2">
-        <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 text-xs">
-          <p className="font-bold text-slate-800">Need Help?</p>
-          <p className="text-slate-500 mt-0.5">Call ShopPulse Retail Support</p>
-          <p className="font-semibold text-emerald-700 mt-1">1800-SHOP-PULSE</p>
+        <div 
+          onClick={() => setActivePage('select-store')}
+          className="bg-emerald-50 hover:bg-emerald-100/80 rounded-xl p-3 border border-emerald-200 text-xs transition-colors cursor-pointer group"
+        >
+          <div className="flex items-center justify-between font-extrabold text-emerald-900">
+            <span className="flex items-center gap-1.5">
+              <span>{activeOption.emoji}</span>
+              <span>Active Store</span>
+            </span>
+            <span className="text-[10px] text-emerald-700 underline group-hover:text-emerald-900">
+              Change
+            </span>
+          </div>
+          <p className="font-extrabold text-slate-900 mt-1.5 text-sm truncate">
+            {profile.shopName}
+          </p>
+          <p className="text-slate-500 text-[11px] mt-0.5 truncate">
+            {activeOption.name}
+          </p>
         </div>
       </div>
     </aside>

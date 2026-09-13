@@ -1,20 +1,25 @@
-import { Activity, LogOut, Store } from 'lucide-react';
-import type { PageRoute } from '../types';
+import React from 'react';
+import { Activity, LogOut, User } from 'lucide-react';
+import { BUSINESS_TYPE_OPTIONS } from '../data/mockData/businessTypes';
+import type { PageRoute, StoreProfile } from '../types';
 
 interface NavbarProps {
   activePage: PageRoute;
   setActivePage: (page: PageRoute) => void;
-  shopName?: string;
+  profile: StoreProfile;
   isLoggedIn?: boolean;
   onLogout?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
+  activePage,
   setActivePage,
-  shopName = 'Gupta Kirana Store',
+  profile,
   isLoggedIn = true,
   onLogout,
 }) => {
+  const activeOption = BUSINESS_TYPE_OPTIONS.find(b => b.id === profile.businessTypeId) || BUSINESS_TYPE_OPTIONS[0];
+
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -32,30 +37,50 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="text-xl font-extrabold text-slate-900 tracking-tight">Shop</span>
               <span className="text-xl font-extrabold text-emerald-600 tracking-tight">Pulse</span>
             </div>
-            <p className="hidden sm:block text-[10px] font-semibold text-slate-600 leading-none">
-              Know what to do next
+            <p className="hidden sm:block text-[10px] font-semibold text-slate-500 leading-none">
+              Retail Intelligence Platform
             </p>
           </div>
         </div>
 
-        {/* Action Controls & Store Info */}
+        {/* Action Controls & Store Badge */}
         <div className="flex items-center gap-3">
           {isLoggedIn ? (
             <>
-              {/* Store Tag */}
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
-                <Store className="w-4 h-4 text-emerald-600" />
-                <span>{shopName}</span>
-              </div>
+              {/* Store Badge */}
+              <button 
+                onClick={() => setActivePage('profile')}
+                className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-900 text-xs font-bold transition-colors cursor-pointer"
+                title="View & Edit Store Profile"
+              >
+                <span className="text-base">{activeOption.emoji}</span>
+                <span>{profile.shopName}</span>
+                <span className="text-[10px] bg-emerald-200 text-emerald-800 px-1.5 py-0.5 rounded">
+                  {activeOption.name}
+                </span>
+              </button>
 
-              {/* Login/Signup switch or Profile */}
               <div className="flex items-center gap-2">
                 <button 
-                  onClick={() => setActivePage('landing')}
-                  className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                  onClick={() => setActivePage('profile')}
+                  className={`p-2 rounded-xl text-xs font-bold transition-colors flex items-center gap-1 ${
+                    activePage === 'profile'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-700 hover:bg-slate-100'
+                  }`}
+                  title="Profile Settings"
                 >
-                  Landing Page
+                  <User className="w-4 h-4" />
+                  <span className="hidden md:inline">Profile</span>
                 </button>
+
+                <button 
+                  onClick={() => setActivePage('landing')}
+                  className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors hidden md:inline-block"
+                >
+                  Landing
+                </button>
+
                 <button
                   onClick={onLogout}
                   title="Logout"
