@@ -14,10 +14,11 @@ import { Inventory } from './pages/Inventory';
 import { Sales } from './pages/Sales';
 import { InvoiceScanner } from './pages/InvoiceScanner';
 import { Insights } from './pages/Insights';
+import { Settings } from './pages/Settings';
 
 export function App() {
   const [activePage, setActivePage] = useState<PageRoute>('landing');
-  const [shopName, setShopName] = useState('Gupta Kirana Store');
+  const [shopName, setShopName] = useState('Kiran General Store');
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
 
   const handleAddProduct = (newProd: Omit<Product, 'id'>) => {
@@ -42,7 +43,7 @@ export function App() {
       <Login
         setActivePage={setActivePage}
         onLoginSuccess={(name) => {
-          setShopName(name);
+          setShopName(name || 'Kiran General Store');
         }}
       />
     );
@@ -53,7 +54,7 @@ export function App() {
       <Signup
         setActivePage={setActivePage}
         onSignupSuccess={(name) => {
-          setShopName(name);
+          setShopName(name || 'Kiran General Store');
         }}
       />
     );
@@ -92,6 +93,14 @@ export function App() {
 
       {activePage === 'insights' && (
         <Insights />
+      )}
+
+      {activePage === 'settings' && (
+        <Settings
+          shopName={shopName}
+          setActivePage={setActivePage}
+          onLogout={handleLogout}
+        />
       )}
     </DashboardLayout>
   );

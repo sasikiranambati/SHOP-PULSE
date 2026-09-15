@@ -3,7 +3,6 @@ import {
   Package, 
   Search, 
   Plus, 
-  Filter, 
   AlertTriangle, 
   CheckCircle2, 
   XCircle,
@@ -42,25 +41,27 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct }) 
     return matchesSearch && matchesCategory;
   });
 
+  const lowStockItems = localProducts.filter(p => p.status === 'Low Stock' || p.status === 'Out of Stock');
+
   const getStatusBadge = (status: Product['status']) => {
     switch (status) {
       case 'In Stock':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
             In Stock
           </span>
         );
       case 'Low Stock':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
             <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
             Low Stock
           </span>
         );
       case 'Out of Stock':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200">
             <XCircle className="w-3.5 h-3.5 text-rose-600" />
             Out of Stock
           </span>
@@ -69,11 +70,11 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct }) 
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 max-w-5xl mx-auto">
       
       <PageHeader
-        title="Inventory Catalog"
-        description="View and manage product stock levels for your shop"
+        title="Stock & Inventory"
+        description="Monitor product stock levels and restock fast"
         action={
           <Button
             variant="primary"
@@ -85,27 +86,50 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct }) 
         }
       />
 
-      {/* Controls: Search & Category Filter */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row gap-3">
-          
-          {/* Search bar */}
-          <div className="relative flex-1">
-            <Search className="w-5 h-5 absolute left-3.5 top-3 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search products by name or category..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base"
-            />
+      {/* Low Stock Warning Banner */}
+      {lowStockItems.length > 0 && (
+        <div className="bg-amber-50 rounded-2xl border border-amber-200 p-4 shadow-xs">
+          <div className="flex items-center gap-2 text-amber-900 font-extrabold text-sm uppercase tracking-wide mb-2">
+            <AlertTriangle className="w-5 h-5 text-amber-600" />
+            <span>⚠️ {lowStockItems.length} Products Need Attention</span>
           </div>
 
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+            {lowStockItems.slice(0, 4).map(item => (
+              <div key={item.id} className="bg-white rounded-xl p-2.5 border border-amber-200 shrink-0 flex items-center gap-3">
+                <div>
+                  <p className="font-extrabold text-slate-900 text-xs">{item.name}</p>
+                  <p className="text-[11px] text-slate-500 font-medium">{item.stock} {item.unit} left</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setLocalProducts(localProducts.map(p => p.id === item.id ? { ...p, stock: p.stock + 10, status: 'In Stock' } : p));
+                  }}
+                  className="px-2.5 py-1 bg-emerald-600 text-white font-extrabold text-[11px] rounded-lg active:scale-95 transition-transform shrink-0"
+                >
+                  Restock
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Controls: Search & Category Filter */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-xs space-y-3">
+        <div className="relative">
+          <Search className="w-5 h-5 absolute left-3.5 top-3 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search milk, rice, biscuits..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base font-medium"
+          />
         </div>
 
         {/* Category filter pills */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-          <Filter className="w-4 h-4 text-slate-400 shrink-0 mr-1" />
           {PRODUCT_CATEGORIES.map((cat) => (
             <button
               key={cat}
@@ -122,7 +146,7 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct }) 
         </div>
       </div>
 
-      {/* Inventory Table / Card List */}
+      {/* Inventory Container */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         
         {/* Desktop Table View */}
@@ -162,7 +186,7 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct }) 
                       onClick={() => {
                         setLocalProducts(localProducts.map(p => p.id === prod.id ? { ...p, stock: p.stock + 10, status: 'In Stock' } : p));
                       }}
-                      className="text-xs font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors inline-flex items-center gap-1"
+                      className="text-xs font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors inline-flex items-center gap-1 cursor-pointer"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
                       Restock +10
@@ -174,29 +198,29 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct }) 
           </table>
         </div>
 
-        {/* Mobile Card List View */}
+        {/* Mobile Product Card List View */}
         <div className="md:hidden divide-y divide-slate-100">
           {filteredProducts.map((prod) => (
-            <div key={prod.id} className="p-4 space-y-2">
+            <div key={prod.id} className="p-4 space-y-2.5 bg-white">
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <h4 className="font-bold text-slate-900 text-base">{prod.name}</h4>
-                  <p className="text-xs text-slate-500">{prod.category} • ₹{prod.price} per {prod.unit}</p>
+                  <h4 className="font-extrabold text-slate-900 text-base leading-tight">{prod.name}</h4>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">{prod.category} • ₹{prod.price} per {prod.unit}</p>
                 </div>
                 <div>{getStatusBadge(prod.status)}</div>
               </div>
 
               <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                <span className="text-sm font-extrabold text-slate-800">
-                  Current Stock: {prod.stock} {prod.unit}
+                <span className="text-sm font-black text-slate-900">
+                  Stock: {prod.stock} {prod.unit}
                 </span>
                 <button
                   onClick={() => {
                     setLocalProducts(localProducts.map(p => p.id === prod.id ? { ...p, stock: p.stock + 10, status: 'In Stock' } : p));
                   }}
-                  className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 flex items-center gap-1"
+                  className="text-xs font-extrabold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-xl border border-emerald-200 flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" /> +10 Stock
+                  <RefreshCw className="w-3.5 h-3.5 text-emerald-600" /> +10 Restock
                 </button>
               </div>
             </div>
@@ -204,10 +228,10 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct }) 
         </div>
 
         {filteredProducts.length === 0 && (
-          <div className="p-12 text-center text-slate-500">
+          <div className="p-10 text-center text-slate-500">
             <Package className="w-12 h-12 mx-auto text-slate-300 mb-2" />
             <p className="font-bold text-slate-700">No products found</p>
-            <p className="text-sm text-slate-500">Try adjusting your search or category filter</p>
+            <p className="text-xs text-slate-500">Try adjusting your search or category filter</p>
           </div>
         )}
 

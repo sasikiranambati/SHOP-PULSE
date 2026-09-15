@@ -6,7 +6,8 @@ export type PageRoute =
   | 'sales' 
   | 'inventory' 
   | 'scanner' 
-  | 'insights';
+  | 'insights'
+  | 'settings';
 
 export type BusinessType = 
   | 'Kirana Store' 
