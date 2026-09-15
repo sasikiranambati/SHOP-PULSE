@@ -5,26 +5,21 @@ import {
   Minus, 
   Trash2, 
   CheckCircle2, 
-  Sparkles,
-  Zap
+  Sparkles
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
-import { BUSINESS_TYPE_OPTIONS } from '../data/mockData/businessTypes';
-import type { Product, CartItem, StoreProfile } from '../types';
+import type { Product, CartItem } from '../types';
 
 interface SalesProps {
   products: Product[];
-  profile: StoreProfile;
 }
 
-export const Sales: React.FC<SalesProps> = ({ products, profile }) => {
+export const Sales: React.FC<SalesProps> = ({ products }) => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [lastSaleTotal, setLastSaleTotal] = useState(0);
-
-  const activeOption = BUSINESS_TYPE_OPTIONS.find(b => b.id === profile.businessTypeId) || BUSINESS_TYPE_OPTIONS[0];
 
   const addToCart = (product: Product) => {
     const existing = cart.find(item => item.product.id === product.id);
@@ -66,28 +61,23 @@ export const Sales: React.FC<SalesProps> = ({ products, profile }) => {
   };
 
   return (
-    <div className="space-y-6 font-sans">
+    <div className="space-y-6">
       
       <PageHeader
-        title={`Quick Sales Counter (${activeOption.name})`}
-        description={`Fast checkout counter for ${profile.shopName}`}
+        title="Quick Sales Counter"
+        description="Tap products to quickly build customer bills"
       />
-
-      <div className="bg-emerald-50 rounded-2xl border border-emerald-200 p-3.5 text-xs text-emerald-900 flex items-center gap-2 font-semibold">
-        <Zap className="w-4 h-4 text-emerald-600 shrink-0" />
-        <span>ShopPulse Phase 0 POS Counter Demonstration — Quick-tap billing tailored for {activeOption.name}.</span>
-      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* Left 2 Cols: Product Pickers */}
+        {/* Left 2 Cols: Fast Product Selection Grid */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-xs font-extrabold text-slate-600 uppercase tracking-wider">
-              {activeOption.name} Items ({products.length})
+            <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">
+              Popular Items
             </h2>
             <span className="text-xs font-semibold text-slate-500">
-              Tap + to add to customer order
+              Tap + to add to sale
             </span>
           </div>
 
@@ -127,7 +117,7 @@ export const Sales: React.FC<SalesProps> = ({ products, profile }) => {
                         e.stopPropagation();
                         addToCart(prod);
                       }}
-                      className="px-3 py-1 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 active:scale-95 text-xs flex items-center gap-1 cursor-pointer"
+                      className="px-3 py-1 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 active:scale-95 text-xs flex items-center gap-1"
                     >
                       <Plus className="w-3.5 h-3.5" /> Add
                     </button>
@@ -144,12 +134,12 @@ export const Sales: React.FC<SalesProps> = ({ products, profile }) => {
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-2 text-slate-900 font-extrabold text-lg">
                 <ShoppingCart className="w-5 h-5 text-emerald-600" />
-                <span>Customer Order</span>
+                <span>Current Sale</span>
               </div>
               {cart.length > 0 && (
                 <button
                   onClick={() => setCart([])}
-                  className="text-xs font-bold text-rose-600 hover:underline cursor-pointer"
+                  className="text-xs font-bold text-rose-600 hover:underline"
                 >
                   Clear All
                 </button>
@@ -172,7 +162,7 @@ export const Sales: React.FC<SalesProps> = ({ products, profile }) => {
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       onClick={() => updateQuantity(item.product.id, -1)}
-                      className="p-1 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 cursor-pointer"
+                      className="p-1 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100"
                     >
                       <Minus className="w-3.5 h-3.5" />
                     </button>
@@ -181,13 +171,13 @@ export const Sales: React.FC<SalesProps> = ({ products, profile }) => {
                     </span>
                     <button
                       onClick={() => updateQuantity(item.product.id, 1)}
-                      className="p-1 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 cursor-pointer"
+                      className="p-1 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100"
                     >
                       <Plus className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => removeFromCart(item.product.id)}
-                      className="p-1 text-slate-400 hover:text-rose-600 ml-1 cursor-pointer"
+                      className="p-1 text-slate-400 hover:text-rose-600 ml-1"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -199,7 +189,7 @@ export const Sales: React.FC<SalesProps> = ({ products, profile }) => {
                 <div className="py-12 text-center text-slate-400 space-y-1">
                   <ShoppingCart className="w-10 h-10 mx-auto text-slate-300" />
                   <p className="font-bold text-slate-600 text-sm">Cart is empty</p>
-                  <p className="text-xs text-slate-400">Tap items on the left to build order</p>
+                  <p className="text-xs text-slate-400">Tap products on the left to add to bill</p>
                 </div>
               )}
             </div>
@@ -241,7 +231,7 @@ export const Sales: React.FC<SalesProps> = ({ products, profile }) => {
               Collected ₹{lastSaleTotal} from customer
             </p>
             <div className="mt-4 p-3 rounded-xl bg-slate-100 text-xs font-semibold text-slate-600">
-              ℹ️ Phase 0 UI Foundation — Live stock deduction will trigger in Phase 1.
+              ℹ️ Phase 0 UI Foundation — Inventory stock auto-deduction will trigger in Phase 1.
             </div>
             <Button
               variant="primary"

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import type { PageRoute, StoreProfile, BusinessTypeId, Product } from './types';
-import { getMockDataForBusiness } from './data/mockData';
+import type { PageRoute, Product } from './types';
+import { INITIAL_PRODUCTS } from './data/mockData';
 
 // Layouts
 import { DashboardLayout } from './layouts/DashboardLayout';
@@ -9,63 +9,30 @@ import { DashboardLayout } from './layouts/DashboardLayout';
 import { Landing } from './pages/Landing';
 import { Login } from './pages/Login';
 import { Signup } from './pages/Signup';
-import { SelectStore } from './pages/SelectStore';
 import { Dashboard } from './pages/Dashboard';
 import { Inventory } from './pages/Inventory';
 import { Sales } from './pages/Sales';
 import { InvoiceScanner } from './pages/InvoiceScanner';
 import { Insights } from './pages/Insights';
-import { Profile } from './pages/Profile';
 
 export function App() {
   const [activePage, setActivePage] = useState<PageRoute>('landing');
-  
-  // Store profile state
-  const [profile, setProfile] = useState<StoreProfile>({
-    shopName: 'Gupta Kirana Store',
-    ownerName: 'Ramesh Gupta',
-    businessTypeId: 'grocery',
-    location: 'Mumbai, MH',
-    contact: '+91 98765 43210',
-  });
-
-  // Dynamic mock data based on active business type
-  const activeMockData = getMockDataForBusiness(profile.businessTypeId);
-  const [customProducts, setCustomProducts] = useState<Product[] | null>(null);
-
-  const currentProducts = customProducts || activeMockData.products;
-
-  const handleSelectBusiness = (businessId: BusinessTypeId, defaultStoreName: string) => {
-    setProfile((prev) => ({
-      ...prev,
-      businessTypeId: businessId,
-      shopName: prev.shopName === 'Gupta Kirana Store' || prev.shopName === 'My Retail Store'
-        ? defaultStoreName 
-        : prev.shopName,
-    }));
-    setCustomProducts(null); // Reset custom items to load new template
-  };
-
-  const handleUpdateProfile = (updated: Partial<StoreProfile>) => {
-    if (updated.businessTypeId && updated.businessTypeId !== profile.businessTypeId) {
-      setCustomProducts(null); // Reset products if store type changes
-    }
-    setProfile((prev) => ({ ...prev, ...updated }));
-  };
+  const [shopName, setShopName] = useState('Gupta Kirana Store');
+  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
 
   const handleAddProduct = (newProd: Omit<Product, 'id'>) => {
     const created: Product = {
       ...newProd,
       id: `p_${Date.now()}`,
     };
-    setCustomProducts([created, ...currentProducts]);
+    setProducts((prev) => [created, ...prev]);
   };
 
   const handleLogout = () => {
     setActivePage('landing');
   };
 
-  // Full frame pages outside DashboardLayout
+  // Render non-dashboard full-frame pages
   if (activePage === 'landing') {
     return <Landing setActivePage={setActivePage} />;
   }
@@ -75,7 +42,7 @@ export function App() {
       <Login
         setActivePage={setActivePage}
         onLoginSuccess={(name) => {
-          setProfile((prev) => ({ ...prev, shopName: name }));
+          setShopName(name);
         }}
       />
     );
@@ -85,78 +52,46 @@ export function App() {
     return (
       <Signup
         setActivePage={setActivePage}
-        onSignupDetails={(ownerName, shopName, contact) => {
-          setProfile((prev) => ({
-            ...prev,
-            ownerName,
-            shopName,
-            contact,
-          }));
+        onSignupSuccess={(name) => {
+          setShopName(name);
         }}
       />
     );
   }
 
-  if (activePage === 'select-store') {
-    return (
-      <SelectStore
-        setActivePage={setActivePage}
-        selectedBusinessId={profile.businessTypeId}
-        onSelectBusiness={handleSelectBusiness}
-      />
-    );
-  }
-
-  // Dashboard pages wrapped in DashboardLayout
+  // Render app inside DashboardLayout for main app pages
   return (
     <DashboardLayout
       activePage={activePage}
       setActivePage={setActivePage}
-      profile={profile}
+      shopName={shopName}
       onLogout={handleLogout}
     >
       {activePage === 'dashboard' && (
         <Dashboard
           setActivePage={setActivePage}
-          profile={profile}
-          products={currentProducts}
-          recommendations={activeMockData.recommendations}
-          recentSales={activeMockData.recentSales}
+          products={products}
+          shopName={shopName}
         />
       )}
 
       {activePage === 'inventory' && (
         <Inventory
-          products={currentProducts}
+          products={products}
           onAddProduct={handleAddProduct}
-          profile={profile}
         />
       )}
 
       {activePage === 'sales' && (
-        <Sales
-          products={currentProducts}
-          profile={profile}
-        />
+        <Sales products={products} />
       )}
 
       {activePage === 'scanner' && (
-        <InvoiceScanner profile={profile} />
+        <InvoiceScanner />
       )}
 
       {activePage === 'insights' && (
-        <Insights
-          profile={profile}
-          topSelling={activeMockData.topSelling}
-        />
-      )}
-
-      {activePage === 'profile' && (
-        <Profile
-          profile={profile}
-          onUpdateProfile={handleUpdateProfile}
-          setActivePage={setActivePage}
-        />
+        <Insights />
       )}
     </DashboardLayout>
   );

@@ -3,50 +3,22 @@ import {
   Camera, 
   Upload, 
   CheckCircle2, 
-  Clock
+  Info
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
-import { BUSINESS_TYPE_OPTIONS } from '../data/mockData/businessTypes';
-import type { StoreProfile } from '../types';
 
-interface InvoiceScannerProps {
-  profile?: StoreProfile;
-}
-
-export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ profile }) => {
+export const InvoiceScanner: React.FC = () => {
   const [uploaded, setUploaded] = useState(false);
 
-  const activeOption = profile 
-    ? (BUSINESS_TYPE_OPTIONS.find(b => b.id === profile.businessTypeId) || BUSINESS_TYPE_OPTIONS[0])
-    : BUSINESS_TYPE_OPTIONS[0];
-
   return (
-    <div className="space-y-6 max-w-4xl mx-auto font-sans">
+    <div className="space-y-6 max-w-4xl mx-auto">
       
       <PageHeader
         title="Scan Supplier Invoice"
         description="Snap or upload paper bills to restock your inventory automatically"
       />
-
-      {/* Clear Phase 2 Preview Badge */}
-      <div className="bg-amber-100/80 border-2 border-amber-300 rounded-2xl p-4 text-amber-900 flex items-center justify-between gap-3 shadow-xs">
-        <div className="flex items-center gap-3">
-          <Clock className="w-6 h-6 text-amber-700 shrink-0" />
-          <div>
-            <p className="font-extrabold text-sm uppercase tracking-wide">
-              OCR Invoice Processing — Coming in Phase 2
-            </p>
-            <p className="text-xs text-amber-800 font-semibold mt-0.5">
-              Automated bill scanning and purchase entry for {activeOption.name} will be activated in Phase 2.
-            </p>
-          </div>
-        </div>
-        <span className="shrink-0 text-xs font-black bg-amber-800 text-white px-3 py-1 rounded-lg">
-          Phase 2 Preview
-        </span>
-      </div>
 
       <Card className="text-center p-8 sm:p-12 border-2 border-dashed border-emerald-300 bg-emerald-50/30">
         <div className="max-w-md mx-auto space-y-6">
@@ -60,8 +32,8 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ profile }) => {
             <h2 className="text-2xl font-black text-slate-900">
               Scan Supplier Invoice
             </h2>
-            <p className="text-base text-slate-600 mt-2 leading-relaxed font-medium">
-              ShopPulse will extract products, quantities, and purchase information from your supplier invoice automatically.
+            <p className="text-base text-slate-600 mt-2 leading-relaxed">
+              Take a photo of your supplier invoice and ShopPulse will extract the products automatically.
             </p>
           </div>
 
@@ -72,10 +44,10 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ profile }) => {
           >
             <Upload className="w-8 h-8 text-emerald-600 group-hover:scale-110 transition-transform" />
             <p className="text-sm font-bold text-slate-800">
-              Drag & Drop supplier invoice or click to browse
+              Drag & Drop invoice image or click to browse
             </p>
             <p className="text-xs text-slate-500">
-              Supports PNG, JPG, or PDF bills
+              Supports PNG, JPG, or PDF supplier bills
             </p>
           </div>
 
@@ -99,6 +71,12 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ profile }) => {
             </Button>
           </div>
 
+          {/* Phase 0 Badge */}
+          <div className="flex items-center justify-center gap-2 p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs font-bold text-amber-900">
+            <Info className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>Phase 0 Preview — OCR bill parsing & stock extraction will be enabled in Phase 1</span>
+          </div>
+
         </div>
       </Card>
 
@@ -108,7 +86,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ profile }) => {
           <div className="flex items-center justify-between pb-4 border-b border-slate-100">
             <div className="flex items-center gap-2 text-emerald-700 font-extrabold text-lg">
               <CheckCircle2 className="w-6 h-6" />
-              <span>Sample {activeOption.name} Invoice Loaded</span>
+              <span>Sample Invoice Loaded</span>
             </div>
             <button
               onClick={() => setUploaded(false)}
@@ -121,22 +99,22 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({ profile }) => {
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
               <p className="text-xs text-slate-500 font-bold uppercase">Supplier</p>
-              <p className="font-extrabold text-slate-900 mt-1">Wholesale Distributors Ltd</p>
+              <p className="font-extrabold text-slate-900 mt-1">Mother Dairy Wholesale</p>
             </div>
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <p className="text-xs text-slate-500 font-bold uppercase">Items Extracted</p>
-              <p className="font-extrabold text-slate-900 mt-1">4 Products (45 units)</p>
+              <p className="text-xs text-slate-500 font-bold uppercase">Items Found</p>
+              <p className="font-extrabold text-slate-900 mt-1">3 Products (50 units)</p>
             </div>
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
               <p className="text-xs text-slate-500 font-bold uppercase">Total Bill</p>
-              <p className="font-extrabold text-emerald-700 mt-1">₹3,850</p>
+              <p className="font-extrabold text-emerald-700 mt-1">₹1,400</p>
             </div>
           </div>
 
           <div className="mt-4 p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs font-bold text-emerald-900 flex items-center justify-between">
-            <span>Automated purchase extraction will connect to inventory in Phase 2.</span>
+            <span>Clicking "Add to Inventory" will process stock entry when backend OCR is connected.</span>
             <Button size="sm" variant="primary" onClick={() => setUploaded(false)}>
-              Close Preview
+              Add to Stock
             </Button>
           </div>
         </Card>

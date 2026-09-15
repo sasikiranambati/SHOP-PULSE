@@ -6,11 +6,10 @@ import {
   TrendingUp, 
   Zap, 
   ArrowRight, 
-  Store,
-  Sparkles
+  CheckCircle2,
+  Store
 } from 'lucide-react';
 import { Button } from '../components/Button';
-import { BUSINESS_TYPE_OPTIONS } from '../data/mockData/businessTypes';
 import type { PageRoute } from '../types';
 
 interface LandingProps {
@@ -18,30 +17,39 @@ interface LandingProps {
 }
 
 export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
+  const businessTypes = [
+    'Kirana Stores',
+    'Bakeries',
+    'Pharmacies',
+    'Tea Stalls',
+    'Supermarkets',
+    'General Stores',
+  ];
+
   const features = [
     {
       icon: ShoppingCart,
       title: 'Quick Sales Entry',
-      description: 'Record sales in seconds with simple tap selectors designed for busy retail counters.',
+      description: 'Record sales in seconds with simple tap selectors designed for busy checkout counters.',
       tag: 'UI Ready',
     },
     {
       icon: ScanLine,
       title: 'Invoice Scanning',
       description: 'Snap photos of supplier paper bills to automatically track stock without manual typing.',
-      tag: 'Phase 2 Preview',
+      tag: 'Preview',
     },
     {
       icon: TrendingUp,
       title: 'Demand Forecasting',
       description: 'Know what will sell tomorrow before you run out of stock based on past sales history.',
-      tag: 'Phase 3 Preview',
+      tag: 'Future AI',
     },
     {
       icon: Zap,
       title: 'Smart Reordering',
       description: 'Get plain-language recommendations on exact quantities to order from your suppliers.',
-      tag: 'Phase 3 Preview',
+      tag: 'Future AI',
     },
   ];
 
@@ -59,7 +67,7 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
                 <span className="text-xl font-extrabold text-slate-900">Shop</span>
                 <span className="text-xl font-extrabold text-emerald-600">Pulse</span>
               </div>
-              <p className="text-[10px] font-semibold text-slate-500">Retail Intelligence Platform</p>
+              <p className="text-[10px] font-semibold text-slate-500">Know what to do next</p>
             </div>
           </div>
 
@@ -76,65 +84,50 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
 
       {/* Hero Section */}
       <section className="py-12 sm:py-20 px-4 max-w-5xl mx-auto text-center flex flex-col items-center">
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-100 text-emerald-950 border border-emerald-300 text-xs font-extrabold mb-6 shadow-xs">
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-extrabold mb-6 shadow-xs">
           <Store className="w-4 h-4 text-emerald-700" />
-          <span>Select your business & ShopPulse adapts to your store</span>
+          <span>Built for Small & Medium Retailers</span>
         </div>
 
-        <h1 className="text-4xl sm:text-6xl font-black text-slate-900 tracking-tight leading-tight max-w-4xl">
-          Run your retail shop <span className="text-emerald-600">smarter.</span>
+        <h1 className="text-4xl sm:text-6xl font-black text-slate-900 tracking-tight leading-tight max-w-3xl">
+          Run your shop <span className="text-emerald-600">smarter.</span>
         </h1>
 
         <p className="mt-5 text-lg sm:text-xl text-slate-600 max-w-2xl font-medium leading-relaxed">
-          ShopPulse helps small and medium product-based retailers track sales, manage stock, and make smarter restocking decisions with minimal manual work.
+          ShopPulse helps retailers track sales, manage inventory, and make smarter restocking decisions with less manual work.
         </p>
 
-        <div className="mt-8 flex flex-col sm:flex-row gap-4 w-full max-w-md justify-center">
+        <div className="mt-8 flex flex-col sm:flex-row gap-4 w-full max-w-sm justify-center">
           <Button 
             variant="primary" 
             size="lg" 
-            onClick={() => setActivePage('select-store')}
+            onClick={() => setActivePage('dashboard')}
             icon={<ArrowRight className="w-5 h-5" />}
           >
-            Select Business & Launch
-          </Button>
-
-          <Button 
-            variant="outline" 
-            size="lg" 
-            onClick={() => setActivePage('dashboard')}
-          >
-            Demo Dashboard
+            Launch Shop Dashboard
           </Button>
         </div>
 
         <p className="mt-3 text-xs font-semibold text-slate-500">
-          Designed for everyday shop owners. No complicated setup required.
+          No complicated setups. Designed for everyday shop owners.
         </p>
       </section>
 
-      {/* 14 Business Types Section */}
-      <section className="bg-white py-12 border-y border-slate-200">
+      {/* Business Types Pill Section */}
+      <section className="bg-white py-6 border-y border-slate-200">
         <div className="max-w-6xl mx-auto px-4 text-center">
-          <div className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 mb-3">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Tailored for 14 Product-Based Retail Types</span>
-          </div>
-
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mb-6">
-            One platform that adapts to your store
-          </h2>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5">
-            {BUSINESS_TYPE_OPTIONS.map((type) => (
-              <button
-                key={type.id}
-                onClick={() => setActivePage('select-store')}
-                className="p-3 rounded-2xl bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 text-slate-800 hover:text-emerald-900 transition-all flex flex-col items-center gap-1.5 cursor-pointer text-center group"
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-4">
+            Tailored for your business
+          </p>
+          <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
+            {businessTypes.map((type) => (
+              <span
+                key={type}
+                className="px-4 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 text-sm font-semibold flex items-center gap-1.5"
               >
-                <span className="text-2xl group-hover:scale-110 transition-transform">{type.emoji}</span>
-                <span className="text-xs font-bold leading-tight">{type.name}</span>
-              </button>
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                {type}
+              </span>
             ))}
           </div>
         </div>
@@ -144,10 +137,10 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
       <section className="py-16 px-4 max-w-6xl mx-auto w-full">
         <div className="text-center mb-12">
           <h2 className="text-2xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
-            Everything your retail business needs
+            Everything your shop needs in one place
           </h2>
           <p className="mt-2 text-slate-600 font-medium">
-            Designed for quick navigation and fast daily usage across devices.
+            Designed for quick navigation and fast daily usage.
           </p>
         </div>
 

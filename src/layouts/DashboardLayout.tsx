@@ -1,14 +1,13 @@
-import React from 'react';
 import { Navbar } from '../components/Navbar';
 import { Sidebar } from '../components/Sidebar';
 import { BottomNav } from '../components/BottomNav';
-import type { PageRoute, StoreProfile } from '../types';
+import type { PageRoute } from '../types';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
   activePage: PageRoute;
   setActivePage: (page: PageRoute) => void;
-  profile: StoreProfile;
+  shopName: string;
   onLogout: () => void;
 }
 
@@ -16,7 +15,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   children,
   activePage,
   setActivePage,
-  profile,
+  shopName,
   onLogout,
 }) => {
   return (
@@ -24,17 +23,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       <Navbar
         activePage={activePage}
         setActivePage={setActivePage}
-        profile={profile}
+        shopName={shopName}
         isLoggedIn={true}
         onLogout={onLogout}
       />
       
       <div className="flex-1 flex max-w-7xl w-full mx-auto">
-        <Sidebar 
-          activePage={activePage} 
-          setActivePage={setActivePage} 
-          profile={profile}
-        />
+        <Sidebar activePage={activePage} setActivePage={setActivePage} />
         
         <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-24 md:pb-12 overflow-x-hidden">
           {children}

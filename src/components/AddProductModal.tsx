@@ -35,16 +35,13 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
     if (stockNum === 0) status = 'Out of Stock';
     else if (stockNum <= minStockNum) status = 'Low Stock';
 
-    const sellingPrice = parseFloat(price) || 0;
     onAddProduct({
       name,
       category,
       stock: stockNum,
       minStock: minStockNum,
       unit,
-      price: sellingPrice,
-      purchasePrice: Math.round(sellingPrice * 0.7),
-      supplier: 'Direct Supplier',
+      price: parseFloat(price) || 0,
       status,
       lastRestocked: 'Just now',
     });

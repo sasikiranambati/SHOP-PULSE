@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Package, 
   Search, 
@@ -12,27 +12,19 @@ import {
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/Button';
 import { AddProductModal } from '../components/AddProductModal';
-import { BUSINESS_TYPE_OPTIONS } from '../data/mockData/businessTypes';
-import type { Product, StoreProfile } from '../types';
+import type { Product } from '../types';
+import { PRODUCT_CATEGORIES } from '../data/mockData';
 
 interface InventoryProps {
   products: Product[];
   onAddProduct: (product: Omit<Product, 'id'>) => void;
-  profile: StoreProfile;
 }
 
-export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, profile }) => {
+export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [localProducts, setLocalProducts] = useState<Product[]>(products);
-
-  const activeOption = BUSINESS_TYPE_OPTIONS.find(b => b.id === profile.businessTypeId) || BUSINESS_TYPE_OPTIONS[0];
-
-  useEffect(() => {
-    setLocalProducts(products);
-    setSelectedCategory('All');
-  }, [products]);
 
   const handleAddProduct = (newProd: Omit<Product, 'id'>) => {
     const created: Product = {
@@ -43,12 +35,9 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, pr
     onAddProduct(newProd);
   };
 
-  const categories = ['All', ...activeOption.categoryList];
-
   const filteredProducts = localProducts.filter((prod) => {
     const matchesSearch = prod.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          prod.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          prod.supplier.toLowerCase().includes(searchTerm.toLowerCase());
+                          prod.category.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'All' || prod.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
@@ -80,11 +69,11 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, pr
   };
 
   return (
-    <div className="space-y-6 font-sans">
+    <div className="space-y-6">
       
       <PageHeader
-        title={`Inventory Catalog (${activeOption.name})`}
-        description={`View, filter and restock product inventory for ${profile.shopName}`}
+        title="Inventory Catalog"
+        description="View and manage product stock levels for your shop"
         action={
           <Button
             variant="primary"
@@ -105,7 +94,7 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, pr
             <Search className="w-5 h-5 absolute left-3.5 top-3 text-slate-400" />
             <input
               type="text"
-              placeholder={`Search ${activeOption.name} products by name, category, or supplier...`}
+              placeholder="Search products by name or category..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base"
@@ -117,7 +106,7 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, pr
         {/* Category filter pills */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
           <Filter className="w-4 h-4 text-slate-400 shrink-0 mr-1" />
-          {categories.map((cat) => (
+          {PRODUCT_CATEGORIES.map((cat) => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
@@ -137,17 +126,14 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, pr
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         
         {/* Desktop Table View */}
-        <div className="hidden lg:block overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-xs font-extrabold text-slate-600 uppercase tracking-wider">
                 <th className="py-3.5 px-6">Product</th>
                 <th className="py-3.5 px-4">Category</th>
-                <th className="py-3.5 px-4">Selling Price</th>
-                <th className="py-3.5 px-4">Purchase Price</th>
                 <th className="py-3.5 px-4">Stock</th>
-                <th className="py-3.5 px-4">Reorder Level</th>
-                <th className="py-3.5 px-4">Supplier</th>
+                <th className="py-3.5 px-4">Price</th>
                 <th className="py-3.5 px-4">Status</th>
                 <th className="py-3.5 px-6 text-right">Actions</th>
               </tr>
@@ -157,27 +143,18 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, pr
                 <tr key={prod.id} className="hover:bg-slate-50/80 transition-colors">
                   <td className="py-4 px-6 font-bold text-slate-900">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-black text-xs border border-emerald-200 shrink-0">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-black text-xs border border-emerald-200">
                         {prod.name.charAt(0)}
                       </div>
                       <span>{prod.name}</span>
                     </div>
                   </td>
                   <td className="py-4 px-4 text-slate-600">{prod.category}</td>
-                  <td className="py-4 px-4 font-black text-slate-900">
-                    ₹{prod.price}
-                  </td>
-                  <td className="py-4 px-4 font-semibold text-slate-500">
-                    ₹{prod.purchasePrice}
-                  </td>
-                  <td className="py-4 px-4 font-extrabold text-slate-900">
+                  <td className="py-4 px-4 font-bold text-slate-900">
                     {prod.stock} {prod.unit}
                   </td>
-                  <td className="py-4 px-4 text-slate-500 font-semibold">
-                    {prod.minStock} {prod.unit}
-                  </td>
-                  <td className="py-4 px-4 text-slate-600 font-medium">
-                    {prod.supplier}
+                  <td className="py-4 px-4 font-extrabold text-slate-900">
+                    ₹{prod.price}
                   </td>
                   <td className="py-4 px-4">{getStatusBadge(prod.status)}</td>
                   <td className="py-4 px-6 text-right">
@@ -185,7 +162,7 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, pr
                       onClick={() => {
                         setLocalProducts(localProducts.map(p => p.id === prod.id ? { ...p, stock: p.stock + 10, status: 'In Stock' } : p));
                       }}
-                      className="text-xs font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                      className="text-xs font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors inline-flex items-center gap-1"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
                       Restock +10
@@ -197,40 +174,22 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, pr
           </table>
         </div>
 
-        {/* Mobile & Tablet Card List View */}
-        <div className="lg:hidden divide-y divide-slate-100">
+        {/* Mobile Card List View */}
+        <div className="md:hidden divide-y divide-slate-100">
           {filteredProducts.map((prod) => (
             <div key={prod.id} className="p-4 space-y-2">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <h4 className="font-bold text-slate-900 text-base">{prod.name}</h4>
-                  <p className="text-xs text-slate-500">
-                    Category: {prod.category} • Supplier: {prod.supplier}
-                  </p>
+                  <p className="text-xs text-slate-500">{prod.category} • ₹{prod.price} per {prod.unit}</p>
                 </div>
                 <div>{getStatusBadge(prod.status)}</div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                <div>
-                  <span className="text-slate-500 font-medium">Selling Price: </span>
-                  <span className="font-black text-slate-900">₹{prod.price}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-medium">Purchase Price: </span>
-                  <span className="font-bold text-slate-700">₹{prod.purchasePrice}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-medium">Stock: </span>
-                  <span className="font-black text-slate-900">{prod.stock} {prod.unit}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-medium">Reorder Level: </span>
-                  <span className="font-bold text-slate-700">{prod.minStock} {prod.unit}</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end pt-1">
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                <span className="text-sm font-extrabold text-slate-800">
+                  Current Stock: {prod.stock} {prod.unit}
+                </span>
                 <button
                   onClick={() => {
                     setLocalProducts(localProducts.map(p => p.id === prod.id ? { ...p, stock: p.stock + 10, status: 'In Stock' } : p));
@@ -247,8 +206,8 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, pr
         {filteredProducts.length === 0 && (
           <div className="p-12 text-center text-slate-500">
             <Package className="w-12 h-12 mx-auto text-slate-300 mb-2" />
-            <p className="font-bold text-slate-700">No products found in {activeOption.name} catalog</p>
-            <p className="text-sm text-slate-500">Try adjusting your search query or category filter</p>
+            <p className="font-bold text-slate-700">No products found</p>
+            <p className="text-sm text-slate-500">Try adjusting your search or category filter</p>
           </div>
         )}
 
