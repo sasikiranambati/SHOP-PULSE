@@ -4,6 +4,7 @@ from .shop import ShopCreate, ShopUpdate, ShopResponse, BusinessType
 from .product import ProductCreate, ProductUpdate, ProductResponse, PaginatedProductResponse
 from .supplier import SupplierCreate, SupplierUpdate, SupplierResponse, PaginatedSupplierResponse
 from .purchase import PurchaseCreate, PurchaseItemCreate, PurchaseResponse, PurchaseItemResponse, PaginatedPurchaseResponse
+from .sale import SaleCreate, SaleItemCreate, SaleResponse, SaleItemResponse, PaginatedSaleResponse
 
 __all__ = [
     "UserCreate",
@@ -28,4 +29,9 @@ __all__ = [
     "PurchaseResponse",
     "PurchaseItemResponse",
     "PaginatedPurchaseResponse",
+    "SaleCreate",
+    "SaleItemCreate",
+    "SaleResponse",
+    "SaleItemResponse",
+    "PaginatedSaleResponse",
 ]
