@@ -6,9 +6,9 @@ import {
   TrendingUp, 
   Zap, 
   ArrowRight, 
-  CheckCircle2,
-  Store
+  CheckCircle2
 } from 'lucide-react';
+
 import { Button } from '../components/Button';
 import type { PageRoute } from '../types';
 
@@ -84,12 +84,8 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
 
       {/* Hero Section */}
       <section className="py-12 sm:py-20 px-4 max-w-5xl mx-auto text-center flex flex-col items-center">
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-extrabold mb-6 shadow-xs">
-          <Store className="w-4 h-4 text-emerald-700" />
-          <span>Built for Small & Medium Retailers</span>
-        </div>
-
         <h1 className="text-4xl sm:text-6xl font-black text-slate-900 tracking-tight leading-tight max-w-3xl">
+
           Run your shop <span className="text-emerald-600">smarter.</span>
         </h1>
 
