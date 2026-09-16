@@ -6,6 +6,7 @@ from sqlalchemy.pool import StaticPool
 
 from main import app
 from db.session import Base
+import db.models
 from api.deps import get_db
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -24,12 +25,12 @@ def override_get_db():
     finally:
         db.close()
 
-app.dependency_overrides[get_db] = override_get_db
-
 @pytest.fixture(autouse=True)
 def setup_db():
     Base.metadata.create_all(bind=engine)
+    app.dependency_overrides[get_db] = override_get_db
     yield
+    app.dependency_overrides.clear()
     Base.metadata.drop_all(bind=engine)
 
 client = TestClient(app)
