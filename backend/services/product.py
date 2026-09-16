@@ -61,3 +61,17 @@ def update_product(db: Session, db_product: Product, product_in: ProductUpdate) 
 def delete_product(db: Session, db_product: Product) -> None:
     db.delete(db_product)
     db.commit()
+
+def get_low_stock_products_by_shop(
+    db: Session,
+    shop_id: UUID,
+    skip: int = 0,
+    limit: int = 10
+) -> Tuple[List[Product], int]:
+    query = db.query(Product).filter(
+        Product.shop_id == shop_id,
+        Product.current_stock <= Product.reorder_level
+    )
+    total = query.count()
+    items = query.order_by(Product.current_stock.asc()).offset(skip).limit(limit).all()
+    return items, total
