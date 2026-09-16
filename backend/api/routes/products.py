@@ -62,6 +62,26 @@ def get_products(
     )
     return PaginatedProductResponse(items=items, total=total, skip=skip, limit=limit)
 
+@router.get("/low-stock", response_model=PaginatedProductResponse)
+def get_low_stock_products(
+    *,
+    db: Session = Depends(deps.get_db),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+    current_user: User = Depends(deps.get_current_user)
+) -> Any:
+    """
+    Get products that need reordering (current_stock <= reorder_level) for the authenticated shop.
+    """
+    shop = shop_service.get_shop_by_owner(db, owner_id=current_user.id)
+    if not shop:
+        return PaginatedProductResponse(items=[], total=0, skip=skip, limit=limit)
+    
+    items, total = product_service.get_low_stock_products_by_shop(
+        db, shop_id=shop.id, skip=skip, limit=limit
+    )
+    return PaginatedProductResponse(items=items, total=total, skip=skip, limit=limit)
+
 @router.get("/{id}", response_model=ProductResponse)
 def get_product(
     *,

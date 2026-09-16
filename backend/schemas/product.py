@@ -1,7 +1,7 @@
 from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 class ProductBase(BaseModel):
     name: str = Field(..., min_length=1, description="Product name")
@@ -33,6 +33,18 @@ class ProductResponse(ProductBase):
     shop_id: UUID
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+    @computed_field
+    @property
+    def stock_status(self) -> str:
+        r_level = self.reorder_level if self.reorder_level is not None else 0
+        if self.current_stock <= 0:
+            return "Critical"
+        if self.current_stock <= r_level:
+            if r_level > 0 and self.current_stock <= (r_level // 2):
+                return "Critical"
+            return "Low Stock"
+        return "In Stock"
 
     model_config = ConfigDict(from_attributes=True)
 
