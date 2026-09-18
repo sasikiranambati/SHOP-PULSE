@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { PageRoute, Product } from './types';
-import { INITIAL_PRODUCTS } from './data/mockData';
 import { useAuth } from './hooks/useAuth';
+import { useInventory } from './hooks/useInventory';
 import { ProtectedRoute, PublicOnlyRoute } from './components/ProtectedRoute';
 
 // Layouts
@@ -20,6 +20,7 @@ import { Settings } from './pages/Settings';
 
 export function App() {
   const { firebaseUser, userProfile, loading, logout } = useAuth();
+  const { products, addProduct, updateProduct, deleteProduct, increaseStock } = useInventory();
 
   const [activePage, setActivePageState] = useState<PageRoute>(() => {
     try {
@@ -46,7 +47,6 @@ export function App() {
   };
 
   const [shopName, setShopName] = useState('Kiran General Store');
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
 
   // Sync shop name from authenticated user profile
   useEffect(() => {
@@ -73,12 +73,22 @@ export function App() {
     }
   }, [firebaseUser, loading, activePage]);
 
-  const handleAddProduct = (newProd: Omit<Product, 'id'>) => {
-    const created: Product = {
-      ...newProd,
-      id: `p_${Date.now()}`,
-    };
-    setProducts((prev) => [created, ...prev]);
+  const handleAddProduct = async (newProd: Omit<Product, 'id'>) => {
+    try {
+      await addProduct({
+        name: newProd.name,
+        category: newProd.category,
+        stock: newProd.stock,
+        unit: newProd.unit,
+        sellingPrice: newProd.sellingPrice ?? newProd.price,
+        purchasePrice: newProd.purchasePrice ?? 0,
+        reorderLevel: newProd.reorderLevel ?? newProd.minStock ?? 10,
+        imageUrl: newProd.imageUrl,
+        barcode: newProd.barcode,
+      });
+    } catch (err) {
+      console.error('Failed to add product in App:', err);
+    }
   };
 
   const handleLogout = async () => {
@@ -161,6 +171,9 @@ export function App() {
           <Inventory
             products={products}
             onAddProduct={handleAddProduct}
+            onRestock={increaseStock}
+            onUpdateProduct={updateProduct}
+            onDeleteProduct={deleteProduct}
           />
         )}
 

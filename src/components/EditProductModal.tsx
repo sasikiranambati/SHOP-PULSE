@@ -1,36 +1,51 @@
-import React, { useState } from 'react';
-import { X, Plus, PackageCheck } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Save, Edit3 } from 'lucide-react';
 import { Button } from './Button';
 import { PRODUCT_CATEGORIES } from '../data/mockData';
-import type { Product } from '../types';
-import { useLanguage } from '../i18n/LanguageContext';
+import type { Product, ProductCategory } from '../types';
 
-interface AddProductModalProps {
+interface EditProductModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddProduct: (product: Omit<Product, 'id'>) => void;
+  product: Product | null;
+  onUpdateProduct: (id: string, updates: Partial<Product>) => void | Promise<void>;
 }
 
-export const AddProductModal: React.FC<AddProductModalProps> = ({
+export const EditProductModal: React.FC<EditProductModalProps> = ({
   isOpen,
   onClose,
-  onAddProduct,
+  product,
+  onUpdateProduct,
 }) => {
-  const { t } = useLanguage();
   const [name, setName] = useState('');
-  const [category, setCategory] = useState('Dairy');
+  const [category, setCategory] = useState<string>('Dairy');
   const [stock, setStock] = useState('');
   const [minStock, setMinStock] = useState('10');
   const [unit, setUnit] = useState('pkts');
   const [sellingPrice, setSellingPrice] = useState('');
   const [purchasePrice, setPurchasePrice] = useState('');
   const [barcode, setBarcode] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  if (!isOpen) return null;
+  // Populate fields when the selected product changes
+  useEffect(() => {
+    if (product) {
+      setName(product.name || '');
+      setCategory(product.category || 'Dairy');
+      setStock(String(product.stock ?? 0));
+      setMinStock(String(product.reorderLevel ?? product.minStock ?? 10));
+      setUnit(product.unit || 'units');
+      setSellingPrice(String(product.sellingPrice ?? product.price ?? ''));
+      setPurchasePrice(String(product.purchasePrice ?? ''));
+      setBarcode(product.barcode || '');
+      setValidationError(null);
+    }
+  }, [product, isOpen]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  if (!isOpen || !product) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setValidationError(null);
 
@@ -47,45 +62,39 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
 
     const stockNum = parseInt(stock);
     if (isNaN(stockNum) || stockNum < 0) {
-      setValidationError('Initial stock cannot be negative.');
+      setValidationError('Stock cannot be negative.');
       return;
     }
 
     const minStockNum = parseInt(minStock) || 5;
-    const purchaseNum = parseFloat(purchasePrice) || (priceNum > 0 ? Math.round(priceNum * 0.7) : 0);
+    const purchaseNum = parseFloat(purchasePrice) || 0;
 
     let status: 'In Stock' | 'Low Stock' | 'Out of Stock' = 'In Stock';
     if (stockNum === 0) status = 'Out of Stock';
     else if (stockNum <= minStockNum) status = 'Low Stock';
 
-    const timestamp = new Date().toISOString();
-    onAddProduct({
-      name: name.trim(),
-      category: category as any,
-      stock: stockNum,
-      minStock: minStockNum,
-      reorderLevel: minStockNum,
-      unit: unit.trim() || 'units',
-      price: priceNum,
-      sellingPrice: priceNum,
-      purchasePrice: purchaseNum,
-      barcode: barcode.trim() || undefined,
-      imageUrl: imageUrl.trim() || undefined,
-      status,
-      lastRestocked: 'Just now',
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    });
-
-    // Reset
-    setName('');
-    setStock('');
-    setSellingPrice('');
-    setPurchasePrice('');
-    setBarcode('');
-    setImageUrl('');
-    setValidationError(null);
-    onClose();
+    setIsSubmitting(true);
+    try {
+      await onUpdateProduct(product.id, {
+        name: name.trim(),
+        category: category as ProductCategory,
+        stock: stockNum,
+        minStock: minStockNum,
+        reorderLevel: minStockNum,
+        unit: unit.trim() || 'units',
+        price: priceNum,
+        sellingPrice: priceNum,
+        purchasePrice: purchaseNum,
+        barcode: barcode.trim() || undefined,
+        status,
+        updatedAt: new Date().toISOString(),
+      });
+      onClose();
+    } catch (err: any) {
+      setValidationError(err?.message || 'Failed to update product.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -95,9 +104,9 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2 text-emerald-700 font-extrabold text-lg sm:text-xl">
-            <PackageCheck className="w-6 h-6 shrink-0" />
-            <span>{t('addProductModal.title')}</span>
+          <div className="flex items-center gap-2 text-slate-800 font-extrabold text-lg sm:text-xl">
+            <Edit3 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>Edit Product</span>
           </div>
           <button 
             onClick={onClose}
@@ -108,7 +117,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         </div>
 
         {validationError && (
-          <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl">
+          <div className="mt-3 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl">
             {validationError}
           </div>
         )}
@@ -116,12 +125,11 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         <form onSubmit={handleSubmit} className="mt-4 space-y-3.5">
           <div>
             <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
-              {t('addProductModal.productName')}
+              Product Name *
             </label>
             <input
               type="text"
               required
-              placeholder={t('addProductModal.namePlaceholder')}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
@@ -131,7 +139,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
-                {t('addProductModal.category')}
+                Category
               </label>
               <select
                 value={category}
@@ -153,7 +161,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                 required
                 min="0.01"
                 step="0.01"
-                placeholder="28"
                 value={sellingPrice}
                 onChange={(e) => setSellingPrice(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
@@ -170,7 +177,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                 type="number"
                 min="0"
                 step="0.01"
-                placeholder="20"
                 value={purchasePrice}
                 onChange={(e) => setPurchasePrice(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
@@ -183,7 +189,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
               </label>
               <input
                 type="text"
-                placeholder="Optional (e.g. 8901030...)"
+                placeholder="Optional"
                 value={barcode}
                 onChange={(e) => setBarcode(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
@@ -194,13 +200,12 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
-                {t('addProductModal.initialStock')}
+                Stock *
               </label>
               <input
                 type="number"
                 required
                 min="0"
-                placeholder="50"
                 value={stock}
                 onChange={(e) => setStock(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
@@ -209,12 +214,11 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
 
             <div>
               <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
-                {t('addProductModal.minStockAlert')}
+                Min Stock Alert
               </label>
               <input
                 type="number"
                 min="1"
-                placeholder="10"
                 value={minStock}
                 onChange={(e) => setMinStock(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
@@ -223,11 +227,10 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
 
             <div>
               <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
-                {t('addProductModal.unit')}
+                Unit
               </label>
               <input
                 type="text"
-                placeholder="pkts / kg"
                 value={unit}
                 onChange={(e) => setUnit(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
@@ -236,11 +239,23 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 mt-5">
-            <Button type="button" variant="outline" onClick={onClose} className="rounded-xl">
-              {t('addProductModal.cancel')}
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={onClose} 
+              disabled={isSubmitting}
+              className="rounded-xl"
+            >
+              Cancel
             </Button>
-            <Button type="submit" variant="primary" icon={<Plus className="w-5 h-5" />} className="rounded-xl font-bold">
-              {t('addProductModal.submit')}
+            <Button 
+              type="submit" 
+              variant="primary" 
+              disabled={isSubmitting}
+              icon={<Save className="w-4 h-4" />} 
+              className="rounded-xl font-bold"
+            >
+              {isSubmitting ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>
         </form>

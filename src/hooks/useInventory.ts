@@ -1,89 +1,181 @@
 /**
  * @file useInventory.ts
- * @description Custom React hook for state management of shop inventory & products.
+ * @description Custom React hook for real-time state management of shop inventory & products.
  * Belongs in `src/hooks/useInventory.ts`.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Product, ProductInput, ProductQueryFilters } from '../types/product';
 import * as inventoryService from '../services/inventoryService';
+import { uploadProductImage, replaceProductImage } from '../services/storageService';
 
 export interface UseInventoryResult {
   products: Product[];
   lowStockProducts: Product[];
   loading: boolean;
   error: string | null;
-  refreshProducts: () => Promise<void>;
-  addNewProduct: (input: ProductInput) => Promise<Product>;
-  editProduct: (id: string, updates: Partial<ProductInput>) => Promise<void>;
+  addProduct: (input: ProductInput, imageFile?: File) => Promise<Product>;
+  updateProduct: (id: string, updates: Partial<ProductInput>, newImageFile?: File) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
+  searchProducts: (queryText: string) => Promise<Product[]>;
+  refreshInventory: () => Promise<void>;
+  increaseStock: (id: string, quantity: number) => Promise<void>;
+  decreaseStock: (id: string, quantity: number) => Promise<void>;
+  setStock: (id: string, newStock: number) => Promise<void>;
+  // Backward compatibility aliases
+  addNewProduct: (input: ProductInput, imageFile?: File) => Promise<Product>;
+  editProduct: (id: string, updates: Partial<ProductInput>, newImageFile?: File) => Promise<void>;
   removeProduct: (id: string) => Promise<void>;
   changeStock: (id: string, newStock: number) => Promise<void>;
+  refreshProducts: () => Promise<void>;
 }
 
 /**
- * Hook for managing inventory products and low stock alerts.
+ * Hook for managing inventory products, real-time sync, and low stock alerts.
  */
 export function useInventory(initialFilters?: ProductQueryFilters): UseInventoryResult {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchInventory = useCallback(async () => {
+  const categoryFilter = initialFilters?.category;
+  const searchFilter = initialFilters?.search;
+  const statusFilter = initialFilters?.status;
+
+  // Real-time listener for products with automatic unsubscribe cleanup
+  useEffect(() => {
     setLoading(true);
     setError(null);
+
+    const unsubscribe = inventoryService.subscribeToProducts((liveProducts) => {
+      setProducts(liveProducts);
+      setLoading(false);
+    }, { category: categoryFilter, search: searchFilter, status: statusFilter });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [categoryFilter, searchFilter, statusFilter]);
+
+  const refreshInventory = useCallback(async () => {
+    setLoading(true);
     try {
       const data = await inventoryService.getProducts(initialFilters);
       setProducts(data);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch inventory');
+      setError(err.message || 'Failed to refresh inventory.');
     } finally {
       setLoading(false);
     }
   }, [initialFilters]);
 
-  useEffect(() => {
-    fetchInventory();
-  }, [fetchInventory]);
-
-  const addNewProduct = async (input: ProductInput): Promise<Product> => {
-    const created = await inventoryService.addProduct(input);
-    setProducts(prev => [...prev, created]);
-    return created;
-  };
-
-  const editProduct = async (id: string, updates: Partial<ProductInput>): Promise<void> => {
-    await inventoryService.updateProduct(id, updates);
-    await fetchInventory();
-  };
-
-  const removeProduct = async (id: string): Promise<void> => {
-    await inventoryService.deleteProduct(id);
-    setProducts(prev => prev.filter(p => p.id !== id));
-  };
-
-  const changeStock = async (id: string, newStock: number): Promise<void> => {
-    await inventoryService.updateStock(id, newStock);
-    setProducts(prev => prev.map(p => {
-      if (p.id === id) {
-        const min = p.minStock;
-        const status = newStock <= 0 ? 'Out of Stock' : newStock <= min ? 'Low Stock' : 'In Stock';
-        return { ...p, stock: newStock, status };
+  const addProduct = useCallback(async (input: ProductInput, imageFile?: File): Promise<Product> => {
+    setError(null);
+    try {
+      let imageUrl = input.imageUrl;
+      if (imageFile) {
+        imageUrl = await uploadProductImage(imageFile);
       }
-      return p;
-    }));
-  };
+      return await inventoryService.addProduct({ ...input, imageUrl });
+    } catch (err: any) {
+      setError(err.message || 'Failed to add product.');
+      throw err;
+    }
+  }, []);
 
-  const lowStockProducts = products.filter(p => p.stock <= p.minStock);
+  const updateProduct = useCallback(async (
+    id: string, 
+    updates: Partial<ProductInput>, 
+    newImageFile?: File
+  ): Promise<void> => {
+    setError(null);
+    try {
+      let cleanUpdates = { ...updates };
+      if (newImageFile) {
+        const existing = products.find(p => p.id === id);
+        const imageUrl = existing?.imageUrl 
+          ? await replaceProductImage(existing.imageUrl, newImageFile) 
+          : await uploadProductImage(newImageFile);
+        cleanUpdates.imageUrl = imageUrl;
+      }
+      await inventoryService.updateProduct(id, cleanUpdates);
+    } catch (err: any) {
+      setError(err.message || 'Failed to update product.');
+      throw err;
+    }
+  }, [products]);
+
+  const deleteProduct = useCallback(async (id: string): Promise<void> => {
+    setError(null);
+    try {
+      await inventoryService.deleteProduct(id);
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete product.');
+      throw err;
+    }
+  }, []);
+
+  const searchProducts = useCallback(async (queryText: string): Promise<Product[]> => {
+    try {
+      return await inventoryService.searchProducts(queryText);
+    } catch (err: any) {
+      setError(err.message || 'Search failed.');
+      return [];
+    }
+  }, []);
+
+  const increaseStock = useCallback(async (id: string, quantity: number): Promise<void> => {
+    setError(null);
+    try {
+      await inventoryService.increaseStock(id, quantity);
+    } catch (err: any) {
+      setError(err.message || 'Failed to increase stock.');
+      throw err;
+    }
+  }, []);
+
+  const decreaseStock = useCallback(async (id: string, quantity: number): Promise<void> => {
+    setError(null);
+    try {
+      await inventoryService.decreaseStock(id, quantity);
+    } catch (err: any) {
+      setError(err.message || 'Failed to decrease stock.');
+      throw err;
+    }
+  }, []);
+
+  const setStock = useCallback(async (id: string, newStock: number): Promise<void> => {
+    setError(null);
+    try {
+      await inventoryService.setStock(id, newStock);
+    } catch (err: any) {
+      setError(err.message || 'Failed to set stock.');
+      throw err;
+    }
+  }, []);
+
+  const lowStockProducts = useMemo(() => {
+    return products.filter(inventoryService.isLowStock);
+  }, [products]);
 
   return {
     products,
     lowStockProducts,
     loading,
     error,
-    refreshProducts: fetchInventory,
-    addNewProduct,
-    editProduct,
-    removeProduct,
-    changeStock
+    addProduct,
+    updateProduct,
+    deleteProduct,
+    searchProducts,
+    refreshInventory,
+    increaseStock,
+    decreaseStock,
+    setStock,
+    // Compatibility aliases
+    addNewProduct: addProduct,
+    editProduct: updateProduct,
+    removeProduct: deleteProduct,
+    changeStock: setStock,
+    refreshProducts: refreshInventory
   };
 }
