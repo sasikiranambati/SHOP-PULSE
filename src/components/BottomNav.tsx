@@ -23,7 +23,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activePage, setActivePage 
   ];
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-2 py-1.5 shadow-lg select-none">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 px-1.5 py-1 shadow-lg select-none">
       <div className="flex items-center justify-around max-w-md mx-auto">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -32,14 +32,14 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activePage, setActivePage 
             <button
               key={item.id}
               onClick={() => setActivePage(item.id)}
-              className={`flex flex-col items-center justify-center min-w-[64px] py-1.5 px-2 rounded-2xl transition-all cursor-pointer ${
+              className={`flex flex-col items-center justify-center min-w-[60px] py-1.5 px-2 rounded-xl transition-all cursor-pointer ${
                 isActive
                   ? 'text-emerald-700 font-extrabold bg-emerald-50'
                   : 'text-slate-600 hover:text-slate-900 font-medium'
               }`}
             >
               <Icon className={`w-5 h-5 transition-transform ${isActive ? 'text-emerald-600 scale-110' : ''}`} />
-              <span className="text-[11px] mt-1 leading-tight">{item.label}</span>
+              <span className="text-[10px] sm:text-[11px] mt-0.5 leading-tight font-extrabold">{item.label}</span>
             </button>
           );
         })}

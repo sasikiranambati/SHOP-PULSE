@@ -3,80 +3,73 @@ import {
   TrendingUp, 
   Sparkles, 
   BarChart2, 
-  Info, 
   Award,
-  Calendar
+  Calendar,
+  AlertTriangle
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { Card } from '../components/Card';
 import { StatCard } from '../components/StatCard';
+import { SalesChart } from '../components/SalesChart';
 
 export const Insights: React.FC = () => {
   const topProducts = [
-    { rank: 1, name: 'Toned Milk (500ml)', sold: '140 pkts', revenue: '₹3,920' },
-    { rank: 2, name: 'Marie Gold Biscuits', sold: '85 packs', revenue: '₹2,125' },
-    { rank: 3, name: 'Coca Cola (750ml)', sold: '60 bottles', revenue: '₹2,400' },
-    { rank: 4, name: 'White Bread (400g)', sold: '42 loaves', revenue: '₹1,890' },
+    { rank: 1, name: 'Toned Milk (500ml)', sold: '140 pkts', revenue: '₹3,920', category: 'Dairy' },
+    { rank: 2, name: 'Marie Gold Biscuits', sold: '85 packs', revenue: '₹2,125', category: 'Snacks' },
+    { rank: 3, name: 'Coca Cola (750ml)', sold: '60 bottles', revenue: '₹2,400', category: 'Beverages' },
+    { rank: 4, name: 'White Bread (400g)', sold: '42 loaves', revenue: '₹1,890', category: 'Bakery' },
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-5xl mx-auto">
       
       <PageHeader
         title="Shop Insights & Analytics"
-        description="Understand sales trends and future product demand"
+        description="Understand sales trends, top sellers, and future demand"
       />
 
-      {/* Phase 0 Information Notice */}
-      <div className="bg-emerald-50 rounded-2xl border border-emerald-200 p-4 text-emerald-900 flex items-start gap-3">
-        <Sparkles className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-        <div className="text-sm">
-          <p className="font-bold">Phase 0 Intelligence Preview</p>
-          <p className="mt-0.5 text-emerald-800">
-            Real-time sales patterns and AI demand forecasting will be connected in Phase 2.
-          </p>
-        </div>
-      </div>
-
-      {/* Sales Overview Stat Row */}
+      {/* 1. 💰 Business Overview Stat Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard
           title="Weekly Revenue"
           value="₹34,200"
-          subtitle="Past 7 days"
+          subtitle="Past 7 days total sales"
           icon={<TrendingUp className="w-6 h-6 text-emerald-600" />}
           badgeText="+18% growth"
           badgeColor="emerald"
         />
         <StatCard
-          title="Avg. Daily Customers"
-          value="68"
-          subtitle="Walk-in sales"
+          title="Daily Customer Count"
+          value="68 shoppers"
+          subtitle="Walk-in checkout transactions"
           icon={<Calendar className="w-6 h-6 text-blue-600" />}
           badgeText="Steady"
           badgeColor="blue"
         />
         <StatCard
-          title="Top Category"
-          value="Dairy"
-          subtitle="42% of total sales"
+          title="Top Sales Category"
+          value="Dairy (42%)"
+          subtitle="Highest daily turnover"
           icon={<Award className="w-6 h-6 text-amber-600" />}
           badgeText="High Demand"
           badgeColor="amber"
         />
       </div>
 
-      {/* Main Grid: Top Selling & Demand Outlook */}
+      {/* 2. 📈 Sales Trend Chart */}
+      <SalesChart />
+
+      {/* 3. 🔥 Best Sellers & ⚠️ Stock Alerts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
         {/* Top Selling Products List */}
         <Card>
           <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-            <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
+            <h3 className="font-black text-slate-900 text-base sm:text-lg flex items-center gap-2">
               <Award className="w-5 h-5 text-amber-600" />
-              <span>Top Selling Products This Week</span>
+              <span>🔥 Top Selling Products This Week</span>
             </h3>
-            <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
+            <span className="text-xs font-extrabold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md">
               Top 4
             </span>
           </div>
@@ -85,15 +78,15 @@ export const Insights: React.FC = () => {
             {topProducts.map((item) => (
               <div key={item.rank} className="py-3 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <span className="w-7 h-7 rounded-full bg-slate-900 text-white font-black text-xs flex items-center justify-center">
+                  <span className="w-7 h-7 rounded-full bg-slate-900 text-white font-black text-xs flex items-center justify-center shrink-0">
                     #{item.rank}
                   </span>
                   <div>
-                    <p className="font-bold text-slate-900 text-sm">{item.name}</p>
-                    <p className="text-xs text-slate-500">{item.sold} sold</p>
+                    <p className="font-extrabold text-slate-900 text-sm leading-tight">{item.name}</p>
+                    <p className="text-xs text-slate-500 font-semibold">{item.category} • {item.sold}</p>
                   </div>
                 </div>
-                <div className="text-right font-extrabold text-slate-900 text-sm">
+                <div className="text-right font-black text-emerald-700 text-sm">
                   {item.revenue}
                 </div>
               </div>
@@ -101,34 +94,62 @@ export const Insights: React.FC = () => {
           </div>
         </Card>
 
-        {/* Demand Outlook Card */}
-        <Card className="flex flex-col justify-between border-2 border-dashed border-slate-300 bg-slate-50/50">
+        {/* ⚠️ Stock Alerts Summary */}
+        <Card className="flex flex-col justify-between">
           <div>
-            <div className="flex items-center gap-2 text-slate-800 font-extrabold text-lg pb-3 border-b border-slate-200">
-              <BarChart2 className="w-5 h-5 text-emerald-600" />
-              <span>Demand Outlook & Forecasting</span>
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="font-black text-slate-900 text-base flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-500" />
+                <span>⚠️ Stock Alert Highlights</span>
+              </h3>
+              <span className="text-xs font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                Action Needed
+              </span>
             </div>
 
-            <div className="py-8 text-center space-y-3">
-              <div className="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-700 mx-auto flex items-center justify-center">
-                <Sparkles className="w-7 h-7" />
+            <div className="mt-3 space-y-2.5">
+              <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 text-xs">
+                <p className="font-black text-rose-900">Critical Stock: Maggi Noodles (2 left)</p>
+                <p className="text-rose-700 mt-0.5 font-medium">Stock expected to run out today before evening shift.</p>
               </div>
-              <h4 className="text-lg font-bold text-slate-900">
-                "Demand forecasting will appear here."
-              </h4>
-              <p className="text-sm text-slate-600 max-w-xs mx-auto">
-                In Phase 2, ShopPulse AI will predict next week's demand for every product to prevent out-of-stock losses.
-              </p>
-            </div>
-          </div>
 
-          <div className="p-3 bg-white rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 flex items-center gap-2">
-            <Info className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>ML model predictions currently disabled for Phase 0 UI preview.</span>
+              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs">
+                <p className="font-black text-amber-900">Low Stock: Fresh White Bread (12 left)</p>
+                <p className="text-amber-800 mt-0.5 font-medium">Reorder 20 loaves from local baker.</p>
+              </div>
+
+              <div className="p-3 bg-blue-50 rounded-xl border border-blue-200 text-xs">
+                <p className="font-black text-blue-900">Restock Reminder: Toned Milk 500ml</p>
+                <p className="text-blue-800 mt-0.5 font-medium">Morning delivery scheduled at 6:00 AM tomorrow.</p>
+              </div>
+            </div>
           </div>
         </Card>
 
       </div>
+
+      {/* 4. 🤖 AI Demand Forecasting (Phase 0 / Coming Soon Notice) */}
+      <Card className="border-2 border-dashed border-emerald-300 bg-emerald-50/30">
+        <div className="flex items-center gap-2 text-slate-900 font-black text-base sm:text-lg pb-3 border-b border-emerald-200">
+          <BarChart2 className="w-5 h-5 text-emerald-600" />
+          <span>🤖 AI Demand Forecasting & Reorder Assistant</span>
+        </div>
+
+        <div className="py-8 text-center space-y-3">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-600 text-white mx-auto flex items-center justify-center shadow-md shadow-emerald-600/20">
+            <Sparkles className="w-7 h-7" />
+          </div>
+          <h4 className="text-lg font-black text-slate-900">
+            "Know what to order before stock runs out."
+          </h4>
+          <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto font-semibold leading-relaxed">
+            In Phase 2, ShopPulse AI will automatically analyze your daily sales velocity and weather/festive patterns to generate accurate reorder lists.
+          </p>
+          <div className="inline-block px-3 py-1 bg-amber-100 text-amber-900 font-extrabold text-xs rounded-full border border-amber-300">
+            Phase 0 UI Preview — Machine learning predictive engine coming in Phase 2
+          </div>
+        </div>
+      </Card>
 
     </div>
   );
