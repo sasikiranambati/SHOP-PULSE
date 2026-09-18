@@ -20,7 +20,7 @@ import { Settings } from './pages/Settings';
 
 export function App() {
   const { firebaseUser, userProfile, loading, logout } = useAuth();
-  const { products, addProduct, increaseStock } = useInventory();
+  const { products, addProduct, updateProduct, deleteProduct, increaseStock } = useInventory();
 
   const [activePage, setActivePageState] = useState<PageRoute>(() => {
     try {
@@ -172,6 +172,8 @@ export function App() {
             products={products}
             onAddProduct={handleAddProduct}
             onRestock={increaseStock}
+            onUpdateProduct={updateProduct}
+            onDeleteProduct={deleteProduct}
           />
         )}
 

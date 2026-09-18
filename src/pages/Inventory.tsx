@@ -4,28 +4,47 @@ import {
   Search, 
   Plus, 
   AlertTriangle, 
-  RefreshCw
+  RefreshCw,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/Button';
 import { StatusBadge } from '../components/StatusBadge';
 import { AddProductModal } from '../components/AddProductModal';
+import { EditProductModal } from '../components/EditProductModal';
+import { DeleteConfirmModal } from '../components/DeleteConfirmModal';
 import type { Product } from '../types';
 import { PRODUCT_CATEGORIES } from '../data/mockData';
 import { useLanguage } from '../i18n/LanguageContext';
-import { increaseStock } from '../services/inventoryService';
+import { 
+  increaseStock, 
+  updateProduct as serviceUpdateProduct, 
+  deleteProduct as serviceDeleteProduct 
+} from '../services/inventoryService';
 
 interface InventoryProps {
   products: Product[];
   onAddProduct: (product: Omit<Product, 'id'>) => void | Promise<void>;
   onRestock?: (id: string, quantity: number) => void | Promise<void>;
+  onUpdateProduct?: (id: string, updates: Partial<Product>) => void | Promise<void>;
+  onDeleteProduct?: (id: string) => void | Promise<void>;
 }
 
-export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onRestock }) => {
+export const Inventory: React.FC<InventoryProps> = ({ 
+  products, 
+  onAddProduct, 
+  onRestock,
+  onUpdateProduct,
+  onDeleteProduct
+}) => {
   const { t } = useLanguage();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [localProducts, setLocalProducts] = useState<Product[]>(products);
 
   // Synchronize local products with live products stream
@@ -70,6 +89,46 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, on
       }
     } catch (err) {
       console.error('Failed to restock item:', err);
+    }
+  };
+
+  const handleUpdateProduct = async (id: string, updates: Partial<Product>) => {
+    // Optimistic update
+    setLocalProducts(prev => prev.map(p => (p.id === id ? { ...p, ...updates } : p)));
+
+    try {
+      if (onUpdateProduct) {
+        await onUpdateProduct(id, updates);
+      } else {
+        await serviceUpdateProduct(id, updates);
+      }
+    } catch (err) {
+      console.error('Failed to update product:', err);
+      setLocalProducts(products); // Revert on failure
+      throw err;
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingProduct) return;
+    const prodId = deletingProduct.id;
+    setIsDeleting(true);
+
+    // Optimistic remove
+    setLocalProducts(prev => prev.filter(p => p.id !== prodId));
+
+    try {
+      if (onDeleteProduct) {
+        await onDeleteProduct(prodId);
+      } else {
+        await serviceDeleteProduct(prodId);
+      }
+      setDeletingProduct(null);
+    } catch (err) {
+      console.error('Failed to delete product:', err);
+      setLocalProducts(products); // Revert on failure
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -202,13 +261,32 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, on
                     <StatusBadge status={prod.status} />
                   </td>
                   <td className="py-4 px-6 text-right">
-                    <button 
-                      onClick={() => restockItem(prod.id)}
-                      className="text-xs font-black text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 transition-all inline-flex items-center gap-1 cursor-pointer active:scale-95"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      {t('inventory.restockTen')}
-                    </button>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button 
+                        onClick={() => restockItem(prod.id)}
+                        title="Restock +10"
+                        className="text-xs font-black text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-lg border border-emerald-200 transition-all inline-flex items-center gap-1 cursor-pointer active:scale-95"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span className="hidden xl:inline">{t('inventory.restockTen')}</span>
+                        <span className="xl:hidden">+10</span>
+                      </button>
+                      <button 
+                        onClick={() => setEditingProduct(prod)}
+                        title="Edit Product"
+                        className="text-xs font-black text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-all inline-flex items-center gap-1 cursor-pointer active:scale-95"
+                      >
+                        <Pencil className="w-3.5 h-3.5 text-slate-600" />
+                        <span>Edit</span>
+                      </button>
+                      <button 
+                        onClick={() => setDeletingProduct(prod)}
+                        title="Delete Product"
+                        className="p-1.5 text-xs font-black text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200 transition-all inline-flex items-center cursor-pointer active:scale-95"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -244,12 +322,27 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, on
                 <span className="text-sm font-black text-slate-900">
                   {t('inventory.tableStock')}: {prod.stock} {prod.unit}
                 </span>
-                <button
-                  onClick={() => restockItem(prod.id)}
-                  className="text-xs font-black text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-xl border border-emerald-200 flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
-                >
-                  <RefreshCw className="w-3.5 h-3.5 text-emerald-600" /> {t('inventory.restockTen')}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => restockItem(prod.id)}
+                    className="text-xs font-black text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-xl border border-emerald-200 flex items-center gap-1 cursor-pointer active:scale-95 transition-all"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-emerald-600" /> +10
+                  </button>
+                  <button
+                    onClick={() => setEditingProduct(prod)}
+                    className="text-xs font-black text-slate-700 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-200 flex items-center gap-1 cursor-pointer active:scale-95 transition-all"
+                  >
+                    <Pencil className="w-3.5 h-3.5 text-slate-600" /> Edit
+                  </button>
+                  <button
+                    onClick={() => setDeletingProduct(prod)}
+                    className="p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl border border-rose-200 flex items-center cursor-pointer active:scale-95 transition-all"
+                    title="Delete"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                  </button>
+                </div>
               </div>
             </div>
           ))}
@@ -269,6 +362,21 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, on
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onAddProduct={handleAddProduct}
+      />
+
+      <EditProductModal
+        isOpen={!!editingProduct}
+        product={editingProduct}
+        onClose={() => setEditingProduct(null)}
+        onUpdateProduct={handleUpdateProduct}
+      />
+
+      <DeleteConfirmModal
+        isOpen={!!deletingProduct}
+        productName={deletingProduct?.name || ''}
+        isDeleting={isDeleting}
+        onClose={() => setDeletingProduct(null)}
+        onConfirm={handleConfirmDelete}
       />
     </div>
   );
