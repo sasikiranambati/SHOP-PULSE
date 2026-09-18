@@ -12,6 +12,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { AddProductModal } from '../components/AddProductModal';
 import type { Product } from '../types';
 import { PRODUCT_CATEGORIES } from '../data/mockData';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface InventoryProps {
   products: Product[];
@@ -19,6 +20,7 @@ interface InventoryProps {
 }
 
 export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct }) => {
+  const { t } = useLanguage();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -52,8 +54,8 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct }) 
     <div className="space-y-4 max-w-5xl mx-auto">
       
       <PageHeader
-        title="Stock & Inventory"
-        description="Monitor product stock levels and restock fast"
+        title={t('inventory.title')}
+        description={t('inventory.description')}
         action={
           <Button
             variant="primary"
@@ -61,7 +63,7 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct }) 
             icon={<Plus className="w-5 h-5" />}
             className="font-black"
           >
-            + Add Product
+            {t('inventory.addProduct')}
           </Button>
         }
       />
@@ -71,7 +73,7 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct }) 
         <div className="bg-amber-50/90 rounded-2xl border border-amber-300/80 p-4 shadow-xs">
           <div className="flex items-center gap-2 text-amber-900 font-black text-xs sm:text-sm uppercase tracking-wide mb-2">
             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>⚠️ {lowStockItems.length} Products Need Attention</span>
+            <span>{t('inventory.productsAttention', { count: lowStockItems.length })}</span>
           </div>
 
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
@@ -79,13 +81,13 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct }) 
               <div key={item.id} className="bg-white rounded-xl p-2.5 border border-amber-200 shrink-0 flex items-center gap-3 shadow-2xs">
                 <div>
                   <p className="font-extrabold text-slate-900 text-xs">{item.name}</p>
-                  <p className="text-[11px] text-amber-800 font-bold">{item.stock} {item.unit} left</p>
+                  <p className="text-[11px] text-amber-800 font-bold">{item.stock} {item.unit} {t('dashboard.left')}</p>
                 </div>
                 <button
                   onClick={() => restockItem(item.id)}
                   className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] rounded-lg active:scale-95 transition-transform shrink-0 cursor-pointer"
                 >
-                  Restock
+                  {t('dashboard.restock')}
                 </button>
               </div>
             ))}
@@ -99,7 +101,7 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct }) 
           <Search className="w-5 h-5 absolute left-3.5 top-3 text-slate-400" />
           <input
             type="text"
-            placeholder="Search product by name or category..."
+            placeholder={t('inventory.searchPlaceholder')}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
@@ -132,12 +134,12 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct }) 
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-xs font-black text-slate-600 uppercase tracking-wider">
-                <th className="py-3.5 px-6">Product</th>
-                <th className="py-3.5 px-4">Category</th>
-                <th className="py-3.5 px-4">Stock</th>
-                <th className="py-3.5 px-4">Price</th>
-                <th className="py-3.5 px-4">Status</th>
-                <th className="py-3.5 px-6 text-right">Actions</th>
+                <th className="py-3.5 px-6">{t('inventory.tableProduct')}</th>
+                <th className="py-3.5 px-4">{t('inventory.tableCategory')}</th>
+                <th className="py-3.5 px-4">{t('inventory.tableStock')}</th>
+                <th className="py-3.5 px-4">{t('inventory.tablePrice')}</th>
+                <th className="py-3.5 px-4">{t('inventory.tableStatus')}</th>
+                <th className="py-3.5 px-6 text-right">{t('inventory.tableActions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm font-medium text-slate-800">
@@ -167,7 +169,7 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct }) 
                       className="text-xs font-black text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 transition-all inline-flex items-center gap-1 cursor-pointer active:scale-95"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
-                      Restock +10
+                      {t('inventory.restockTen')}
                     </button>
                   </td>
                 </tr>
@@ -192,13 +194,13 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct }) 
 
               <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                 <span className="text-sm font-black text-slate-900">
-                  Stock: {prod.stock} {prod.unit}
+                  {t('inventory.tableStock')}: {prod.stock} {prod.unit}
                 </span>
                 <button
                   onClick={() => restockItem(prod.id)}
                   className="text-xs font-black text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-xl border border-emerald-200 flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
                 >
-                  <RefreshCw className="w-3.5 h-3.5 text-emerald-600" /> +10 Restock
+                  <RefreshCw className="w-3.5 h-3.5 text-emerald-600" /> {t('inventory.restockTen')}
                 </button>
               </div>
             </div>
@@ -208,8 +210,8 @@ export const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct }) 
         {filteredProducts.length === 0 && (
           <div className="p-10 text-center text-slate-500">
             <Package className="w-12 h-12 mx-auto text-slate-300 mb-2" />
-            <p className="font-extrabold text-slate-700">No products found</p>
-            <p className="text-xs text-slate-500 font-medium">Try adjusting your search query or category filter</p>
+            <p className="font-extrabold text-slate-700">{t('inventory.noProductsFound')}</p>
+            <p className="text-xs text-slate-500 font-medium">{t('inventory.adjustSearch')}</p>
           </div>
         )}
 

@@ -9,6 +9,7 @@ import {
   PhoneCall
 } from 'lucide-react';
 import type { PageRoute } from '../types';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface SidebarProps {
   activePage: PageRoute;
@@ -16,13 +17,15 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) => {
+  const { t } = useLanguage();
+
   const navItems = [
-    { id: 'dashboard' as PageRoute, label: 'Dashboard', icon: Home },
-    { id: 'sales' as PageRoute, label: 'Quick Sales POS', icon: Receipt },
-    { id: 'inventory' as PageRoute, label: 'Stock Catalog', icon: Package },
-    { id: 'scanner' as PageRoute, label: 'Scan Invoice', icon: ScanLine },
-    { id: 'insights' as PageRoute, label: 'Shop Insights', icon: Sparkles },
-    { id: 'settings' as PageRoute, label: 'Settings & More', icon: SettingsIcon },
+    { id: 'dashboard' as PageRoute, labelKey: 'nav.dashboard', icon: Home },
+    { id: 'sales' as PageRoute, labelKey: 'nav.quickSales', icon: Receipt },
+    { id: 'inventory' as PageRoute, labelKey: 'nav.stockCatalog', icon: Package },
+    { id: 'scanner' as PageRoute, labelKey: 'nav.scanner', icon: ScanLine },
+    { id: 'insights' as PageRoute, labelKey: 'nav.shopInsights', icon: Sparkles },
+    { id: 'settings' as PageRoute, labelKey: 'nav.settingsMore', icon: SettingsIcon },
   ];
 
   return (
@@ -46,7 +49,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
               }`}
             >
               <Icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-white' : 'text-slate-500'}`} />
-              <span>{item.label}</span>
+              <span className="truncate">{t(item.labelKey)}</span>
             </button>
           );
         })}
@@ -57,7 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
         <div className="bg-emerald-50/70 rounded-2xl p-3.5 border border-emerald-200/80 text-xs">
           <div className="flex items-center gap-2 text-emerald-800 font-black mb-1">
             <PhoneCall className="w-4 h-4 text-emerald-600" />
-            <span>Kirana Support Line</span>
+            <span>{t('settings.supportLine')}</span>
           </div>
           <p className="text-slate-600 text-[11px]">Help available 24/7</p>
           <p className="font-extrabold text-emerald-700 mt-1">1800-SHOP-PULSE</p>

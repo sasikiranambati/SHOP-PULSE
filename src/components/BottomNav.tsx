@@ -7,6 +7,7 @@ import {
   MoreHorizontal
 } from 'lucide-react';
 import type { PageRoute } from '../types';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface BottomNavProps {
   activePage: PageRoute;
@@ -14,12 +15,14 @@ interface BottomNavProps {
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ activePage, setActivePage }) => {
+  const { t } = useLanguage();
+
   const navItems = [
-    { id: 'dashboard' as PageRoute, label: 'Home', icon: Home },
-    { id: 'sales' as PageRoute, label: 'Sales', icon: Receipt },
-    { id: 'inventory' as PageRoute, label: 'Stock', icon: Package },
-    { id: 'insights' as PageRoute, label: 'Insights', icon: Sparkles },
-    { id: 'settings' as PageRoute, label: 'More', icon: MoreHorizontal },
+    { id: 'dashboard' as PageRoute, labelKey: 'nav.home', icon: Home },
+    { id: 'sales' as PageRoute, labelKey: 'nav.sales', icon: Receipt },
+    { id: 'inventory' as PageRoute, labelKey: 'nav.stock', icon: Package },
+    { id: 'insights' as PageRoute, labelKey: 'nav.insights', icon: Sparkles },
+    { id: 'settings' as PageRoute, labelKey: 'nav.settings', icon: MoreHorizontal },
   ];
 
   return (
@@ -39,7 +42,9 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activePage, setActivePage 
               }`}
             >
               <Icon className={`w-5 h-5 transition-transform ${isActive ? 'text-emerald-600 scale-110' : ''}`} />
-              <span className="text-[10px] sm:text-[11px] mt-0.5 leading-tight font-extrabold">{item.label}</span>
+              <span className="text-[10px] sm:text-[11px] mt-0.5 leading-tight font-extrabold truncate max-w-[68px]">
+                {t(item.labelKey)}
+              </span>
             </button>
           );
         })}

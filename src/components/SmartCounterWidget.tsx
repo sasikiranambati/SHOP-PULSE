@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Cpu, Zap, CheckCircle2, RefreshCw } from 'lucide-react';
+import { useLanguage } from '../i18n/LanguageContext';
 
 export const SmartCounterWidget: React.FC = () => {
+  const { t } = useLanguage();
   const [lastEventTime, setLastEventTime] = useState('2 mins ago');
   const [eventCount, setEventCount] = useState(42);
   const [isSimulating, setIsSimulating] = useState(false);
@@ -25,35 +27,35 @@ export const SmartCounterWidget: React.FC = () => {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-extrabold text-sm sm:text-base tracking-tight text-white">Smart Counter IoT</span>
+              <span className="font-extrabold text-sm sm:text-base tracking-tight text-white">{t('smartCounter.title')}</span>
               <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/40">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                Connected
+                {t('smartCounter.connected')}
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium">Hardware sensor paired with checkout counter</p>
+            <p className="text-[11px] text-slate-400 font-medium">{t('smartCounter.subtext')}</p>
           </div>
         </div>
 
         <span className="text-[10px] font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-500/30">
-          IoT Demo
+          {t('smartCounter.demoBadge')}
         </span>
       </div>
 
       {/* Sensor Event Summary */}
       <div className="mt-3.5 grid grid-cols-2 gap-3">
         <div className="bg-slate-800/80 rounded-xl p-3 border border-slate-700">
-          <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Last Detection</span>
+          <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">{t('smartCounter.lastDetection')}</span>
           <p className="text-xs sm:text-sm font-extrabold text-emerald-300 mt-0.5 flex items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-            Sale recorded ({lastEventTime})
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span>{t('smartCounter.saleRecorded', { time: lastEventTime })}</span>
           </p>
         </div>
 
         <div className="bg-slate-800/80 rounded-xl p-3 border border-slate-700">
-          <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Today's Sensor Passes</span>
+          <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">{t('smartCounter.todayPasses')}</span>
           <p className="text-xs sm:text-sm font-extrabold text-white mt-0.5">
-            {eventCount} checkout scans
+            {t('smartCounter.scansCount', { count: eventCount })}
           </p>
         </div>
       </div>
@@ -61,7 +63,7 @@ export const SmartCounterWidget: React.FC = () => {
       {/* Interactive Hardware Action Button */}
       <div className="mt-3.5 flex items-center justify-between gap-2 pt-2 border-t border-slate-700/60">
         <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
-          Simulate countertop sensor pass:
+          {t('smartCounter.simulateLabel')}
         </span>
         <button
           onClick={handleSimulateSensor}
@@ -73,7 +75,7 @@ export const SmartCounterWidget: React.FC = () => {
           ) : (
             <Zap className="w-3.5 h-3.5 text-amber-300" />
           )}
-          <span>{isSimulating ? 'Detecting Item...' : 'Test Counter Sensor Signal'}</span>
+          <span>{isSimulating ? t('smartCounter.detecting') : t('smartCounter.testSignal')}</span>
         </button>
       </div>
     </div>

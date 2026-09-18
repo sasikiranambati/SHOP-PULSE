@@ -17,6 +17,7 @@ import { SalesChart } from '../components/SalesChart';
 import { SmartCounterWidget } from '../components/SmartCounterWidget';
 import type { PageRoute, Product } from '../types';
 import { MOCK_RECENT_SALES } from '../data/mockData';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface DashboardProps {
   setActivePage: (page: PageRoute) => void;
@@ -29,6 +30,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   products,
   shopName,
 }) => {
+  const { t } = useLanguage();
   const lowStockItems = products.filter(p => p.status === 'Low Stock' || p.status === 'Out of Stock');
   const lowStockCount = lowStockItems.length;
 
@@ -49,10 +51,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {shopName}
           </span>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 mt-2 tracking-tight">
-            Good morning 👋
+            {t('dashboard.goodMorning')}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 font-bold mt-0.5">
-            "Don't just track your stock. Know what to do next."
+            "{t('dashboard.tagline')}"
           </p>
         </div>
 
@@ -64,7 +66,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             icon={<Plus className="w-5 h-5" />}
             className="w-full sm:w-auto font-black"
           >
-            + New Sale
+            {t('dashboard.newSale')}
           </Button>
         </div>
       </div>
@@ -76,7 +78,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-wider text-emerald-100">
-                Today's Sales
+                {t('dashboard.todaysSales')}
               </p>
               <div className="text-3xl sm:text-4xl font-black mt-1 tracking-tight">
                 ₹8,450
@@ -89,10 +91,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           <div className="mt-4 flex items-center justify-between pt-3 border-t border-white/20">
             <span className="text-xs font-bold text-emerald-100 bg-white/10 px-2.5 py-1 rounded-full backdrop-blur-sm">
-              ↑ 12% vs yesterday
+              {t('dashboard.vsYesterday')}
             </span>
             <span className="text-xs font-semibold text-emerald-200">
-              Updated 2m ago
+              {t('dashboard.updatedAgo')}
             </span>
           </div>
         </div>
@@ -102,7 +104,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs font-extrabold uppercase tracking-wider text-slate-500">
-                Items Sold Today
+                {t('dashboard.itemsSoldToday')}
               </p>
               <div className="text-3xl sm:text-4xl font-black mt-1 text-slate-900 tracking-tight">
                 42 units
@@ -115,13 +117,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           <div className="mt-4 flex items-center justify-between pt-3 border-t border-slate-100">
             <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200">
-              Across 18 customer bills
+              {t('dashboard.acrossBills')}
             </span>
             <button
               onClick={() => setActivePage('sales')}
-              className="text-xs font-extrabold text-emerald-700 hover:underline"
+              className="text-xs font-extrabold text-emerald-700 hover:underline cursor-pointer"
             >
-              View Sales →
+              {t('dashboard.viewSales')}
             </button>
           </div>
         </div>
@@ -136,10 +138,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
             <div>
               <div className="text-xs font-black uppercase tracking-wider text-amber-900">
-                ⚠️ Needs Your Attention
+                {t('dashboard.needsAttention')}
               </div>
               <p className="font-extrabold text-slate-900 text-sm sm:text-base mt-0.5">
-                {lowStockCount} products are running low in stock
+                {t('dashboard.itemsRunningLow', { count: lowStockCount })}
               </p>
             </div>
           </div>
@@ -148,7 +150,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             onClick={() => setActivePage('inventory')}
             className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl transition-all cursor-pointer shrink-0"
           >
-            Restock All
+            {t('dashboard.restockAll')}
           </button>
         </div>
 
@@ -158,13 +160,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div key={item.id} className="bg-white rounded-2xl p-3 border border-amber-200 flex items-center justify-between gap-2 shadow-2xs">
               <div className="min-w-0">
                 <p className="font-extrabold text-slate-900 text-xs truncate">{item.name}</p>
-                <p className="text-[11px] text-amber-800 font-bold mt-0.5">{item.stock} {item.unit} left</p>
+                <p className="text-[11px] text-amber-800 font-bold mt-0.5">{item.stock} {item.unit} {t('dashboard.left')}</p>
               </div>
               <button
                 onClick={() => setActivePage('inventory')}
                 className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] rounded-lg cursor-pointer shrink-0 active:scale-95 transition-transform"
               >
-                Restock
+                {t('dashboard.restock')}
               </button>
             </div>
           ))}
@@ -174,7 +176,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* 4. ⚡ QUICK ACTIONS */}
       <div>
         <h2 className="text-xs font-black text-slate-400 uppercase tracking-wider mb-2.5 px-1">
-          ⚡ Quick Actions
+          {t('dashboard.quickActions')}
         </h2>
         
         {/* Mobile-Friendly Quick Grid */}
@@ -184,7 +186,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             className="flex flex-col items-center justify-center p-4 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 transition-all font-extrabold shadow-sm cursor-pointer active:scale-95"
           >
             <Plus className="w-6 h-6 mb-1" />
-            <span className="text-sm font-black">+ Create Sale</span>
+            <span className="text-sm font-black">{t('dashboard.createSale')}</span>
           </button>
 
           <button
@@ -194,7 +196,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center mb-1.5">
               <Package className="w-5 h-5" />
             </div>
-            <span className="text-xs font-black">Stock Catalog</span>
+            <span className="text-xs font-black">{t('nav.stock')}</span>
           </button>
 
           <button
@@ -204,7 +206,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center mb-1.5">
               <ScanLine className="w-5 h-5" />
             </div>
-            <span className="text-xs font-black">Scan Bill</span>
+            <span className="text-xs font-black">{t('dashboard.scanBill')}</span>
           </button>
 
           <button
@@ -214,7 +216,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center mb-1.5">
               <TrendingUp className="w-5 h-5" />
             </div>
-            <span className="text-xs font-black">Insights</span>
+            <span className="text-xs font-black">{t('nav.insights')}</span>
           </button>
         </div>
       </div>
@@ -236,13 +238,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="font-black text-slate-900 text-sm sm:text-base flex items-center gap-2">
                 <Flame className="w-5 h-5 text-amber-500" />
-                <span>🔥 Top Sellers</span>
+                <span>{t('dashboard.topSellers')}</span>
               </h3>
               <button
                 onClick={() => setActivePage('insights')}
-                className="text-xs font-extrabold text-emerald-700 hover:underline flex items-center gap-0.5"
+                className="text-xs font-extrabold text-emerald-700 hover:underline flex items-center gap-0.5 cursor-pointer"
               >
-                All <ArrowUpRight className="w-3.5 h-3.5" />
+                {t('dashboard.viewAll')} <ArrowUpRight className="w-3.5 h-3.5" />
               </button>
             </div>
 
@@ -274,13 +276,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <h3 className="font-black text-slate-900 text-sm sm:text-base flex items-center gap-2">
             <Receipt className="w-5 h-5 text-emerald-600" />
-            <span>Recent Store Activity</span>
+            <span>{t('dashboard.recentActivity')}</span>
           </h3>
           <button
             onClick={() => setActivePage('sales')}
-            className="text-xs font-extrabold text-emerald-700 hover:underline flex items-center gap-0.5"
+            className="text-xs font-extrabold text-emerald-700 hover:underline flex items-center gap-0.5 cursor-pointer"
           >
-            Record Sale <ArrowUpRight className="w-3.5 h-3.5" />
+            {t('dashboard.createSale')} <ArrowUpRight className="w-3.5 h-3.5" />
           </button>
         </div>
 

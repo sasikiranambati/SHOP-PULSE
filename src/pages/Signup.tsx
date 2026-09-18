@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Activity, UserPlus, ArrowLeft } from 'lucide-react';
+import { Activity, UserPlus, ArrowLeft, Globe } from 'lucide-react';
 import { Button } from '../components/Button';
 import type { PageRoute, BusinessType } from '../types';
+import { useLanguage } from '../i18n/LanguageContext';
+import { LanguageSelectorModal } from '../components/LanguageSelectorModal';
 
 interface SignupProps {
   setActivePage: (page: PageRoute) => void;
@@ -9,11 +11,13 @@ interface SignupProps {
 }
 
 export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }) => {
+  const { t, currentLanguageMeta } = useLanguage();
   const [ownerName, setOwnerName] = useState('');
   const [shopName, setShopName] = useState('');
   const [contact, setContact] = useState('');
   const [password, setPassword] = useState('');
   const [businessType, setBusinessType] = useState<BusinessType>('Kirana Store');
+  const [isLangModalOpen, setIsLangModalOpen] = useState(false);
 
   const businessOptions: BusinessType[] = [
     'Kirana Store',
@@ -39,7 +43,7 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
         className="absolute top-6 left-6 flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
       >
         <ArrowLeft className="w-4 h-4" />
-        <span>Back to Home</span>
+        <span>{t('common.back')}</span>
       </button>
 
       <div className="max-w-lg w-full bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-md my-8">
@@ -49,15 +53,25 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
           <div className="w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center text-white shadow-sm mb-3">
             <Activity className="w-7 h-7" />
           </div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Create Shop Account</h1>
-          <p className="text-xs sm:text-sm text-slate-600 font-semibold mt-1">Start managing your store with ShopPulse</p>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">{t('auth.createShopAccount')}</h1>
+          <p className="text-xs sm:text-sm text-slate-600 font-semibold mt-1">{t('auth.signupSub')}</p>
+
+          {/* Initial Onboarding Language Selector */}
+          <button
+            type="button"
+            onClick={() => setIsLangModalOpen(true)}
+            className="mt-3 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-black flex items-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <Globe className="w-4 h-4 text-emerald-600" />
+            <span>🌐 {currentLanguageMeta.nativeName} ({currentLanguageMeta.name})</span>
+          </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
-                Owner Name *
+                {t('auth.ownerName')}
               </label>
               <input
                 type="text"
@@ -71,7 +85,7 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
 
             <div>
               <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
-                Shop Name *
+                {t('auth.shopName')}
               </label>
               <input
                 type="text"
@@ -86,7 +100,7 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
 
           <div>
             <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
-              Business Type *
+              {t('auth.businessType')}
             </label>
             <select
               value={businessType}
@@ -103,7 +117,7 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
 
           <div>
             <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
-              Phone Number or Email *
+              {t('auth.phoneOrEmail')}
             </label>
             <input
               type="text"
@@ -117,7 +131,7 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
 
           <div>
             <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
-              Create Password *
+              {t('auth.createPassword')}
             </label>
             <input
               type="password"
@@ -136,23 +150,28 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
             className="w-full mt-2 font-black py-3.5"
             icon={<UserPlus className="w-5 h-5" />}
           >
-            Create Shop Account
+            {t('auth.createShopAccount')}
           </Button>
         </form>
 
         <div className="mt-6 pt-6 border-t border-slate-100 text-center">
           <p className="text-xs sm:text-sm text-slate-600 font-semibold">
-            Already registered?{' '}
+            {t('auth.alreadyRegistered')}{' '}
             <button
               onClick={() => setActivePage('login')}
               className="text-emerald-700 font-black hover:underline cursor-pointer"
             >
-              Log in here
+              {t('auth.loginHere')}
             </button>
           </p>
         </div>
 
       </div>
+
+      <LanguageSelectorModal
+        isOpen={isLangModalOpen}
+        onClose={() => setIsLangModalOpen(false)}
+      />
     </div>
   );
 };

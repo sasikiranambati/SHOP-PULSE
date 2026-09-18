@@ -3,6 +3,7 @@ import { X, Plus, PackageCheck } from 'lucide-react';
 import { Button } from './Button';
 import { PRODUCT_CATEGORIES } from '../data/mockData';
 import type { Product } from '../types';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface AddProductModalProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
   onClose,
   onAddProduct,
 }) => {
+  const { t } = useLanguage();
   const [name, setName] = useState('');
   const [category, setCategory] = useState('Dairy');
   const [stock, setStock] = useState('');
@@ -61,8 +63,8 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
       >
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2 text-emerald-700 font-extrabold text-lg sm:text-xl">
-            <PackageCheck className="w-6 h-6" />
-            <span>Add New Kirana Product</span>
+            <PackageCheck className="w-6 h-6 shrink-0" />
+            <span>{t('addProductModal.title')}</span>
           </div>
           <button 
             onClick={onClose}
@@ -75,27 +77,27 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <div>
             <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
-              Product Name *
+              {t('addProductModal.productName')}
             </label>
             <input
               type="text"
               required
-              placeholder="e.g. Amul Milk 500ml"
+              placeholder={t('addProductModal.namePlaceholder')}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base font-medium"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
-                Category
+                {t('addProductModal.category')}
               </label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base font-medium bg-white"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium bg-white"
               >
                 {PRODUCT_CATEGORIES.filter(c => c !== 'All').map(cat => (
                   <option key={cat} value={cat}>{cat}</option>
@@ -105,7 +107,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
 
             <div>
               <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
-                Price (₹) *
+                {t('addProductModal.price')}
               </label>
               <input
                 type="number"
@@ -114,7 +116,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                 placeholder="28"
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base font-medium"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
               />
             </div>
           </div>
@@ -122,7 +124,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
-                Initial Stock *
+                {t('addProductModal.initialStock')}
               </label>
               <input
                 type="number"
@@ -131,13 +133,13 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                 placeholder="50"
                 value={stock}
                 onChange={(e) => setStock(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base font-medium"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
               />
             </div>
 
             <div>
               <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
-                Min Stock Alert
+                {t('addProductModal.minStockAlert')}
               </label>
               <input
                 type="number"
@@ -145,30 +147,30 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                 placeholder="10"
                 value={minStock}
                 onChange={(e) => setMinStock(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base font-medium"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
               />
             </div>
 
             <div>
               <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
-                Unit
+                {t('addProductModal.unit')}
               </label>
               <input
                 type="text"
                 placeholder="pkts / kg"
                 value={unit}
                 onChange={(e) => setUnit(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base font-medium"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
               />
             </div>
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 mt-5">
             <Button type="button" variant="outline" onClick={onClose} className="rounded-xl">
-              Cancel
+              {t('addProductModal.cancel')}
             </Button>
             <Button type="submit" variant="primary" icon={<Plus className="w-5 h-5" />} className="rounded-xl font-bold">
-              Add Product
+              {t('addProductModal.submit')}
             </Button>
           </div>
         </form>

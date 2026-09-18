@@ -11,8 +11,11 @@ import { PageHeader } from '../components/PageHeader';
 import { Card } from '../components/Card';
 import { StatCard } from '../components/StatCard';
 import { SalesChart } from '../components/SalesChart';
+import { useLanguage } from '../i18n/LanguageContext';
 
 export const Insights: React.FC = () => {
+  const { t } = useLanguage();
+
   const topProducts = [
     { rank: 1, name: 'Toned Milk (500ml)', sold: '140 pkts', revenue: '₹3,920', category: 'Dairy' },
     { rank: 2, name: 'Marie Gold Biscuits', sold: '85 packs', revenue: '₹2,125', category: 'Snacks' },
@@ -24,32 +27,32 @@ export const Insights: React.FC = () => {
     <div className="space-y-6 max-w-5xl mx-auto">
       
       <PageHeader
-        title="Shop Insights & Analytics"
-        description="Understand sales trends, top sellers, and future demand"
+        title={t('insights.title')}
+        description={t('insights.description')}
       />
 
       {/* 1. 💰 Business Overview Stat Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard
-          title="Weekly Revenue"
+          title={t('insights.weeklyRevenue')}
           value="₹34,200"
-          subtitle="Past 7 days total sales"
+          subtitle={t('insights.past7Days')}
           icon={<TrendingUp className="w-6 h-6 text-emerald-600" />}
           badgeText="+18% growth"
           badgeColor="emerald"
         />
         <StatCard
-          title="Daily Customer Count"
+          title={t('insights.dailyCustomerCount')}
           value="68 shoppers"
-          subtitle="Walk-in checkout transactions"
+          subtitle={t('insights.walkInCheckout')}
           icon={<Calendar className="w-6 h-6 text-blue-600" />}
           badgeText="Steady"
           badgeColor="blue"
         />
         <StatCard
-          title="Top Sales Category"
+          title={t('insights.topCategory')}
           value="Dairy (42%)"
-          subtitle="Highest daily turnover"
+          subtitle={t('insights.highestTurnover')}
           icon={<Award className="w-6 h-6 text-amber-600" />}
           badgeText="High Demand"
           badgeColor="amber"
@@ -67,7 +70,7 @@ export const Insights: React.FC = () => {
           <div className="flex items-center justify-between pb-4 border-b border-slate-100">
             <h3 className="font-black text-slate-900 text-base sm:text-lg flex items-center gap-2">
               <Award className="w-5 h-5 text-amber-600" />
-              <span>🔥 Top Selling Products This Week</span>
+              <span>{t('insights.topSellingProducts')}</span>
             </h3>
             <span className="text-xs font-extrabold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md">
               Top 4
@@ -100,10 +103,10 @@ export const Insights: React.FC = () => {
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="font-black text-slate-900 text-base flex items-center gap-2">
                 <AlertTriangle className="w-5 h-5 text-amber-500" />
-                <span>⚠️ Stock Alert Highlights</span>
+                <span>{t('insights.stockAlertHighlights')}</span>
               </h3>
               <span className="text-xs font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                Action Needed
+                {t('insights.actionNeeded')}
               </span>
             </div>
 
@@ -128,11 +131,11 @@ export const Insights: React.FC = () => {
 
       </div>
 
-      {/* 4. 🤖 AI Demand Forecasting (Phase 0 / Coming Soon Notice) */}
+      {/* 4. 🤖 AI Demand Forecasting */}
       <Card className="border-2 border-dashed border-emerald-300 bg-emerald-50/30">
         <div className="flex items-center gap-2 text-slate-900 font-black text-base sm:text-lg pb-3 border-b border-emerald-200">
           <BarChart2 className="w-5 h-5 text-emerald-600" />
-          <span>🤖 AI Demand Forecasting & Reorder Assistant</span>
+          <span>{t('insights.aiForecasting')}</span>
         </div>
 
         <div className="py-8 text-center space-y-3">
@@ -140,13 +143,13 @@ export const Insights: React.FC = () => {
             <Sparkles className="w-7 h-7" />
           </div>
           <h4 className="text-lg font-black text-slate-900">
-            "Know what to order before stock runs out."
+            "{t('insights.knowWhatToOrder')}"
           </h4>
           <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto font-semibold leading-relaxed">
-            In Phase 2, ShopPulse AI will automatically analyze your daily sales velocity and weather/festive patterns to generate accurate reorder lists.
+            {t('insights.aiDescription')}
           </p>
           <div className="inline-block px-3 py-1 bg-amber-100 text-amber-900 font-extrabold text-xs rounded-full border border-amber-300">
-            Phase 0 UI Preview — Machine learning predictive engine coming in Phase 2
+            {t('insights.phaseNotice')}
           </div>
         </div>
       </Card>

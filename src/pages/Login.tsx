@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Activity, LogIn, ArrowLeft } from 'lucide-react';
 import { Button } from '../components/Button';
 import type { PageRoute } from '../types';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface LoginProps {
   setActivePage: (page: PageRoute) => void;
@@ -9,6 +10,7 @@ interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) => {
+  const { t } = useLanguage();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
 
@@ -27,7 +29,7 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
         className="absolute top-6 left-6 flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
       >
         <ArrowLeft className="w-4 h-4" />
-        <span>Back to Home</span>
+        <span>{t('common.back')}</span>
       </button>
 
       <div className="max-w-md w-full bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-md">
@@ -37,14 +39,14 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
           <div className="w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center text-white shadow-sm mb-3">
             <Activity className="w-7 h-7" />
           </div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Welcome Back</h1>
-          <p className="text-xs sm:text-sm text-slate-600 font-semibold mt-1">Log in to manage your ShopPulse store</p>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">{t('auth.welcomeBack')}</h1>
+          <p className="text-xs sm:text-sm text-slate-600 font-semibold mt-1">{t('auth.logInSub')}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1.5">
-              Mobile Number or Email
+              {t('auth.mobileOrEmail')}
             </label>
             <input
               type="text"
@@ -58,7 +60,7 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
 
           <div>
             <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1.5">
-              Password
+              {t('auth.password')}
             </label>
             <input
               type="password"
@@ -77,18 +79,18 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
             className="w-full font-black py-3.5"
             icon={<LogIn className="w-5 h-5" />}
           >
-            Log In to Store
+            {t('auth.loginBtn')}
           </Button>
         </form>
 
         <div className="mt-8 pt-6 border-t border-slate-100 text-center">
           <p className="text-xs sm:text-sm text-slate-600 font-semibold">
-            Don't have a shop account?{' '}
+            {t('auth.noAccount')}{' '}
             <button
               onClick={() => setActivePage('signup')}
               className="text-emerald-700 font-black hover:underline cursor-pointer"
             >
-              Create account
+              {t('auth.createAccount')}
             </button>
           </p>
         </div>

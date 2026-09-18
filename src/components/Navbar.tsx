@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Activity, Bell, User, LogOut, Store, X, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Activity, Bell, User, LogOut, Store, X, AlertTriangle, CheckCircle2, Globe } from 'lucide-react';
 import type { PageRoute } from '../types';
+import { useLanguage } from '../i18n/LanguageContext';
+import { LanguageSelectorModal } from './LanguageSelectorModal';
 
 interface NavbarProps {
   activePage: PageRoute;
@@ -16,7 +18,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   isLoggedIn = true,
   onLogout,
 }) => {
+  const { t, currentLanguageMeta } = useLanguage();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [isLangModalOpen, setIsLangModalOpen] = useState(false);
 
   const notifications = [
     { id: 1, title: 'Low Stock Alert', text: '3 items (Bread, Milk, Eggs) are low.', time: '10m ago', urgent: true },
@@ -47,7 +51,17 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Action Controls & Store Info */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-2.5">
+          {/* Quick Language Selector Button */}
+          <button
+            onClick={() => setIsLangModalOpen(true)}
+            title="Change Language"
+            className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 flex items-center gap-1.5 transition-colors cursor-pointer text-xs font-black"
+          >
+            <Globe className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="hidden xs:inline">{currentLanguageMeta.nativeName}</span>
+          </button>
+
           {isLoggedIn ? (
             <>
               {/* Desktop Store Tag */}
@@ -71,10 +85,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {showNotifications && (
                   <div className="absolute right-0 top-12 w-80 bg-white rounded-2xl border border-slate-200 shadow-xl p-3.5 z-50 animate-fade-in">
                     <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-2">
-                      <span className="text-xs font-black text-slate-900 uppercase">Shop Notifications</span>
+                      <span className="text-xs font-black text-slate-900 uppercase">Notifications</span>
                       <button 
                         onClick={() => setShowNotifications(false)}
-                        className="text-slate-400 hover:text-slate-700"
+                        className="text-slate-400 hover:text-slate-700 cursor-pointer"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -123,7 +137,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-colors border border-rose-200 cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
-                <span>Logout</span>
+                <span>{t('nav.logout')}</span>
               </button>
             </>
           ) : (
@@ -132,19 +146,24 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={() => setActivePage('login')}
                 className="px-3 py-1.5 text-xs sm:text-sm font-bold text-slate-700 hover:text-slate-900 rounded-xl transition-colors cursor-pointer"
               >
-                Log In
+                {t('auth.loginBtn')}
               </button>
               <button
                 onClick={() => setActivePage('signup')}
                 className="px-3.5 py-2 text-xs sm:text-sm font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors shadow-xs cursor-pointer"
               >
-                Create Account
+                {t('auth.createAccount')}
               </button>
             </div>
           )}
         </div>
 
       </div>
+
+      <LanguageSelectorModal
+        isOpen={isLangModalOpen}
+        onClose={() => setIsLangModalOpen(false)}
+      />
     </header>
   );
 };

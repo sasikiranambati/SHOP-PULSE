@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Store, 
   ScanLine, 
@@ -8,10 +8,13 @@ import {
   LogOut, 
   PhoneCall, 
   IndianRupee,
-  Bell
+  Bell,
+  Globe
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
+import { LanguageSelectorModal } from '../components/LanguageSelectorModal';
 import type { PageRoute } from '../types';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface SettingsProps {
   shopName: string;
@@ -24,11 +27,14 @@ export const Settings: React.FC<SettingsProps> = ({
   setActivePage,
   onLogout,
 }) => {
+  const { t, currentLanguageMeta } = useLanguage();
+  const [isLangModalOpen, setIsLangModalOpen] = useState(false);
+
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       <PageHeader
-        title="Settings & Shop Profile"
-        description="Manage store preferences, quick tools, and account settings"
+        title={t('settings.title')}
+        description={t('settings.description')}
       />
 
       {/* 1. Shop Profile Card */}
@@ -38,21 +44,51 @@ export const Settings: React.FC<SettingsProps> = ({
         </div>
         <div className="flex-1 min-w-0">
           <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200">
-            Kirana & General Store
+            {t('settings.profileBadge')}
           </span>
           <h2 className="text-xl font-black text-slate-900 truncate mt-1">
             {shopName}
           </h2>
           <p className="text-xs text-slate-500 font-bold truncate">
-            Retail Partner ID: #KP-88421 • Bangalore
+            {t('settings.partnerId')}
           </p>
         </div>
       </div>
 
-      {/* 2. Quick Tools List */}
+      {/* 2. Language Selection Card */}
+      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs overflow-hidden">
+        <div className="p-4 bg-slate-50 text-xs font-black text-slate-600 uppercase tracking-wider">
+          {t('settings.language')}
+        </div>
+
+        <button
+          onClick={() => setIsLangModalOpen(true)}
+          className="w-full p-4 flex items-center justify-between hover:bg-slate-50 text-left transition-colors cursor-pointer group"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <Globe className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-extrabold text-slate-900 text-sm sm:text-base flex items-center gap-2">
+                <span>{t('settings.language')}</span>
+                <span className="text-xs font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-200">
+                  {currentLanguageMeta.nativeName}
+                </span>
+              </p>
+              <p className="text-xs text-slate-500 font-medium">
+                {t('settings.languageSub')}
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+        </button>
+      </div>
+
+      {/* 3. Quick Tools List */}
       <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs divide-y divide-slate-100 overflow-hidden">
         <div className="p-4 bg-slate-50 text-xs font-black text-slate-600 uppercase tracking-wider">
-          Quick Tools
+          {t('settings.quickTools')}
         </div>
 
         <button
@@ -64,7 +100,7 @@ export const Settings: React.FC<SettingsProps> = ({
               <ScanLine className="w-5 h-5" />
             </div>
             <div>
-              <p className="font-extrabold text-slate-900 text-sm sm:text-base">Scan Supplier Invoice</p>
+              <p className="font-extrabold text-slate-900 text-sm sm:text-base">{t('scanner.heading')}</p>
               <p className="text-xs text-slate-500 font-medium">Snap paper bills to auto-fill stock</p>
             </div>
           </div>
@@ -80,18 +116,18 @@ export const Settings: React.FC<SettingsProps> = ({
               <Sliders className="w-5 h-5" />
             </div>
             <div>
-              <p className="font-extrabold text-slate-900 text-sm sm:text-base">Shop Analytics & Trends</p>
-              <p className="text-xs text-slate-500 font-medium">View weekly sales and top categories</p>
+              <p className="font-extrabold text-slate-900 text-sm sm:text-base">{t('insights.title')}</p>
+              <p className="text-xs text-slate-500 font-medium">{t('insights.description')}</p>
             </div>
           </div>
           <ChevronRight className="w-5 h-5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
         </button>
       </div>
 
-      {/* 3. Preferences */}
+      {/* 4. Preferences */}
       <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs divide-y divide-slate-100 overflow-hidden">
         <div className="p-4 bg-slate-50 text-xs font-black text-slate-600 uppercase tracking-wider">
-          Preferences & Configuration
+          {t('settings.preferences')}
         </div>
 
         <div className="p-4 flex items-center justify-between">
@@ -100,12 +136,12 @@ export const Settings: React.FC<SettingsProps> = ({
               <IndianRupee className="w-5 h-5" />
             </div>
             <div>
-              <p className="font-extrabold text-slate-900 text-sm sm:text-base">Currency Format</p>
-              <p className="text-xs text-slate-500 font-medium">Indian Rupee (₹ INR)</p>
+              <p className="font-extrabold text-slate-900 text-sm sm:text-base">{t('settings.currencyFormat')}</p>
+              <p className="text-xs text-slate-500 font-medium">{t('settings.indianRupee')}</p>
             </div>
           </div>
           <span className="text-xs font-black bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full border border-emerald-200">
-            Active
+            {t('settings.active')}
           </span>
         </div>
 
@@ -115,20 +151,20 @@ export const Settings: React.FC<SettingsProps> = ({
               <Bell className="w-5 h-5" />
             </div>
             <div>
-              <p className="font-extrabold text-slate-900 text-sm sm:text-base">Low Stock Alerts</p>
-              <p className="text-xs text-slate-500 font-medium">Highlight items below minimum threshold</p>
+              <p className="font-extrabold text-slate-900 text-sm sm:text-base">{t('settings.lowStockAlerts')}</p>
+              <p className="text-xs text-slate-500 font-medium">{t('settings.highlightBelowMin')}</p>
             </div>
           </div>
           <span className="text-xs font-black bg-blue-50 text-blue-700 px-3 py-1 rounded-full border border-blue-200">
-            Enabled
+            {t('settings.enabled')}
           </span>
         </div>
       </div>
 
-      {/* 4. Help & About */}
+      {/* 5. Help & About */}
       <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs divide-y divide-slate-100 overflow-hidden">
         <div className="p-4 bg-slate-50 text-xs font-black text-slate-600 uppercase tracking-wider">
-          Help & Info
+          {t('settings.helpInfo')}
         </div>
 
         <div className="p-4 flex items-center justify-between">
@@ -137,8 +173,8 @@ export const Settings: React.FC<SettingsProps> = ({
               <PhoneCall className="w-5 h-5" />
             </div>
             <div>
-              <p className="font-extrabold text-slate-900 text-sm sm:text-base">ShopPulse Support Line</p>
-              <p className="text-xs text-slate-500 font-medium">Toll Free: 1800-SHOP-PULSE</p>
+              <p className="font-extrabold text-slate-900 text-sm sm:text-base">{t('settings.supportLine')}</p>
+              <p className="text-xs text-slate-500 font-medium">{t('settings.tollFree')}</p>
             </div>
           </div>
           <span className="text-xs font-black text-emerald-800 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-200">
@@ -152,8 +188,8 @@ export const Settings: React.FC<SettingsProps> = ({
               <Info className="w-5 h-5" />
             </div>
             <div>
-              <p className="font-extrabold text-slate-900 text-sm sm:text-base">App Version</p>
-              <p className="text-xs text-slate-500 font-medium">ShopPulse Mobile Assistant v1.0 (Production UI)</p>
+              <p className="font-extrabold text-slate-900 text-sm sm:text-base">{t('settings.appVersion')}</p>
+              <p className="text-xs text-slate-500 font-medium">ShopPulse Mobile Assistant v1.0 (Multi-Language)</p>
             </div>
           </div>
           <span className="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1 rounded-lg">
@@ -168,8 +204,13 @@ export const Settings: React.FC<SettingsProps> = ({
         className="w-full py-4 px-6 rounded-2xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-black text-base flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-xs active:scale-[0.99]"
       >
         <LogOut className="w-5 h-5 text-rose-600" />
-        <span>Log Out of ShopPulse</span>
+        <span>{t('settings.logOut')}</span>
       </button>
+
+      <LanguageSelectorModal
+        isOpen={isLangModalOpen}
+        onClose={() => setIsLangModalOpen(false)}
+      />
 
     </div>
   );

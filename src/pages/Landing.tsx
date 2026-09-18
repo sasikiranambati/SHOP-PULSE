@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Activity, 
   ShoppingCart, 
@@ -7,16 +7,22 @@ import {
   ArrowRight, 
   CheckCircle2,
   Store,
-  Cpu
+  Cpu,
+  Globe
 } from 'lucide-react';
 import { Button } from '../components/Button';
 import type { PageRoute } from '../types';
+import { useLanguage } from '../i18n/LanguageContext';
+import { LanguageSelectorModal } from '../components/LanguageSelectorModal';
 
 interface LandingProps {
   setActivePage: (page: PageRoute) => void;
 }
 
 export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
+  const { t, currentLanguageMeta } = useLanguage();
+  const [isLangModalOpen, setIsLangModalOpen] = useState(false);
+
   const businessTypes = [
     'Kirana Stores',
     'Bakeries',
@@ -29,26 +35,26 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
   const features = [
     {
       icon: ShoppingCart,
-      title: 'Mobile Quick POS',
-      description: 'Record customer sales in seconds with large touch buttons designed for busy Kirana counters.',
+      title: t('landing.feature1Title'),
+      description: t('landing.feature1Desc'),
       tag: 'Ready Now',
     },
     {
       icon: Cpu,
-      title: 'Smart Counter IoT',
-      description: 'Pair your checkout countertop with live IoT sensors to automatically record sales.',
+      title: t('landing.feature2Title'),
+      description: t('landing.feature2Desc'),
       tag: 'IoT Ready',
     },
     {
       icon: ScanLine,
-      title: 'Invoice Scanning',
-      description: 'Snap photos of supplier paper bills to automatically track stock without manual typing.',
+      title: t('landing.feature3Title'),
+      description: t('landing.feature3Desc'),
       tag: 'Phase 1',
     },
     {
       icon: TrendingUp,
-      title: 'AI Demand Insights',
-      description: 'Know what will sell tomorrow before you run out of stock based on past sales history.',
+      title: t('landing.feature4Title'),
+      description: t('landing.feature4Desc'),
       tag: 'AI Intelligence',
     },
   ];
@@ -67,16 +73,24 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
                 <span className="text-xl font-black text-slate-900 tracking-tight">Shop</span>
                 <span className="text-xl font-black text-emerald-600 tracking-tight">Pulse</span>
               </div>
-              <p className="text-[10px] font-bold text-slate-500">Know what to do next</p>
+              <p className="text-[10px] font-bold text-slate-500">{t('dashboard.tagline')}</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              onClick={() => setIsLangModalOpen(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 flex items-center gap-1.5 transition-colors cursor-pointer text-xs font-black"
+            >
+              <Globe className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{currentLanguageMeta.nativeName}</span>
+            </button>
+
             <Button variant="outline" size="sm" onClick={() => setActivePage('login')} className="font-bold">
-              Log In
+              {t('auth.loginHere')}
             </Button>
             <Button variant="primary" size="sm" onClick={() => setActivePage('signup')} className="font-black">
-              Get Started
+              {t('auth.createAccount')}
             </Button>
           </div>
         </div>
@@ -86,15 +100,15 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
       <section className="py-12 sm:py-20 px-4 max-w-5xl mx-auto text-center flex flex-col items-center">
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-black mb-6 shadow-2xs">
           <Store className="w-4 h-4 text-emerald-700" />
-          <span>Retail Intelligence for Kirana Stores & Local Shops</span>
+          <span>{t('landing.heroBadge')}</span>
         </div>
 
-        <h1 className="text-4xl sm:text-6xl font-black text-slate-900 tracking-tight leading-tight max-w-3xl">
-          Don't just track your stock. <span className="text-emerald-600">Know what to do next.</span>
+        <h1 className="text-3xl sm:text-6xl font-black text-slate-900 tracking-tight leading-tight max-w-3xl">
+          {t('landing.heroTitle')}
         </h1>
 
         <p className="mt-5 text-base sm:text-xl text-slate-600 max-w-2xl font-semibold leading-relaxed">
-          ShopPulse helps retail shop owners track daily sales, manage inventory, and make smarter restocking decisions with zero hassle.
+          {t('landing.heroSub')}
         </p>
 
         <div className="mt-8 flex flex-col sm:flex-row gap-3 w-full max-w-sm justify-center">
@@ -105,7 +119,7 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
             icon={<ArrowRight className="w-5 h-5" />}
             className="font-black py-4"
           >
-            Launch Shop Dashboard
+            {t('landing.launchDashboard')}
           </Button>
         </div>
 
@@ -118,7 +132,7 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
       <section className="bg-white py-6 border-y border-slate-200/90">
         <div className="max-w-6xl mx-auto px-4 text-center">
           <p className="text-xs font-black uppercase tracking-wider text-slate-500 mb-4">
-            Tailored for local Indian retail businesses
+            {t('landing.tailoredFor')}
           </p>
           <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
             {businessTypes.map((type) => (
@@ -179,9 +193,14 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
           ShopPulse &copy; {new Date().getFullYear()} — Retail Intelligence Platform
         </p>
         <p className="text-xs text-slate-500 font-semibold mt-1">
-          "Don't just track your stock. Know what to do next."
+          "{t('dashboard.tagline')}"
         </p>
       </footer>
+
+      <LanguageSelectorModal
+        isOpen={isLangModalOpen}
+        onClose={() => setIsLangModalOpen(false)}
+      />
     </div>
   );
 };
