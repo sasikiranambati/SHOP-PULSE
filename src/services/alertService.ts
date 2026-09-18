@@ -441,6 +441,67 @@ export async function getDashboardAlertStats(shopId?: string): Promise<Dashboard
   };
 }
 
+/**
+ * Mark all active alerts for a specific product as resolved (e.g. when product is restocked).
+ */
+export async function resolveProductAlerts(productId: string): Promise<Alert[]> {
+  const nowIso = new Date().toISOString();
+
+  if (isDemoMode()) {
+    const list = getLocalAlerts();
+    const resolved: Alert[] = [];
+    const updated = list.map(a => {
+      if (a.productId === productId && !a.resolvedAt) {
+        const res = { ...a, resolvedAt: nowIso, isRead: true };
+        resolved.push(res);
+        return res;
+      }
+      return a;
+    });
+    if (resolved.length > 0) {
+      saveLocalAlerts(updated);
+    }
+    return resolved;
+  }
+
+  try {
+    const q = query(
+      collection(db, ALERTS_COLLECTION),
+      where('productId', '==', productId)
+    );
+    const snapshot = await getDocs(q);
+    const resolved: Alert[] = [];
+    if (!snapshot.empty) {
+      const batch = writeBatch(db);
+      for (const d of snapshot.docs) {
+        const data = d.data();
+        if (!data.resolvedAt) {
+          batch.update(d.ref, { resolvedAt: nowIso, isRead: true });
+          resolved.push(normalizeAlert(d.id, { ...data, resolvedAt: nowIso, isRead: true }));
+        }
+      }
+      await batch.commit();
+    }
+    return resolved;
+  } catch (err) {
+    console.warn('Failed to resolve product alerts in Firestore, updating locally:', err);
+    const list = getLocalAlerts();
+    const resolved: Alert[] = [];
+    const updated = list.map(a => {
+      if (a.productId === productId && !a.resolvedAt) {
+        const res = { ...a, resolvedAt: nowIso, isRead: true };
+        resolved.push(res);
+        return res;
+      }
+      return a;
+    });
+    if (resolved.length > 0) {
+      saveLocalAlerts(updated);
+    }
+    return resolved;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Step 3: Automatic Inventory Monitoring & Deduplication
 // ---------------------------------------------------------------------------
@@ -481,7 +542,8 @@ export async function checkAndSyncProductAlerts(
         productId: product.id,
         productName: product.name,
         type: 'OUT_OF_STOCK',
-        message: `${product.name} is completely out of stock! Immediate restock required.`,
+        title: `CRITICAL OUT OF STOCK: ${product.name}`,
+        message: `${product.name} is completely out of stock (0 ${product.unit}). Immediate restock required!`,
         priority: 'critical',
         shopId: 'default'
       });
@@ -511,8 +573,9 @@ export async function checkAndSyncProductAlerts(
         productId: product.id,
         productName: product.name,
         type: 'LOW_STOCK',
+        title: `LOW STOCK: ${product.name}`,
         message: `Only ${stock} ${product.unit} of ${product.name} remaining (reorder level: ${reorderLevel}).`,
-        priority: stock <= Math.floor(reorderLevel / 2) ? 'high' : 'medium',
+        priority: 'high',
         shopId: 'default'
       });
 
@@ -520,6 +583,15 @@ export async function checkAndSyncProductAlerts(
       await sendLowStockNotification(product, newAlert);
 
       return { created: newAlert, resolved: outOfStockAlertsToResolve };
+    } else {
+      // Update existing alert message with the latest stock count if it changed
+      const updatedMessage = `Only ${stock} ${product.unit} of ${product.name} remaining (reorder level: ${reorderLevel}).`;
+      if (existingLowStockAlert.message !== updatedMessage) {
+        if (isDemoMode()) {
+          const list = getLocalAlerts().map(a => a.id === existingLowStockAlert.id ? { ...a, message: updatedMessage, isRead: false } : a);
+          saveLocalAlerts(list);
+        }
+      }
     }
 
     return { resolved: outOfStockAlertsToResolve };
@@ -528,10 +600,8 @@ export async function checkAndSyncProductAlerts(
   // CASE 3: STOCK IS HEALTHY / RESTOCKED (stock > reorderLevel)
   // Automatically resolve all existing active alerts for this product!
   if (stock > reorderLevel && activeAlertsForProduct.length > 0) {
-    for (const a of activeAlertsForProduct) {
-      await resolveAlert(a.id);
-    }
-    return { resolved: activeAlertsForProduct };
+    const resolved = await resolveProductAlerts(product.id);
+    return { resolved };
   }
 
   return {};

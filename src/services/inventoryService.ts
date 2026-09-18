@@ -238,6 +238,7 @@ export async function addProduct(input: ProductInput): Promise<Product> {
     const list = getLocalProducts();
     list.unshift(newProduct);
     saveLocalProducts(list);
+    await checkAndSyncProductAlerts(newProduct);
     return newProduct;
   }
 
@@ -248,7 +249,7 @@ export async function addProduct(input: ProductInput): Promise<Product> {
     const list = getLocalProducts();
     list.unshift(created);
     saveLocalProducts(list);
-    checkAndSyncProductAlerts(created).catch(() => {});
+    await checkAndSyncProductAlerts(created);
     return created;
   } catch (err) {
     console.warn('Firestore addDoc failed, storing locally:', err);
@@ -257,7 +258,7 @@ export async function addProduct(input: ProductInput): Promise<Product> {
     const list = getLocalProducts();
     list.unshift(newProduct);
     saveLocalProducts(list);
-    checkAndSyncProductAlerts(newProduct).catch(() => {});
+    await checkAndSyncProductAlerts(newProduct);
     return newProduct;
   }
 }
@@ -305,11 +306,11 @@ export async function updateProduct(productId: string, updates: Partial<ProductI
   };
 
   const updatedProduct = { ...existing, ...cleanUpdates };
-  checkAndSyncProductAlerts(updatedProduct).catch(() => {});
 
   if (isDemoMode()) {
     const list = getLocalProducts().map(p => p.id === productId ? updatedProduct : p);
     saveLocalProducts(list);
+    await checkAndSyncProductAlerts(updatedProduct);
     return;
   }
 
@@ -318,10 +319,12 @@ export async function updateProduct(productId: string, updates: Partial<ProductI
     await updateDoc(docRef, cleanUpdates);
     const list = getLocalProducts().map(p => p.id === productId ? updatedProduct : p);
     saveLocalProducts(list);
+    await checkAndSyncProductAlerts(updatedProduct);
   } catch (err) {
     console.warn('Firestore updateDoc failed, updating local copy:', err);
     const list = getLocalProducts().map(p => p.id === productId ? updatedProduct : p);
     saveLocalProducts(list);
+    await checkAndSyncProductAlerts(updatedProduct);
   }
 }
 
@@ -374,7 +377,7 @@ export async function setStock(productId: string, newStock: number): Promise<voi
     };
     const list = getLocalProducts().map(p => p.id === productId ? updated : p);
     saveLocalProducts(list);
-    checkAndSyncProductAlerts(updated).catch(() => {});
+    await checkAndSyncProductAlerts(updated);
     return;
   }
 
@@ -410,7 +413,7 @@ export async function setStock(productId: string, newStock: number): Promise<voi
     });
 
     if (updatedProduct) {
-      checkAndSyncProductAlerts(updatedProduct).catch(() => {});
+      await checkAndSyncProductAlerts(updatedProduct);
     }
   } catch (err: any) {
     console.warn('Transaction setStock failed, updating local store:', err);
@@ -420,7 +423,7 @@ export async function setStock(productId: string, newStock: number): Promise<voi
       const updated: Product = { ...existing, stock: newStock, status };
       const list = getLocalProducts().map(p => p.id === productId ? updated : p);
       saveLocalProducts(list);
-      checkAndSyncProductAlerts(updated).catch(() => {});
+      await checkAndSyncProductAlerts(updated);
     }
   }
 }
@@ -445,7 +448,7 @@ export async function increaseStock(productId: string, quantity: number): Promis
     };
     const list = getLocalProducts().map(p => p.id === productId ? updated : p);
     saveLocalProducts(list);
-    checkAndSyncProductAlerts(updated).catch(() => {});
+    await checkAndSyncProductAlerts(updated);
     return;
   }
 
@@ -482,7 +485,7 @@ export async function increaseStock(productId: string, quantity: number): Promis
     });
 
     if (updatedProduct) {
-      checkAndSyncProductAlerts(updatedProduct).catch(() => {});
+      await checkAndSyncProductAlerts(updatedProduct);
     }
   } catch (err: any) {
     console.warn('Transaction increaseStock failed, updating local store:', err);
@@ -493,7 +496,7 @@ export async function increaseStock(productId: string, quantity: number): Promis
       const updated: Product = { ...existing, stock: newStock, status };
       const list = getLocalProducts().map(p => p.id === productId ? updated : p);
       saveLocalProducts(list);
-      checkAndSyncProductAlerts(updated).catch(() => {});
+      await checkAndSyncProductAlerts(updated);
     }
   }
 }
@@ -520,7 +523,7 @@ export async function decreaseStock(productId: string, quantity: number): Promis
     };
     const list = getLocalProducts().map(p => p.id === productId ? updated : p);
     saveLocalProducts(list);
-    checkAndSyncProductAlerts(updated).catch(() => {});
+    await checkAndSyncProductAlerts(updated);
     return;
   }
 
@@ -559,7 +562,7 @@ export async function decreaseStock(productId: string, quantity: number): Promis
     });
 
     if (updatedProduct) {
-      checkAndSyncProductAlerts(updatedProduct).catch(() => {});
+      await checkAndSyncProductAlerts(updatedProduct);
     }
   } catch (err: any) {
     throw new Error(err.message || getFirebaseErrorMessage(err));
