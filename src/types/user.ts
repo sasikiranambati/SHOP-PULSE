@@ -15,6 +15,9 @@ export type BusinessType =
   | 'General Store'
   | 'Other';
 
+export type UserTheme = 'light' | 'dark';
+export type UserLanguage = 'en' | 'te';
+
 /**
  * Authenticated user token payload representation.
  */
@@ -27,18 +30,23 @@ export interface AuthUser {
 }
 
 /**
- * User profile document stored in Firestore.
+ * User profile document stored in Firestore (`users/{uid}`).
  */
 export interface UserProfile {
   uid: string;
   email: string;
   displayName: string;
+  ownerName?: string;
   shopName: string;
-  businessType: BusinessType;
-  role: UserRole;
+  phone?: string;
   phoneNumber?: string;
+  businessType?: BusinessType;
+  role?: UserRole;
   photoURL?: string;
+  theme: UserTheme;
+  language: UserLanguage;
   createdAt: string;
+  lastLogin: string;
   updatedAt?: string;
 }
 
@@ -57,6 +65,10 @@ export interface RegisterInput {
   email: string;
   password: string;
   displayName: string;
+  ownerName?: string;
   shopName: string;
-  businessType: BusinessType;
+  phone?: string;
+  businessType?: BusinessType;
+  language?: UserLanguage;
+  theme?: UserTheme;
 }
