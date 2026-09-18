@@ -45,17 +45,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchProfile = useCallback(async (uid: string) => {
     try {
       const profile = await getCurrentUserProfile(uid);
-      setUserProfile(profile);
-      if (profile?.theme) {
-        localStorage.setItem('shoppulse_theme', profile.theme);
-        if (profile.theme === 'dark') {
-          document.documentElement.classList.add('dark');
-        } else {
-          document.documentElement.classList.remove('dark');
+      if (profile) {
+        setUserProfile(profile);
+        if (profile.theme) {
+          localStorage.setItem('shoppulse_theme', profile.theme);
+          if (profile.theme === 'dark') {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
         }
-      }
-      if (profile?.language) {
-        localStorage.setItem('shoppulse_language', profile.language);
+        if (profile.language) {
+          localStorage.setItem('shoppulse_language', profile.language);
+        }
+      } else {
+        // Fallback user profile in case Firestore document has not propagated yet
+        setUserProfile((prev) => prev || {
+          uid,
+          email: '',
+          displayName: 'Shop Owner',
+          ownerName: 'Shop Owner',
+          shopName: 'My Shop',
+          businessType: 'General Store',
+          role: 'owner',
+          theme: 'light',
+          language: 'en',
+          createdAt: new Date().toISOString(),
+          lastLogin: new Date().toISOString()
+        });
       }
     } catch (err) {
       console.warn('Could not load user profile document:', err);
@@ -114,9 +131,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const handleLogout = async (): Promise<void> => {
     setError(null);
-    await signOutUser();
-    setUserProfile(null);
-    setFirebaseUser(null);
+    try {
+      await signOutUser();
+    } finally {
+      setUserProfile(null);
+      setFirebaseUser(null);
+      localStorage.removeItem('shoppulse_active_page');
+    }
   };
 
   const handleResetPassword = async (email: string): Promise<void> => {

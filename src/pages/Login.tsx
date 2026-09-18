@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Activity, LogIn, ArrowLeft } from 'lucide-react';
+import { Activity, LogIn, ArrowLeft, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '../components/Button';
 import type { PageRoute } from '../types';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useAuth } from '../hooks/useAuth';
 
 interface LoginProps {
   setActivePage: (page: PageRoute) => void;
@@ -11,13 +12,49 @@ interface LoginProps {
 
 export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) => {
   const { t } = useLanguage();
+  const { login } = useAuth();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onLoginSuccess('Gupta Kirana Store');
-    setActivePage('dashboard');
+    setError(null);
+
+    const trimmed = identifier.trim();
+    if (!trimmed) {
+      setError(t('auth.invalidEmail') || 'Please enter your email or mobile number.');
+      return;
+    }
+
+    if (!password) {
+      setError('Please enter your password.');
+      return;
+    }
+
+    // Email / phone validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    let emailToUse = trimmed;
+    if (emailRegex.test(trimmed)) {
+      emailToUse = trimmed.toLowerCase();
+    } else if (/^\d{10}$/.test(trimmed)) {
+      emailToUse = `${trimmed}@shoppulse.app`;
+    } else {
+      setError(t('auth.invalidEmail') || 'Please enter a valid email address.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const profile = await login({ email: emailToUse, password });
+      onLoginSuccess(profile?.shopName || profile?.ownerName || 'Gupta Kirana Store');
+      setActivePage('dashboard');
+    } catch (err: any) {
+      setError(err.message || 'Login failed. Please check your credentials.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -43,6 +80,13 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
           <p className="text-xs sm:text-sm text-slate-600 font-semibold mt-1">{t('auth.logInSub')}</p>
         </div>
 
+        {error && (
+          <div className="p-3.5 mb-5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs sm:text-sm font-semibold flex items-center gap-2.5">
+            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+            <span>{error}</span>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1.5">
@@ -51,10 +95,11 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
             <input
               type="text"
               required
+              disabled={loading}
               placeholder="e.g. 9876543210 or shop@pulse.com"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
+              className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium disabled:bg-slate-100 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -65,10 +110,11 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
             <input
               type="password"
               required
+              disabled={loading}
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
+              className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium disabled:bg-slate-100 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -76,10 +122,11 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
             type="submit" 
             variant="primary" 
             size="lg" 
+            disabled={loading}
             className="w-full font-black py-3.5"
-            icon={<LogIn className="w-5 h-5" />}
+            icon={loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
           >
-            {t('auth.loginBtn')}
+            {loading ? (t('common.loading') || 'Logging in...') : t('auth.loginBtn')}
           </Button>
         </form>
 
