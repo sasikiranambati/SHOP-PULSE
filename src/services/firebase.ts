@@ -22,13 +22,15 @@ import type { FirebaseStorage } from 'firebase/storage';
 /**
  * Firebase Configuration object powered strictly by environment variables.
  */
+const env = (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}) as Record<string, string | undefined>;
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDemoKeyForShopPulseDevelopmentOnly",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "shoppulse-dev.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "shoppulse-dev",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "shoppulse-dev.appspot.com",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "123456789012",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:123456789012:web:abcdef1234567890"
+  apiKey: env.VITE_FIREBASE_API_KEY || "AIzaSyDemoKeyForShopPulseDevelopmentOnly",
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || "shoppulse-dev.firebaseapp.com",
+  projectId: env.VITE_FIREBASE_PROJECT_ID || "shoppulse-dev",
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || "shoppulse-dev.appspot.com",
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || "123456789012",
+  appId: env.VITE_FIREBASE_APP_ID || "1:123456789012:web:abcdef1234567890"
 };
 
 /**

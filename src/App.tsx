@@ -178,7 +178,7 @@ export function App() {
         )}
 
         {activePage === 'sales' && (
-          <Sales products={products} />
+          <Sales products={products} shopName={shopName} />
         )}
 
         {activePage === 'scanner' && (
