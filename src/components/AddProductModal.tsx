@@ -22,36 +22,69 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
   const [stock, setStock] = useState('');
   const [minStock, setMinStock] = useState('10');
   const [unit, setUnit] = useState('pkts');
-  const [price, setPrice] = useState('');
+  const [sellingPrice, setSellingPrice] = useState('');
+  const [purchasePrice, setPurchasePrice] = useState('');
+  const [barcode, setBarcode] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !price || !stock) return;
+    setValidationError(null);
 
-    const stockNum = parseInt(stock) || 0;
+    if (!name.trim()) {
+      setValidationError('Product name is required.');
+      return;
+    }
+
+    const priceNum = parseFloat(sellingPrice);
+    if (isNaN(priceNum) || priceNum <= 0) {
+      setValidationError('Selling price must be greater than 0.');
+      return;
+    }
+
+    const stockNum = parseInt(stock);
+    if (isNaN(stockNum) || stockNum < 0) {
+      setValidationError('Initial stock cannot be negative.');
+      return;
+    }
+
     const minStockNum = parseInt(minStock) || 5;
+    const purchaseNum = parseFloat(purchasePrice) || (priceNum > 0 ? Math.round(priceNum * 0.7) : 0);
 
     let status: 'In Stock' | 'Low Stock' | 'Out of Stock' = 'In Stock';
     if (stockNum === 0) status = 'Out of Stock';
     else if (stockNum <= minStockNum) status = 'Low Stock';
 
+    const timestamp = new Date().toISOString();
     onAddProduct({
-      name,
-      category,
+      name: name.trim(),
+      category: category as any,
       stock: stockNum,
       minStock: minStockNum,
-      unit,
-      price: parseFloat(price) || 0,
+      reorderLevel: minStockNum,
+      unit: unit.trim() || 'units',
+      price: priceNum,
+      sellingPrice: priceNum,
+      purchasePrice: purchaseNum,
+      barcode: barcode.trim() || undefined,
+      imageUrl: imageUrl.trim() || undefined,
       status,
       lastRestocked: 'Just now',
+      createdAt: timestamp,
+      updatedAt: timestamp,
     });
 
     // Reset
     setName('');
     setStock('');
-    setPrice('');
+    setSellingPrice('');
+    setPurchasePrice('');
+    setBarcode('');
+    setImageUrl('');
+    setValidationError(null);
     onClose();
   };
 
@@ -74,7 +107,13 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+        {validationError && (
+          <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl">
+            {validationError}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="mt-4 space-y-3.5">
           <div>
             <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
               {t('addProductModal.productName')}
@@ -107,15 +146,46 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
 
             <div>
               <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
-                {t('addProductModal.price')}
+                Selling Price (₹) *
               </label>
               <input
                 type="number"
                 required
-                min="0"
+                min="0.01"
+                step="0.01"
                 placeholder="28"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
+                value={sellingPrice}
+                onChange={(e) => setSellingPrice(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
+                Purchase Price (₹)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="20"
+                value={purchasePrice}
+                onChange={(e) => setPurchasePrice(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
+                Barcode / SKU
+              </label>
+              <input
+                type="text"
+                placeholder="Optional (e.g. 8901030...)"
+                value={barcode}
+                onChange={(e) => setBarcode(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
               />
             </div>

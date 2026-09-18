@@ -16,6 +16,7 @@ import { Card } from '../components/Card';
 import type { Product, CartItem } from '../types';
 import { PRODUCT_CATEGORIES } from '../data/mockData';
 import { useLanguage } from '../i18n/LanguageContext';
+import { decreaseStock } from '../services/inventoryService';
 
 interface SalesProps {
   products: Product[];
@@ -63,11 +64,21 @@ export const Sales: React.FC<SalesProps> = ({ products }) => {
 
   const totalItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-  const handleCompleteSale = () => {
+  const handleCompleteSale = async () => {
     if (cart.length === 0) return;
     setLastSaleTotal(totalAmount);
     setShowSuccessModal(true);
+    const itemsSnapshot = [...cart];
     setCart([]);
+
+    // Update backend stock asynchronously with negative stock protection
+    for (const item of itemsSnapshot) {
+      try {
+        await decreaseStock(item.product.id, item.quantity);
+      } catch (err) {
+        console.warn(`Could not decrease stock for ${item.product.name}:`, err);
+      }
+    }
   };
 
   // Quick favorite products for instant 1-tap add

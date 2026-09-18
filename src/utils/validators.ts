@@ -35,15 +35,23 @@ export function validateProductInput(input: Partial<ProductInput>): { isValid: b
     errors.name = 'Product name is required.';
   }
 
-  if (input.price === undefined || input.price < 0) {
-    errors.price = 'Selling price must be a positive number.';
+  const sellingPrice = input.sellingPrice !== undefined ? input.sellingPrice : input.price;
+  if (sellingPrice === undefined || typeof sellingPrice !== 'number' || isNaN(sellingPrice) || sellingPrice <= 0) {
+    errors.sellingPrice = 'Selling price must be a positive number greater than 0.';
+    errors.price = 'Selling price must be a positive number greater than 0.';
   }
 
-  if (input.stock !== undefined && (input.stock < 0 || !Number.isInteger(input.stock))) {
+  if (input.purchasePrice !== undefined && (typeof input.purchasePrice !== 'number' || isNaN(input.purchasePrice) || input.purchasePrice < 0)) {
+    errors.purchasePrice = 'Purchase price must be a non-negative number.';
+  }
+
+  if (input.stock !== undefined && (typeof input.stock !== 'number' || isNaN(input.stock) || input.stock < 0 || !Number.isInteger(input.stock))) {
     errors.stock = 'Stock must be a non-negative integer.';
   }
 
-  if (input.minStock !== undefined && (input.minStock < 0 || !Number.isInteger(input.minStock))) {
+  const reorderLevel = input.reorderLevel !== undefined ? input.reorderLevel : input.minStock;
+  if (reorderLevel !== undefined && (typeof reorderLevel !== 'number' || isNaN(reorderLevel) || reorderLevel < 0 || !Number.isInteger(reorderLevel))) {
+    errors.reorderLevel = 'Reorder level must be a non-negative integer.';
     errors.minStock = 'Reorder level must be a non-negative integer.';
   }
 
