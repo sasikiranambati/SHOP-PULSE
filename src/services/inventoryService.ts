@@ -24,6 +24,7 @@ import type { Product, ProductInput, StockStatus, ProductQueryFilters, ProductCa
 import { validateProductInput } from '../utils/validators';
 import { getFirebaseErrorMessage } from '../utils/firebaseErrorMapper';
 import { INITIAL_PRODUCTS } from '../data/mockData';
+import { checkAndSyncProductAlerts } from './alertService';
 
 const PRODUCTS_COLLECTION = 'products';
 const LOCAL_STORAGE_KEY = 'shoppulse_inventory_products';
@@ -237,6 +238,7 @@ export async function addProduct(input: ProductInput): Promise<Product> {
     const list = getLocalProducts();
     list.unshift(newProduct);
     saveLocalProducts(list);
+    await checkAndSyncProductAlerts(newProduct);
     return newProduct;
   }
 
@@ -247,6 +249,7 @@ export async function addProduct(input: ProductInput): Promise<Product> {
     const list = getLocalProducts();
     list.unshift(created);
     saveLocalProducts(list);
+    await checkAndSyncProductAlerts(created);
     return created;
   } catch (err) {
     console.warn('Firestore addDoc failed, storing locally:', err);
@@ -255,6 +258,7 @@ export async function addProduct(input: ProductInput): Promise<Product> {
     const list = getLocalProducts();
     list.unshift(newProduct);
     saveLocalProducts(list);
+    await checkAndSyncProductAlerts(newProduct);
     return newProduct;
   }
 }
@@ -301,21 +305,26 @@ export async function updateProduct(productId: string, updates: Partial<ProductI
     updatedAt: now
   };
 
+  const updatedProduct = { ...existing, ...cleanUpdates };
+
   if (isDemoMode()) {
-    const list = getLocalProducts().map(p => p.id === productId ? { ...p, ...cleanUpdates } : p);
+    const list = getLocalProducts().map(p => p.id === productId ? updatedProduct : p);
     saveLocalProducts(list);
+    await checkAndSyncProductAlerts(updatedProduct);
     return;
   }
 
   try {
     const docRef = doc(db, PRODUCTS_COLLECTION, productId);
     await updateDoc(docRef, cleanUpdates);
-    const list = getLocalProducts().map(p => p.id === productId ? { ...p, ...cleanUpdates } : p);
+    const list = getLocalProducts().map(p => p.id === productId ? updatedProduct : p);
     saveLocalProducts(list);
+    await checkAndSyncProductAlerts(updatedProduct);
   } catch (err) {
     console.warn('Firestore updateDoc failed, updating local copy:', err);
-    const list = getLocalProducts().map(p => p.id === productId ? { ...p, ...cleanUpdates } : p);
+    const list = getLocalProducts().map(p => p.id === productId ? updatedProduct : p);
     saveLocalProducts(list);
+    await checkAndSyncProductAlerts(updatedProduct);
   }
 }
 
@@ -359,19 +368,23 @@ export async function setStock(productId: string, newStock: number): Promise<voi
     if (!existing) throw new Error(`Product ${productId} not found.`);
     const reorder = existing.reorderLevel ?? existing.minStock ?? 10;
     const status = calculateStockStatus(newStock, reorder);
-    const list = getLocalProducts().map(p => p.id === productId ? {
-      ...p,
+    const updated: Product = {
+      ...existing,
       stock: newStock,
       status,
-      lastRestocked: newStock > p.stock ? new Date().toISOString() : p.lastRestocked,
+      lastRestocked: newStock > existing.stock ? new Date().toISOString() : existing.lastRestocked,
       updatedAt: new Date().toISOString()
-    } : p);
+    };
+    const list = getLocalProducts().map(p => p.id === productId ? updated : p);
     saveLocalProducts(list);
+    await checkAndSyncProductAlerts(updated);
     return;
   }
 
   try {
     const docRef = doc(db, PRODUCTS_COLLECTION, productId);
+    let updatedProduct: Product | null = null;
+
     await runTransaction(db, async (transaction) => {
       const sfDoc = await transaction.get(docRef);
       if (!sfDoc.exists()) {
@@ -382,20 +395,35 @@ export async function setStock(productId: string, newStock: number): Promise<voi
       const reorder = current.reorderLevel ?? current.minStock ?? 10;
       const status = calculateStockStatus(newStock, reorder);
 
-      transaction.update(docRef, {
+      updatedProduct = {
+        ...current,
+        id: productId,
         stock: newStock,
         status,
         lastRestocked: newStock > current.stock ? new Date().toISOString() : current.lastRestocked,
         updatedAt: new Date().toISOString()
+      };
+
+      transaction.update(docRef, {
+        stock: newStock,
+        status,
+        lastRestocked: updatedProduct.lastRestocked,
+        updatedAt: updatedProduct.updatedAt
       });
     });
+
+    if (updatedProduct) {
+      await checkAndSyncProductAlerts(updatedProduct);
+    }
   } catch (err: any) {
     console.warn('Transaction setStock failed, updating local store:', err);
     const existing = getLocalProducts().find(p => p.id === productId);
     if (existing) {
       const status = calculateStockStatus(newStock, existing.reorderLevel);
-      const list = getLocalProducts().map(p => p.id === productId ? { ...p, stock: newStock, status } : p);
+      const updated: Product = { ...existing, stock: newStock, status };
+      const list = getLocalProducts().map(p => p.id === productId ? updated : p);
       saveLocalProducts(list);
+      await checkAndSyncProductAlerts(updated);
     }
   }
 }
@@ -411,19 +439,23 @@ export async function increaseStock(productId: string, quantity: number): Promis
     if (!existing) throw new Error(`Product ${productId} not found.`);
     const newStock = existing.stock + quantity;
     const status = calculateStockStatus(newStock, existing.reorderLevel);
-    const list = getLocalProducts().map(p => p.id === productId ? {
-      ...p,
+    const updated: Product = {
+      ...existing,
       stock: newStock,
       status,
       lastRestocked: new Date().toISOString(),
       updatedAt: new Date().toISOString()
-    } : p);
+    };
+    const list = getLocalProducts().map(p => p.id === productId ? updated : p);
     saveLocalProducts(list);
+    await checkAndSyncProductAlerts(updated);
     return;
   }
 
   try {
     const docRef = doc(db, PRODUCTS_COLLECTION, productId);
+    let updatedProduct: Product | null = null;
+
     await runTransaction(db, async (transaction) => {
       const sfDoc = await transaction.get(docRef);
       if (!sfDoc.exists()) {
@@ -435,21 +467,36 @@ export async function increaseStock(productId: string, quantity: number): Promis
       const reorder = current.reorderLevel ?? current.minStock ?? 10;
       const status = calculateStockStatus(newStock, reorder);
 
-      transaction.update(docRef, {
+      updatedProduct = {
+        ...current,
+        id: productId,
         stock: newStock,
         status,
         lastRestocked: new Date().toISOString(),
         updatedAt: new Date().toISOString()
+      };
+
+      transaction.update(docRef, {
+        stock: newStock,
+        status,
+        lastRestocked: updatedProduct.lastRestocked,
+        updatedAt: updatedProduct.updatedAt
       });
     });
+
+    if (updatedProduct) {
+      await checkAndSyncProductAlerts(updatedProduct);
+    }
   } catch (err: any) {
     console.warn('Transaction increaseStock failed, updating local store:', err);
     const existing = getLocalProducts().find(p => p.id === productId);
     if (existing) {
       const newStock = existing.stock + quantity;
       const status = calculateStockStatus(newStock, existing.reorderLevel);
-      const list = getLocalProducts().map(p => p.id === productId ? { ...p, stock: newStock, status } : p);
+      const updated: Product = { ...existing, stock: newStock, status };
+      const list = getLocalProducts().map(p => p.id === productId ? updated : p);
       saveLocalProducts(list);
+      await checkAndSyncProductAlerts(updated);
     }
   }
 }
@@ -468,18 +515,22 @@ export async function decreaseStock(productId: string, quantity: number): Promis
     }
     const newStock = existing.stock - quantity;
     const status = calculateStockStatus(newStock, existing.reorderLevel);
-    const list = getLocalProducts().map(p => p.id === productId ? {
-      ...p,
+    const updated: Product = {
+      ...existing,
       stock: newStock,
       status,
       updatedAt: new Date().toISOString()
-    } : p);
+    };
+    const list = getLocalProducts().map(p => p.id === productId ? updated : p);
     saveLocalProducts(list);
+    await checkAndSyncProductAlerts(updated);
     return;
   }
 
   try {
     const docRef = doc(db, PRODUCTS_COLLECTION, productId);
+    let updatedProduct: Product | null = null;
+
     await runTransaction(db, async (transaction) => {
       const sfDoc = await transaction.get(docRef);
       if (!sfDoc.exists()) {
@@ -495,12 +546,24 @@ export async function decreaseStock(productId: string, quantity: number): Promis
       const reorder = current.reorderLevel ?? current.minStock ?? 10;
       const status = calculateStockStatus(newStock, reorder);
 
-      transaction.update(docRef, {
+      updatedProduct = {
+        ...current,
+        id: productId,
         stock: newStock,
         status,
         updatedAt: new Date().toISOString()
+      };
+
+      transaction.update(docRef, {
+        stock: newStock,
+        status,
+        updatedAt: updatedProduct.updatedAt
       });
     });
+
+    if (updatedProduct) {
+      await checkAndSyncProductAlerts(updatedProduct);
+    }
   } catch (err: any) {
     throw new Error(err.message || getFirebaseErrorMessage(err));
   }

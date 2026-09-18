@@ -41,6 +41,7 @@ import {
 } from '../utils/billNumberGenerator';
 import { getFirebaseErrorMessage } from '../utils/firebaseErrorMapper';
 import { MOCK_RECENT_SALES } from '../data/mockData';
+import { checkAndSyncProductAlerts } from './alertService';
 
 const SALES_COLLECTION = 'sales';
 const PRODUCTS_COLLECTION = 'products';
@@ -279,6 +280,7 @@ function deductLocalInventory(items: Array<{ productId: string; quantity: number
           prod.status = 'In Stock';
         }
         prod.updatedAt = new Date().toISOString();
+        checkAndSyncProductAlerts(prod).catch(() => {});
       }
     }
 
@@ -380,14 +382,17 @@ export async function createSale(
   try {
     const saleDocRef = doc(collection(db, SALES_COLLECTION));
 
+    const productDocsToUpdate: Array<{
+      ref: any;
+      data: any;
+      newStock: number;
+      newStatus: string;
+      productId: string;
+    }> = [];
+
     const resultSale = await runTransaction(db, async (transaction) => {
       // 1. Read all product documents to verify stock
-      const productDocsToUpdate: Array<{
-        ref: any;
-        data: any;
-        newStock: number;
-        newStatus: string;
-      }> = [];
+      productDocsToUpdate.length = 0;
 
       for (const item of lineItems) {
         const productRef = doc(db, PRODUCTS_COLLECTION, item.productId);
@@ -418,7 +423,8 @@ export async function createSale(
           ref: productRef,
           data: productData,
           newStock,
-          newStatus
+          newStatus,
+          productId: item.productId
         });
       }
 
@@ -458,6 +464,16 @@ export async function createSale(
         ...salePayload
       };
     });
+
+    // 5. Automatically check and sync inventory alerts for depleted items
+    for (const update of productDocsToUpdate) {
+      checkAndSyncProductAlerts({
+        id: update.productId,
+        ...update.data,
+        stock: update.newStock,
+        status: update.newStatus
+      } as any).catch(() => {});
+    }
 
     return normalizeSale(resultSale.id, resultSale);
   } catch (err: any) {
