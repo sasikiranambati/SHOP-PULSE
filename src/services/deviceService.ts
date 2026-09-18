@@ -1,12 +1,17 @@
 /**
  * @file deviceService.ts
- * @description Connected device registration and telemetry tracking service.
+ * @description Connected device registration and telemetry tracking service using shared helpers.
  * Belongs in `src/services/deviceService.ts`.
  */
 
-import { collection, getDocs, doc, addDoc, updateDoc, query, where } from 'firebase/firestore';
-import { db } from './firebase';
+import { where } from 'firebase/firestore';
+import { 
+  getCollection, 
+  addDocument, 
+  updateDocument 
+} from './firestoreHelpers';
 import type { Device, RegisterDeviceInput, DeviceStatus } from '../types/device';
+import { getFirebaseErrorMessage } from '../utils/firebaseErrorMapper';
 
 const DEVICES_COLLECTION = 'devices';
 
@@ -15,16 +20,11 @@ const DEVICES_COLLECTION = 'devices';
  */
 export async function getShopDevices(shopId: string = 'default'): Promise<Device[]> {
   try {
-    const colRef = collection(db, DEVICES_COLLECTION);
-    const q = query(colRef, where('shopId', '==', shopId));
-    const snapshot = await getDocs(q);
-
-    return snapshot.docs.map(docSnap => ({
-      id: docSnap.id,
-      ...(docSnap.data() as Omit<Device, 'id'>)
-    }));
+    return await getCollection<Omit<Device, 'id'>>(DEVICES_COLLECTION, [
+      where('shopId', '==', shopId)
+    ]);
   } catch (err) {
-    console.warn('Error fetching shop devices:', err);
+    console.warn('Error fetching shop devices:', getFirebaseErrorMessage(err));
     return [];
   }
 }
@@ -33,28 +33,34 @@ export async function getShopDevices(shopId: string = 'default'): Promise<Device
  * Register a new device (mobile app, barcode scanner, POS terminal).
  */
 export async function registerDevice(shopId: string, input: RegisterDeviceInput): Promise<Device> {
-  const now = new Date().toISOString();
-  const deviceData: Omit<Device, 'id'> = {
-    shopId,
-    name: input.name,
-    type: input.type,
-    status: 'active',
-    lastActive: now,
-    registeredAt: now,
-    appVersion: input.appVersion || '1.0.0'
-  };
+  try {
+    const now = new Date().toISOString();
+    const deviceData: Omit<Device, 'id'> = {
+      shopId,
+      name: input.name,
+      type: input.type,
+      status: 'active',
+      lastActive: now,
+      registeredAt: now,
+      appVersion: input.appVersion || '1.0.0'
+    };
 
-  const docRef = await addDoc(collection(db, DEVICES_COLLECTION), deviceData);
-  return { id: docRef.id, ...deviceData };
+    return await addDocument<Omit<Device, 'id'>>(DEVICES_COLLECTION, deviceData);
+  } catch (err) {
+    throw new Error(getFirebaseErrorMessage(err));
+  }
 }
 
 /**
  * Update the active status of a device.
  */
 export async function updateDeviceStatus(deviceId: string, status: DeviceStatus): Promise<void> {
-  const docRef = doc(db, DEVICES_COLLECTION, deviceId);
-  await updateDoc(docRef, {
-    status,
-    lastActive: new Date().toISOString()
-  });
+  try {
+    await updateDocument(DEVICES_COLLECTION, deviceId, {
+      status,
+      lastActive: new Date().toISOString()
+    });
+  } catch (err) {
+    throw new Error(getFirebaseErrorMessage(err));
+  }
 }

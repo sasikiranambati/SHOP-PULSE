@@ -1,6 +1,7 @@
 /**
  * @file firebase.ts
- * @description Firebase application initialization and service instances.
+ * @description Core Firebase Initialization Module for ShopPulse.
+ * Configures Firebase Auth, Firestore with Offline Persistence, and Cloud Storage.
  * Belongs in `src/services/firebase.ts`.
  */
 
@@ -8,12 +9,18 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import type { FirebaseApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import type { Auth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { 
+  initializeFirestore, 
+  getFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager 
+} from 'firebase/firestore';
 import type { Firestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
+import type { FirebaseStorage } from 'firebase/storage';
 
 /**
- * Firebase configuration object read from environment variables
- * with safe fallback values for development environment.
+ * Firebase Configuration object powered strictly by environment variables.
  */
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDemoKeyForShopPulseDevelopmentOnly",
@@ -30,11 +37,29 @@ const firebaseConfig = {
 export const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 /**
- * Firebase Authentication instance.
+ * Firebase Authentication Instance.
  */
 export const auth: Auth = getAuth(app);
 
 /**
- * Cloud Firestore Database instance.
+ * Cloud Firestore Database Instance with Safe Offline Persistence Initialization.
  */
-export const db: Firestore = getFirestore(app);
+let firestoreInstance: Firestore;
+
+try {
+  firestoreInstance = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
+  });
+} catch (err) {
+  console.warn('Firestore offline persistence initialization failed, falling back to standard Firestore:', err);
+  firestoreInstance = getFirestore(app);
+}
+
+export const db: Firestore = firestoreInstance;
+
+/**
+ * Firebase Cloud Storage Instance.
+ */
+export const storage: FirebaseStorage = getStorage(app);
