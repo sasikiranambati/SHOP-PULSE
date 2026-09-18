@@ -59,6 +59,10 @@ const ERROR_MAP: Record<string, ErrorTranslation> = {
   'not-found': {
     en: 'Requested document was not found.',
     te: 'కోరిన పత్రం కనుగొనబడలేదు.'
+  },
+  'auth/api-key-not-valid': {
+    en: 'Firebase API key is invalid or not yet configured. Please check your .env credentials.',
+    te: 'ఫైర్‌బేస్ API కీ చెల్లదు లేదా ఇంకా కాన్ఫిగర్ చేయబడలేదు. దయచేసి మీ .env ఫైల్‌ని తనిఖీ చేయండి.'
   }
 };
 

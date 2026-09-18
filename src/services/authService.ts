@@ -16,27 +16,154 @@ import {
   browserLocalPersistence
 } from 'firebase/auth';
 import type { User as FirebaseUser } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { getDocument, updateDocument } from './firestoreHelpers';
+import { updateDocument } from './firestoreHelpers';
 import type { UserProfile, RegisterInput, LoginCredentials } from '../types/user';
 import { getFirebaseErrorMessage } from '../utils/firebaseErrorMapper';
 
 const USERS_COLLECTION = 'users';
+const LOCAL_USERS_KEY = 'shoppulse_local_users';
+const LOCAL_SESSION_KEY = 'shoppulse_local_session';
 
-// Initialize Local Session Persistence
-setPersistence(auth, browserLocalPersistence).catch(err => {
-  console.warn('Could not set auth persistence:', err);
-});
+// Initialize Local Session Persistence safely
+try {
+  setPersistence(auth, browserLocalPersistence).catch(err => {
+    console.warn('Could not set auth persistence:', err);
+  });
+} catch {
+  // Ignore in environments where persistence is unavailable
+}
 
 /**
- * Fetch current authenticated user profile from Firestore.
+ * Check if the Firebase configuration is using a demo / placeholder key.
+ */
+function isDemoApiKey(): boolean {
+  const key = auth.app.options.apiKey || '';
+  return !key || key.includes('DemoKey') || key.includes('YourFirebaseApiKey') || key === 'AIzaSyDemoKeyForShopPulseDevelopmentOnly';
+}
+
+function getLocalUsers(): Array<UserProfile & { password?: string }> {
+  try {
+    const raw = localStorage.getItem(LOCAL_USERS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalUsers(users: Array<UserProfile & { password?: string }>) {
+  try {
+    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
+  } catch (err) {
+    console.warn('Could not save local users:', err);
+  }
+}
+
+function getLocalSession(): UserProfile | null {
+  try {
+    const raw = localStorage.getItem(LOCAL_SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveLocalSession(profile: UserProfile | null) {
+  try {
+    if (profile) {
+      localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(profile));
+    } else {
+      localStorage.removeItem(LOCAL_SESSION_KEY);
+    }
+    window.dispatchEvent(new CustomEvent('shoppulse_auth_changed'));
+  } catch (err) {
+    console.warn('Could not save local session:', err);
+  }
+}
+
+function registerLocalUser(input: RegisterInput): UserProfile {
+  const users = getLocalUsers();
+  const normalizedEmail = input.email.toLowerCase().trim();
+
+  // Duplicate email handling
+  if (users.some(u => u.email.toLowerCase() === normalizedEmail)) {
+    throw new Error(getFirebaseErrorMessage('auth/email-already-in-use'));
+  }
+
+  const now = new Date().toISOString();
+  const uid = 'usr_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 6);
+
+  const profile: UserProfile = {
+    uid,
+    ownerName: input.ownerName || input.displayName || 'Shop Owner',
+    shopName: input.shopName || 'My Shop',
+    email: normalizedEmail,
+    language: input.language || 'en',
+    theme: input.theme || 'light',
+    createdAt: now,
+    lastLogin: now,
+    displayName: input.displayName || input.ownerName || 'Shop Owner',
+    phone: input.phone || '',
+    businessType: input.businessType || 'General Store',
+    role: 'owner'
+  };
+
+  users.push({ ...profile, password: input.password });
+  saveLocalUsers(users);
+  saveLocalSession(profile);
+
+  return profile;
+}
+
+function signInLocalUser({ email, password }: LoginCredentials): UserProfile {
+  const users = getLocalUsers();
+  const normalizedEmail = email.toLowerCase().trim();
+  const user = users.find(u => u.email.toLowerCase() === normalizedEmail);
+
+  if (!user) {
+    throw new Error(getFirebaseErrorMessage('auth/user-not-found'));
+  }
+
+  if (user.password && user.password !== password) {
+    throw new Error(getFirebaseErrorMessage('auth/wrong-password'));
+  }
+
+  const now = new Date().toISOString();
+  user.lastLogin = now;
+  saveLocalUsers(users);
+
+  const { password: _, ...profile } = user;
+  saveLocalSession(profile);
+
+  return profile;
+}
+
+/**
+ * Fetch current authenticated user profile from Firestore or local session cache.
  */
 export async function getCurrentUserProfile(uid: string): Promise<UserProfile | null> {
+  const localSession = getLocalSession();
+  if (localSession && localSession.uid === uid) {
+    return localSession;
+  }
+
+  const localUser = getLocalUsers().find(u => u.uid === uid);
+  if (localUser) {
+    const { password: _, ...profile } = localUser;
+    return profile;
+  }
+
   try {
-    return await getDocument<Omit<UserProfile, 'id'>>(USERS_COLLECTION, uid);
+    const docRef = doc(db, USERS_COLLECTION, uid);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return { uid: snap.id, ...(snap.data() as Omit<UserProfile, 'uid'>) } as UserProfile;
+    }
+    return null;
   } catch (err) {
-    throw new Error(getFirebaseErrorMessage(err));
+    console.warn('Could not fetch user profile from Firestore:', err);
+    return null;
   }
 }
 
@@ -44,16 +171,63 @@ export async function getCurrentUserProfile(uid: string): Promise<UserProfile | 
  * Sign in existing user with email and password.
  */
 export async function signInWithEmail({ email, password }: LoginCredentials): Promise<UserProfile | null> {
+  if (isDemoApiKey()) {
+    return signInLocalUser({ email, password });
+  }
+
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const uid = userCredential.user.uid;
     const now = new Date().toISOString();
 
-    // Update lastLogin timestamp in Firestore
-    await updateDocument(USERS_COLLECTION, uid, { lastLogin: now });
+    // Check if user profile exists in Firestore and update lastLogin without overwriting
+    try {
+      const userDocRef = doc(db, USERS_COLLECTION, uid);
+      const userDocSnap = await getDoc(userDocRef);
+      if (userDocSnap.exists()) {
+        await updateDocument(USERS_COLLECTION, uid, { lastLogin: now });
+      } else {
+        const initialProfile: UserProfile = {
+          uid,
+          ownerName: userCredential.user.displayName || 'Shop Owner',
+          shopName: 'My Shop',
+          email: userCredential.user.email || email,
+          language: 'en',
+          theme: 'light',
+          businessType: 'General Store',
+          role: 'owner',
+          displayName: userCredential.user.displayName || 'Shop Owner',
+          createdAt: now,
+          lastLogin: now
+        };
+        await setDoc(userDocRef, initialProfile);
+      }
+    } catch (fsErr) {
+      console.warn('Could not update lastLogin in Firestore:', fsErr);
+    }
 
-    return await getCurrentUserProfile(uid);
-  } catch (err) {
+    const profile = await getCurrentUserProfile(uid);
+    const resolvedProfile = profile || {
+      uid,
+      ownerName: userCredential.user.displayName || 'Shop Owner',
+      shopName: 'My Shop',
+      email: userCredential.user.email || email,
+      language: 'en',
+      theme: 'light',
+      businessType: 'General Store',
+      role: 'owner',
+      displayName: userCredential.user.displayName || 'Shop Owner',
+      createdAt: now,
+      lastLogin: now
+    };
+
+    saveLocalSession(resolvedProfile);
+    return resolvedProfile;
+  } catch (err: any) {
+    const errStr = (err?.code || err?.message || '') + '';
+    if (errStr.includes('api-key-not-valid') || errStr.includes('invalid-api-key')) {
+      return signInLocalUser({ email, password });
+    }
     throw new Error(getFirebaseErrorMessage(err));
   }
 }
@@ -95,6 +269,7 @@ export async function signInWithGoogle(): Promise<UserProfile> {
     };
 
     await setDoc(doc(db, USERS_COLLECTION, user.uid), newProfile);
+    saveLocalSession(newProfile);
     return newProfile;
   } catch (err) {
     throw new Error(getFirebaseErrorMessage(err));
@@ -106,29 +281,57 @@ export async function signInWithGoogle(): Promise<UserProfile> {
  * Automatically creates Firestore document `users/{uid}`.
  */
 export async function registerWithEmail(input: RegisterInput): Promise<UserProfile> {
+  if (isDemoApiKey()) {
+    return registerLocalUser(input);
+  }
+
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, input.email, input.password);
     const uid = userCredential.user.uid;
     const now = new Date().toISOString();
 
+    const userDocRef = doc(db, USERS_COLLECTION, uid);
+    
+    // Check if user document already exists to never overwrite existing users
+    try {
+      const userDocSnap = await getDoc(userDocRef);
+      if (userDocSnap.exists()) {
+        const existing = { uid: userDocSnap.id, ...(userDocSnap.data() as Omit<UserProfile, 'uid'>) } as UserProfile;
+        saveLocalSession(existing);
+        return existing;
+      }
+    } catch (fsCheckErr) {
+      console.warn('Could not check existing Firestore document:', fsCheckErr);
+    }
+
     const profile: UserProfile = {
       uid,
+      ownerName: input.ownerName || input.displayName || 'Shop Owner',
+      shopName: input.shopName || 'My Shop',
       email: input.email,
-      displayName: input.displayName,
-      ownerName: input.ownerName || input.displayName,
-      shopName: input.shopName,
+      language: input.language || 'en',
+      theme: input.theme || 'light',
+      createdAt: now,
+      lastLogin: now,
+      displayName: input.displayName || input.ownerName || 'Shop Owner',
       phone: input.phone || '',
       businessType: input.businessType || 'General Store',
-      role: 'owner',
-      theme: input.theme || 'light',
-      language: input.language || 'en',
-      createdAt: now,
-      lastLogin: now
+      role: 'owner'
     };
 
-    await setDoc(doc(db, USERS_COLLECTION, uid), profile);
+    try {
+      await setDoc(userDocRef, profile);
+    } catch (fsWriteErr) {
+      console.warn('Could not write user profile to Firestore:', fsWriteErr);
+    }
+
+    saveLocalSession(profile);
     return profile;
-  } catch (err) {
+  } catch (err: any) {
+    const errStr = (err?.code || err?.message || '') + '';
+    if (errStr.includes('api-key-not-valid') || errStr.includes('invalid-api-key')) {
+      return registerLocalUser(input);
+    }
     throw new Error(getFirebaseErrorMessage(err));
   }
 }
@@ -148,10 +351,11 @@ export async function resetPassword(email: string): Promise<void> {
  * Sign out current user safely.
  */
 export async function signOutUser(): Promise<void> {
+  saveLocalSession(null);
   try {
     await signOut(auth);
   } catch (err) {
-    throw new Error(getFirebaseErrorMessage(err));
+    console.warn('Firebase signOut warning:', err);
   }
 }
 
@@ -164,6 +368,10 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
       ...updates,
       updatedAt: new Date().toISOString()
     });
+    const session = getLocalSession();
+    if (session && session.uid === uid) {
+      saveLocalSession({ ...session, ...updates });
+    }
   } catch (err) {
     throw new Error(getFirebaseErrorMessage(err));
   }
@@ -173,12 +381,55 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
  * Get current authenticated Firebase User.
  */
 export function getCurrentUser(): FirebaseUser | null {
-  return auth.currentUser;
+  if (auth.currentUser) return auth.currentUser;
+  const localSession = getLocalSession();
+  if (localSession?.uid) {
+    return {
+      uid: localSession.uid,
+      email: localSession.email,
+      displayName: localSession.displayName || localSession.ownerName,
+      emailVerified: true
+    } as unknown as FirebaseUser;
+  }
+  return null;
 }
 
 /**
  * Listen for Firebase Auth state changes.
  */
 export function onAuthUserChanged(callback: (user: FirebaseUser | null) => void): () => void {
-  return onAuthStateChanged(auth, callback);
+  const checkState = (firebaseUser: FirebaseUser | null) => {
+    if (firebaseUser) {
+      callback(firebaseUser);
+      return;
+    }
+    const localSession = getLocalSession();
+    if (localSession?.uid) {
+      const mockUser = {
+        uid: localSession.uid,
+        email: localSession.email,
+        displayName: localSession.displayName || localSession.ownerName,
+        emailVerified: true
+      } as unknown as FirebaseUser;
+      callback(mockUser);
+      return;
+    }
+    callback(null);
+  };
+
+  const unsubscribe = onAuthStateChanged(auth, checkState);
+
+  const handleCustomEvent = () => {
+    checkState(auth.currentUser);
+  };
+
+  window.addEventListener('shoppulse_auth_changed', handleCustomEvent);
+
+  // Immediate check
+  checkState(auth.currentUser);
+
+  return () => {
+    unsubscribe();
+    window.removeEventListener('shoppulse_auth_changed', handleCustomEvent);
+  };
 }
