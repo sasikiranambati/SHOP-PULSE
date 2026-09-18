@@ -38,7 +38,7 @@ export async function getTopProducts(limitCount: number = 5): Promise<TopProduct
       const existing = salesMap.get(item.productId) || { qty: 0, rev: 0 };
       salesMap.set(item.productId, {
         qty: existing.qty + item.quantity,
-        rev: existing.rev + item.totalPrice
+        rev: existing.rev + (item.totalPrice ?? item.total ?? 0)
       });
     });
   });

@@ -18,6 +18,7 @@ import { SmartCounterWidget } from '../components/SmartCounterWidget';
 import type { PageRoute, Product } from '../types';
 import { MOCK_RECENT_SALES } from '../data/mockData';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useSales } from '../hooks/useSales';
 
 interface DashboardProps {
   setActivePage: (page: PageRoute) => void;
@@ -31,6 +32,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
   shopName,
 }) => {
   const { t } = useLanguage();
+  const { todaySummary, dashboardStats } = useSales();
+
+  const todayRevenue = todaySummary ? todaySummary.todaySales : 8450;
+  const itemsSoldToday = todaySummary ? todaySummary.itemsSoldToday : 42;
+  const recentSalesList = dashboardStats?.recentSales && dashboardStats.recentSales.length > 0
+    ? dashboardStats.recentSales
+    : MOCK_RECENT_SALES;
+
   const lowStockItems = products.filter(p => p.status === 'Low Stock' || p.status === 'Out of Stock');
   const lowStockCount = lowStockItems.length;
 
@@ -81,7 +90,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 {t('dashboard.todaysSales')}
               </p>
               <div className="text-3xl sm:text-4xl font-black mt-1 tracking-tight">
-                ₹8,450
+                ₹{todayRevenue.toLocaleString('en-IN')}
               </div>
             </div>
             <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur-sm flex items-center justify-center text-white shrink-0">
@@ -107,7 +116,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 {t('dashboard.itemsSoldToday')}
               </p>
               <div className="text-3xl sm:text-4xl font-black mt-1 text-slate-900 tracking-tight">
-                42 units
+                {itemsSoldToday} units
               </div>
             </div>
             <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 border border-blue-200/60 flex items-center justify-center shrink-0">
@@ -287,7 +296,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         <div className="divide-y divide-slate-100 mt-1">
-          {MOCK_RECENT_SALES.map((sale) => (
+          {recentSalesList.map((sale) => (
             <div key={sale.id} className="py-3 flex items-center justify-between gap-2">
               <div>
                 <p className="font-extrabold text-slate-900 text-xs sm:text-sm leading-tight">{sale.items}</p>
