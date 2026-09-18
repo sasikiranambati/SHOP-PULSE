@@ -1,13 +1,14 @@
 /**
  * @file alertService.ts
- * @description System notifications and low-stock alert service for ShopPulse.
+ * @description System notifications and low-stock alert service for ShopPulse using shared helpers.
  * Belongs in `src/services/alertService.ts`.
  */
 
-import { collection, getDocs, doc, updateDoc, query, where } from 'firebase/firestore';
-import { db } from './firebase';
+import { where } from 'firebase/firestore';
+import { getCollection, updateDocument } from './firestoreHelpers';
 import type { SystemAlert, ActionRecommendation } from '../types/alert';
 import { getLowStockProducts } from './inventoryService';
+import { getFirebaseErrorMessage } from '../utils/firebaseErrorMapper';
 
 const ALERTS_COLLECTION = 'alerts';
 
@@ -16,16 +17,11 @@ const ALERTS_COLLECTION = 'alerts';
  */
 export async function getAlerts(shopId: string = 'default'): Promise<SystemAlert[]> {
   try {
-    const colRef = collection(db, ALERTS_COLLECTION);
-    const q = query(colRef, where('shopId', '==', shopId));
-    const snapshot = await getDocs(q);
-
-    return snapshot.docs.map(docSnap => ({
-      id: docSnap.id,
-      ...(docSnap.data() as Omit<SystemAlert, 'id'>)
-    }));
+    return await getCollection<Omit<SystemAlert, 'id'>>(ALERTS_COLLECTION, [
+      where('shopId', '==', shopId)
+    ]);
   } catch (err) {
-    console.warn('Error fetching alerts from Firestore, returning empty list:', err);
+    console.warn('Error fetching alerts from Firestore, returning empty list:', getFirebaseErrorMessage(err));
     return [];
   }
 }
@@ -34,8 +30,11 @@ export async function getAlerts(shopId: string = 'default'): Promise<SystemAlert
  * Mark a specific alert as read.
  */
 export async function markAlertAsRead(alertId: string): Promise<void> {
-  const docRef = doc(db, ALERTS_COLLECTION, alertId);
-  await updateDoc(docRef, { isRead: true });
+  try {
+    await updateDocument(ALERTS_COLLECTION, alertId, { isRead: true });
+  } catch (err) {
+    throw new Error(getFirebaseErrorMessage(err));
+  }
 }
 
 /**
