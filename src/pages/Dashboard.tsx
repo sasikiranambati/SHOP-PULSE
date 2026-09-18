@@ -19,6 +19,7 @@ import type { PageRoute, Product } from '../types';
 import { MOCK_RECENT_SALES } from '../data/mockData';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useSales } from '../hooks/useSales';
+import { useAlerts } from '../hooks/useAlerts';
 
 interface DashboardProps {
   setActivePage: (page: PageRoute) => void;
@@ -33,6 +34,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 }) => {
   const { t } = useLanguage();
   const { todaySummary, dashboardStats } = useSales();
+  const { lowStockAlerts } = useAlerts(products);
 
   const todayRevenue = todaySummary ? todaySummary.todaySales : 8450;
   const itemsSoldToday = todaySummary ? todaySummary.itemsSoldToday : 42;
@@ -40,8 +42,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     ? dashboardStats.recentSales
     : MOCK_RECENT_SALES;
 
-  const lowStockItems = products.filter(p => p.status === 'Low Stock' || p.status === 'Out of Stock');
-  const lowStockCount = lowStockItems.length;
+  const lowStockItems = products.filter(p => p.status === 'Low Stock' || p.status === 'Out of Stock' || (p.stock <= (p.reorderLevel ?? p.minStock ?? 10)));
+  const lowStockCount = Math.max(lowStockItems.length, lowStockAlerts.length);
 
   const topSellers = [
     { name: 'Toned Milk (500ml)', category: 'Dairy', sold: '42 sold today', price: '₹28' },
@@ -296,7 +298,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         <div className="divide-y divide-slate-100 mt-1">
-          {recentSalesList.map((sale) => (
+          {recentSalesList.map((sale: any) => (
             <div key={sale.id} className="py-3 flex items-center justify-between gap-2">
               <div>
                 <p className="font-extrabold text-slate-900 text-xs sm:text-sm leading-tight">{sale.items}</p>
