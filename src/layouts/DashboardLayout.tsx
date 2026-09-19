@@ -34,7 +34,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       <div className="flex-1 flex max-w-7xl w-full mx-auto">
         <Sidebar activePage={activePage} setActivePage={setActivePage} />
         
-        <main className="flex-1 p-3.5 sm:p-6 lg:p-8 pb-24 md:pb-12 overflow-x-hidden max-w-full">
+        <main className="flex-1 p-3.5 sm:p-6 lg:p-8 pb-28 md:pb-12 overflow-x-hidden max-w-full">
           {children}
         </main>
       </div>
