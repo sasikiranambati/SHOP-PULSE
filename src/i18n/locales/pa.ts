@@ -206,6 +206,12 @@ export const pa: Translations = {
     feature3Desc: 'ਫੋਟੋ ਖਿੱਚ ਕੇ ਸਟਾਕ ਜੋੜੋ।',
     feature4Title: 'AI ਮੰਗ ਅਨੁਮਾਨ',
     feature4Desc: 'ਕੱਲ੍ਹ ਕੀ ਵਿਕੇਗਾ ਪਹਿਲਾਂ ਹੀ ਜਾਣੋ।',
+    kiranaTechBadge: 'KIRANA TECH 2.0',
+    madeForBharat: 'Made for Bharat',
+    mobileRegionalSub: 'ਸ਼ੌਪਪਲਸ • ਕਿਰਾਣਾ ਸਟੋਰ AI',
+    smartInventorySub: 'Smart Inventory for Smarter Shops',
+    getStarted: 'Get Started',
+    enterDemoShop: 'Enter Demo Shop Directly →',
   },
   auth: {
     welcomeBack: 'ਜੀ ਆਇਆਂ ਨੂੰ',

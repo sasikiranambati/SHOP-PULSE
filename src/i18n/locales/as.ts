@@ -206,6 +206,12 @@ export const as: Translations = {
     feature3Desc: 'বিলৰ ফটো তুলি ষ্টক যোগ কৰক।',
     feature4Title: 'AI চাহিদা পূৰ্বানুমান',
     feature4Desc: 'কালিলৈ কি বিক্ৰী হ’ব আগেই জানক।',
+    kiranaTechBadge: 'KIRANA TECH 2.0',
+    madeForBharat: 'Made for Bharat',
+    mobileRegionalSub: 'শ্বপপাল্‌চ • কিৰানা ষ্ট’ৰ AI',
+    smartInventorySub: 'Smart Inventory for Smarter Shops',
+    getStarted: 'Get Started',
+    enterDemoShop: 'Enter Demo Shop Directly →',
   },
   auth: {
     welcomeBack: 'পুনৰ স্বাগতম',

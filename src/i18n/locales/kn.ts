@@ -206,6 +206,12 @@ export const kn: Translations = {
     feature3Desc: 'ಕಾಕದ ಬಿಲ್‌ಗಳ ಫೋಟೋ ತೆಗೆದು ಸ್ಟಾಕ್ ಅಪ್‌ಡೇಟ್ ಮಾಡಿ.',
     feature4Title: 'AI ಬೇಡಿಕೆ ಮುನ್ಸೂಚನೆ',
     feature4Desc: 'ನಾಳೆ ಏನು ಮಾರಾಟವಾಗುತ್ತದೆ ಎಂದು ಮುಂಚಿತವಾಗಿ ತಿಳಿಯಿರಿ.',
+    kiranaTechBadge: 'KIRANA TECH 2.0',
+    madeForBharat: 'Made for Bharat',
+    mobileRegionalSub: 'ಶಾಪ್‌ಪಲ್ಸ್ • ಕಿರಾಣಾ ಸ್ಟೋರ್ AI',
+    smartInventorySub: 'Smart Inventory for Smarter Shops',
+    getStarted: 'Get Started',
+    enterDemoShop: 'Enter Demo Shop Directly →',
   },
   auth: {
     welcomeBack: 'ಮತ್ತೆ ಸ್ವಾಗತ',

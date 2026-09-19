@@ -206,6 +206,12 @@ export const ta: Translations = {
     feature3Desc: 'பில்களை படம் எடுத்து சரக்கை பதிவு செய்யுங்கள்.',
     feature4Title: 'AI தேவை கணிப்பு',
     feature4Desc: 'நாளை என்ன விற்கும் என்பதை முன்கூட்டியே அறியவும்.',
+    kiranaTechBadge: 'KIRANA TECH 2.0',
+    madeForBharat: 'Made for Bharat',
+    mobileRegionalSub: 'ஷாப்பல்ஸ் • கிரானா ஸ்டோர் AI',
+    smartInventorySub: 'Smart Inventory for Smarter Shops',
+    getStarted: 'Get Started',
+    enterDemoShop: 'Enter Demo Shop Directly →',
   },
   auth: {
     welcomeBack: 'மீண்டும் வருக',

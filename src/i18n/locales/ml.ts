@@ -206,6 +206,12 @@ export const ml: Translations = {
     feature3Desc: 'ബില്ലിന്റെ ഫോട്ടോ എടുത്ത് സ്റ്റോക്ക് ചേർക്കാം.',
     feature4Title: 'AI ആവശ്യകത പ്രവചനം',
     feature4Desc: 'നാളെ എന്ത് വിൽക്കുമെന്ന് മുൻകൂട്ടി അറിയാം.',
+    kiranaTechBadge: 'KIRANA TECH 2.0',
+    madeForBharat: 'Made for Bharat',
+    mobileRegionalSub: 'ഷോപ്പ്പൾസ് • കിരാണാ സ്റ്റോർ AI',
+    smartInventorySub: 'Smart Inventory for Smarter Shops',
+    getStarted: 'Get Started',
+    enterDemoShop: 'Enter Demo Shop Directly →',
   },
   auth: {
     welcomeBack: 'വീണ്ടും സ്വാഗതം',

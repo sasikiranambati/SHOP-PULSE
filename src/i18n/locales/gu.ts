@@ -206,6 +206,12 @@ export const gu: Translations = {
     feature3Desc: 'બિલનો ફોટો પાડીને સ્ટોક ઉમેરો.',
     feature4Title: 'AI માંગ પૂર્વાનુમાન',
     feature4Desc: 'કાલે શું વેચાશે તે પહેલેથી જાણો.',
+    kiranaTechBadge: 'KIRANA TECH 2.0',
+    madeForBharat: 'Made for Bharat',
+    mobileRegionalSub: 'શોપપલ્સ • કિરાણા સ્ટોર AI',
+    smartInventorySub: 'Smart Inventory for Smarter Shops',
+    getStarted: 'Get Started',
+    enterDemoShop: 'Enter Demo Shop Directly →',
   },
   auth: {
     welcomeBack: 'પાછા સ્વાગત છે',

@@ -206,6 +206,12 @@ export const te: Translations = {
     feature3Desc: 'సప్లయర్ కాగితపు బిల్లులను ఫోటో తీసి స్టాక్ నమోదు చేయండి.',
     feature4Title: 'AI డిమాండ్ విశ్లేషణ',
     feature4Desc: 'రేపు ఏ వస్తువులు ఎక్కువగా అమ్ముడవుతాయో ముందే తెలుసుకోండి.',
+    kiranaTechBadge: 'KIRANA TECH 2.0',
+    madeForBharat: 'Made for Bharat',
+    mobileRegionalSub: 'షాప్‌పల్స్ • కిరాణా స్టోర్ AI',
+    smartInventorySub: 'Smart Inventory for Smarter Shops',
+    getStarted: 'Get Started',
+    enterDemoShop: 'Enter Demo Shop Directly →',
   },
   auth: {
     welcomeBack: 'మళ్ళీ స్వాగతం',

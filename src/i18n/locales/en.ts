@@ -204,6 +204,12 @@ export const en = {
     feature3Desc: 'Snap photos of supplier paper bills to automatically track stock without manual typing.',
     feature4Title: 'AI Demand Insights',
     feature4Desc: 'Know what will sell tomorrow before you run out of stock based on past sales history.',
+    kiranaTechBadge: 'KIRANA TECH 2.0',
+    madeForBharat: 'Made for Bharat',
+    mobileRegionalSub: 'ShopPulse • Kirana Store AI',
+    smartInventorySub: 'Smart Inventory for Smarter Shops',
+    getStarted: 'Get Started',
+    enterDemoShop: 'Enter Demo Shop Directly →',
   },
   auth: {
     welcomeBack: 'Welcome Back',

@@ -206,6 +206,12 @@ export const or: Translations = {
     feature3Desc: 'ବିଲ୍ ଫଟୋ ଉଠାଇ ଷ୍ଟକ୍ ଯୋଡନ୍ତୁ।',
     feature4Title: 'AI ଚାହିଦା ପୂର୍ବାନୁମାନ',
     feature4Desc: 'ଆଗାମୀ କାଲି କ’ଣ ବିକ୍ରି ହେବ ଆଗରୁ ଜାଣନ୍ତୁ।',
+    kiranaTechBadge: 'KIRANA TECH 2.0',
+    madeForBharat: 'Made for Bharat',
+    mobileRegionalSub: 'ଶପ୍‌ପଲ୍ସ • କିରାନା ଷ୍ଟୋର୍ AI',
+    smartInventorySub: 'Smart Inventory for Smarter Shops',
+    getStarted: 'Get Started',
+    enterDemoShop: 'Enter Demo Shop Directly →',
   },
   auth: {
     welcomeBack: 'ପୁନର୍ବାର ସ୍ୱାଗତ',

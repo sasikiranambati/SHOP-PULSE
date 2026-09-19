@@ -206,6 +206,12 @@ export const mr: Translations = {
     feature3Desc: 'बिलांचा फोटो काढून साठा अपडेट करा.',
     feature4Title: 'AI मागणी अंदाज',
     feature4Desc: 'उद्या काय विकले जाईल ते आधीच जाणून घ्या.',
+    kiranaTechBadge: 'KIRANA TECH 2.0',
+    madeForBharat: 'Made for Bharat',
+    mobileRegionalSub: 'शॉपपल्स • किराणा स्टोअर AI',
+    smartInventorySub: 'Smart Inventory for Smarter Shops',
+    getStarted: 'Get Started',
+    enterDemoShop: 'Enter Demo Shop Directly →',
   },
   auth: {
     welcomeBack: 'पुन्हा स्वागत आहे',

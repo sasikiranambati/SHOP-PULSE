@@ -206,6 +206,12 @@ export const ur: Translations = {
     feature3Desc: 'بل کی تصویر لے کر اسٹاک شامل کریں۔',
     feature4Title: 'AI مانگ کی پیش گوئی',
     feature4Desc: 'کل کیا فروخت ہوگا پہلے سے جانیں۔',
+    kiranaTechBadge: 'KIRANA TECH 2.0',
+    madeForBharat: 'Made for Bharat',
+    mobileRegionalSub: 'شاپ پلس • کیرانہ اسٹور AI',
+    smartInventorySub: 'Smart Inventory for Smarter Shops',
+    getStarted: 'Get Started',
+    enterDemoShop: 'Enter Demo Shop Directly →',
   },
   auth: {
     welcomeBack: 'خوش آمدید',

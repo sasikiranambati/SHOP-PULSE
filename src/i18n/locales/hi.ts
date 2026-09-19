@@ -206,6 +206,12 @@ export const hi: Translations = {
     feature3Desc: 'कागजी बिलों की फोटो खींचकर स्टॉक अपने आप अपडेट करें।',
     feature4Title: 'AI मांग पूर्वानुमान',
     feature4Desc: 'स्टॉक खत्म होने से पहले जानें कल क्या बिकेगा।',
+    kiranaTechBadge: 'KIRANA TECH 2.0',
+    madeForBharat: 'Made for Bharat',
+    mobileRegionalSub: 'शॉपपल्स • किराना स्टोर AI',
+    smartInventorySub: 'Smart Inventory for Smarter Shops',
+    getStarted: 'Get Started',
+    enterDemoShop: 'Enter Demo Shop Directly →',
   },
   auth: {
     welcomeBack: 'वापसी पर स्वागत है',
