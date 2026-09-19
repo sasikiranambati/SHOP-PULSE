@@ -24,7 +24,8 @@ export function App() {
 
   const [activePage, setActivePageState] = useState<PageRoute>(() => {
     try {
-      const saved = localStorage.getItem('shoppulse_active_page') as PageRoute | null;
+      // Use sessionStorage for active page so opening a fresh browser session doesn't leak 'dashboard'
+      const saved = sessionStorage.getItem('shoppulse_active_page') as PageRoute | null;
       const validPages: PageRoute[] = [
         'landing', 'login', 'signup', 'dashboard', 'sales', 'inventory', 'scanner', 'insights', 'settings'
       ];
@@ -32,7 +33,7 @@ export function App() {
         return saved;
       }
     } catch {
-      // Ignore localStorage read errors
+      // Ignore sessionStorage read errors
     }
     return 'landing';
   });
@@ -40,9 +41,10 @@ export function App() {
   const setActivePage = (page: PageRoute) => {
     setActivePageState(page);
     try {
-      localStorage.setItem('shoppulse_active_page', page);
+      sessionStorage.setItem('shoppulse_active_page', page);
+      localStorage.removeItem('shoppulse_active_page');
     } catch {
-      // Ignore localStorage write errors
+      // Ignore sessionStorage write errors
     }
   };
 
@@ -60,8 +62,8 @@ export function App() {
     if (loading) return;
 
     if (firebaseUser) {
-      // Logged in: skip landing, login, or signup and go straight to dashboard
-      if (activePage === 'landing' || activePage === 'login' || activePage === 'signup') {
+      // Logged in: only redirect auth forms (login, signup) to dashboard
+      if (activePage === 'login' || activePage === 'signup') {
         setActivePage('dashboard');
       }
     } else {
@@ -114,13 +116,6 @@ export function App() {
 
   // Render non-dashboard full-frame pages
   if (activePage === 'landing') {
-    if (firebaseUser) {
-      return (
-        <PublicOnlyRoute setActivePage={setActivePage} targetPage="dashboard">
-          <Landing setActivePage={setActivePage} />
-        </PublicOnlyRoute>
-      );
-    }
     return <Landing setActivePage={setActivePage} />;
   }
 
@@ -182,7 +177,12 @@ export function App() {
         )}
 
         {activePage === 'scanner' && (
-          <InvoiceScanner />
+          <InvoiceScanner
+            products={products}
+            onAddProduct={handleAddProduct}
+            onRestock={increaseStock}
+            setActivePage={setActivePage}
+          />
         )}
 
         {activePage === 'insights' && (

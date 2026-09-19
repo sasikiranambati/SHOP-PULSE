@@ -195,6 +195,7 @@ export const en = {
     mobileOrEmail: 'Mobile Number or Email',
     password: 'Password',
     loginBtn: 'Log In to Store',
+    rememberMe: 'Remember me on this device',
     noAccount: 'Don\'t have a shop account?',
     createAccount: 'Create account',
     createShopAccount: 'Create Shop Account',
@@ -221,4 +222,8 @@ export const en = {
   }
 };
 
-export type Translations = typeof en;
+export type Translations = Omit<typeof en, 'auth'> & {
+  auth: Omit<typeof en.auth, 'rememberMe'> & {
+    rememberMe?: string;
+  };
+};

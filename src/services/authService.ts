@@ -13,7 +13,8 @@ import {
   signOut, 
   onAuthStateChanged,
   setPersistence,
-  browserLocalPersistence
+  browserLocalPersistence,
+  browserSessionPersistence
 } from 'firebase/auth';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -25,12 +26,42 @@ import { getFirebaseErrorMessage } from '../utils/firebaseErrorMapper';
 const USERS_COLLECTION = 'users';
 const LOCAL_USERS_KEY = 'shoppulse_local_users';
 const LOCAL_SESSION_KEY = 'shoppulse_local_session';
+const REMEMBER_ME_KEY = 'shoppulse_remember_me';
+
+/**
+ * Check if the user opted in to Remember Me.
+ */
+export function isRememberMeActive(): boolean {
+  try {
+    return localStorage.getItem(REMEMBER_ME_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Set Firebase auth persistence mode dynamically.
+ */
+export async function applyAuthPersistence(rememberMe = false): Promise<void> {
+  try {
+    const persistence = rememberMe ? browserLocalPersistence : browserSessionPersistence;
+    await setPersistence(auth, persistence);
+  } catch (err) {
+    console.warn('Could not set auth persistence:', err);
+  }
+}
 
 // Initialize Local Session Persistence safely
 try {
-  setPersistence(auth, browserLocalPersistence).catch(err => {
-    console.warn('Could not set auth persistence:', err);
+  const remembered = isRememberMeActive();
+  setPersistence(auth, remembered ? browserLocalPersistence : browserSessionPersistence).catch(err => {
+    console.warn('Could not set initial auth persistence:', err);
   });
+  // If Remember Me was not set to true, clear any lingering stale local session to avoid bypassing login
+  if (!remembered) {
+    localStorage.removeItem(LOCAL_SESSION_KEY);
+    localStorage.removeItem('shoppulse_active_page');
+  }
 } catch {
   // Ignore in environments where persistence is unavailable
 }
@@ -60,21 +91,46 @@ function saveLocalUsers(users: Array<UserProfile & { password?: string }>) {
   }
 }
 
-function getLocalSession(): UserProfile | null {
+export function getLocalSession(): UserProfile | null {
   try {
-    const raw = localStorage.getItem(LOCAL_SESSION_KEY);
-    return raw ? JSON.parse(raw) : null;
+    // Check sessionStorage first for current tab/window session
+    const sessionRaw = sessionStorage.getItem(LOCAL_SESSION_KEY);
+    if (sessionRaw) {
+      return JSON.parse(sessionRaw);
+    }
+
+    // Only inspect localStorage if Remember Me was explicitly chosen
+    if (isRememberMeActive()) {
+      const localRaw = localStorage.getItem(LOCAL_SESSION_KEY);
+      if (localRaw) {
+        const parsed = JSON.parse(localRaw);
+        sessionStorage.setItem(LOCAL_SESSION_KEY, localRaw);
+        return parsed;
+      }
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-function saveLocalSession(profile: UserProfile | null) {
+export function saveLocalSession(profile: UserProfile | null, rememberMe = false) {
   try {
     if (profile) {
-      localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(profile));
+      sessionStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(profile));
+      if (rememberMe) {
+        localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(profile));
+        localStorage.setItem(REMEMBER_ME_KEY, 'true');
+      } else {
+        localStorage.removeItem(LOCAL_SESSION_KEY);
+        localStorage.setItem(REMEMBER_ME_KEY, 'false');
+      }
     } else {
+      sessionStorage.removeItem(LOCAL_SESSION_KEY);
+      sessionStorage.removeItem('shoppulse_active_page');
       localStorage.removeItem(LOCAL_SESSION_KEY);
+      localStorage.removeItem(REMEMBER_ME_KEY);
+      localStorage.removeItem('shoppulse_active_page');
     }
     window.dispatchEvent(new CustomEvent('shoppulse_auth_changed'));
   } catch (err) {
@@ -116,7 +172,7 @@ function registerLocalUser(input: RegisterInput): UserProfile {
   return profile;
 }
 
-function signInLocalUser({ email, password }: LoginCredentials): UserProfile {
+function signInLocalUser({ email, password }: LoginCredentials, rememberMe = false): UserProfile {
   const users = getLocalUsers();
   const normalizedEmail = email.toLowerCase().trim();
   const user = users.find(u => u.email.toLowerCase() === normalizedEmail);
@@ -134,7 +190,7 @@ function signInLocalUser({ email, password }: LoginCredentials): UserProfile {
   saveLocalUsers(users);
 
   const { password: _, ...profile } = user;
-  saveLocalSession(profile);
+  saveLocalSession(profile, rememberMe);
 
   return profile;
 }
@@ -170,9 +226,14 @@ export async function getCurrentUserProfile(uid: string): Promise<UserProfile | 
 /**
  * Sign in existing user with email and password.
  */
-export async function signInWithEmail({ email, password }: LoginCredentials): Promise<UserProfile | null> {
+export async function signInWithEmail(
+  { email, password }: LoginCredentials,
+  rememberMe = false
+): Promise<UserProfile | null> {
+  await applyAuthPersistence(rememberMe);
+
   if (isDemoApiKey()) {
-    return signInLocalUser({ email, password });
+    return signInLocalUser({ email, password }, rememberMe);
   }
 
   try {
@@ -221,12 +282,12 @@ export async function signInWithEmail({ email, password }: LoginCredentials): Pr
       lastLogin: now
     };
 
-    saveLocalSession(resolvedProfile);
+    saveLocalSession(resolvedProfile, rememberMe);
     return resolvedProfile;
   } catch (err: any) {
     const errStr = (err?.code || err?.message || '') + '';
     if (errStr.includes('api-key-not-valid') || errStr.includes('invalid-api-key')) {
-      return signInLocalUser({ email, password });
+      return signInLocalUser({ email, password }, rememberMe);
     }
     throw new Error(getFirebaseErrorMessage(err));
   }
