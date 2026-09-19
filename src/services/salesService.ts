@@ -261,37 +261,33 @@ function saveLocalSales(sales: Sale[]): void {
  * Deduct inventory in local storage when running in demo/offline mode.
  */
 function deductLocalInventory(items: Array<{ productId: string; quantity: number }>): void {
-  try {
-    const raw = localStorage.getItem(LOCAL_INVENTORY_KEY);
-    if (!raw) return;
+  const raw = localStorage.getItem(LOCAL_INVENTORY_KEY);
+  if (!raw) return;
 
-    const products = JSON.parse(raw);
-    if (!Array.isArray(products)) return;
+  const products = JSON.parse(raw);
+  if (!Array.isArray(products)) return;
 
-    for (const item of items) {
-      const prod = products.find((p: any) => p.id === item.productId);
-      if (prod) {
-        if (prod.stock < item.quantity) {
-          throw new Error(`Insufficient stock for "${prod.name}". Available: ${prod.stock}, Requested: ${item.quantity}`);
-        }
-        prod.stock = Math.max(0, prod.stock - item.quantity);
-        if (prod.stock === 0) {
-          prod.status = 'Out of Stock';
-        } else if (prod.stock <= (prod.reorderLevel || prod.minStock || 10)) {
-          prod.status = 'Low Stock';
-        } else {
-          prod.status = 'In Stock';
-        }
-        prod.updatedAt = new Date().toISOString();
-        checkAndSyncProductAlerts(prod).catch(() => {});
+  for (const item of items) {
+    const prod = products.find((p: any) => p.id === item.productId);
+    if (prod) {
+      if (prod.stock < item.quantity) {
+        throw new Error(`Insufficient stock for "${prod.name}". Available: ${prod.stock}, Requested: ${item.quantity}`);
       }
+      prod.stock = Math.max(0, prod.stock - item.quantity);
+      if (prod.stock === 0) {
+        prod.status = 'Out of Stock';
+      } else if (prod.stock <= (prod.reorderLevel || prod.minStock || 10)) {
+        prod.status = 'Low Stock';
+      } else {
+        prod.status = 'In Stock';
+      }
+      prod.updatedAt = new Date().toISOString();
+      checkAndSyncProductAlerts(prod).catch(() => {});
     }
-
-    localStorage.setItem(LOCAL_INVENTORY_KEY, JSON.stringify(products));
-    window.dispatchEvent(new CustomEvent('shoppulse_inventory_changed'));
-  } catch (err) {
-    throw err;
   }
+
+  localStorage.setItem(LOCAL_INVENTORY_KEY, JSON.stringify(products));
+  window.dispatchEvent(new CustomEvent('shoppulse_inventory_changed'));
 }
 
 // ---------------------------------------------------------------------------

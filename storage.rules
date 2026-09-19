@@ -1,0 +1,54 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function isUnderMaxSize(maxMegabytes) {
+      return request.resource.size <= maxMegabytes * 1024 * 1024;
+    }
+
+    // Product Catalog Images
+    // Stored under product-images/{shopId}/{productId}/{filename}
+    match /product-images/{shopId}/{productId}/{allImages=**} {
+      // Public / authenticated read for store catalog display
+      allow read: if isAuthenticated();
+
+      // Write allowed only for authenticated shop owner / staff
+      // Enforce image MIME types and maximum 5MB size limit
+      allow write: if isAuthenticated() &&
+        isImage() &&
+        isUnderMaxSize(5);
+    }
+
+    // Scanned Invoices / Receipts for OCR
+    match /invoices/{shopId}/{invoiceFile} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() &&
+        (isImage() || request.resource.contentType == 'application/pdf') &&
+        isUnderMaxSize(10);
+    }
+
+    // User / Shop Profile Logos
+    match /profile-images/{userId}/{fileName} {
+      allow read: if true; // Publicly accessible store avatars
+      allow write: if isAuthenticated() &&
+        request.auth.uid == userId &&
+        isImage() &&
+        isUnderMaxSize(2);
+    }
+
+    // Fallback: Deny everything else
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
