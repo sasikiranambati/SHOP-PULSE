@@ -11,10 +11,15 @@ import {
   Plus, 
   ArrowRight, 
   X, 
-  Store,
   Layers,
   Receipt,
-  ScanLine
+  ScanLine,
+  Settings,
+  Eye,
+  EyeOff,
+  FileText,
+  AlertTriangle,
+  Cpu
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/Button';
@@ -25,15 +30,23 @@ import {
   parseInvoiceFile, 
   SAMPLE_INVOICES, 
   matchItemsWithInventory,
+  getGeminiApiKey,
+  setGeminiApiKey,
+  getPreferredOcrEngine,
+  setPreferredOcrEngine,
   type ParsedInvoice, 
   type InvoiceLineItem 
 } from '../services/invoiceScannerService';
 import { createAlert } from '../services/alertService';
+import { clearAnalyticsCache } from '../services/analyticsService';
+import { getActiveUserId } from '../services/authService';
+import { db } from '../services/firebase';
+import { collection, addDoc } from 'firebase/firestore';
 
 interface InvoiceScannerProps {
   products?: Product[];
   onAddProduct?: (newProd: Omit<Product, 'id'>) => Promise<void>;
-  onRestock?: (id: string, amount: number) => Promise<void>;
+  onRestock?: (id: string, amount: number, purchasePrice?: number) => Promise<void>;
   setActivePage?: (page: PageRoute) => void;
 }
 
@@ -52,11 +65,20 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
   const [invoiceData, setInvoiceData] = useState<ParsedInvoice | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [scanWarning, setScanWarning] = useState<string | null>(null);
+  
+  // Settings & Engine state
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState(() => getGeminiApiKey());
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [selectedEngine, setSelectedEngine] = useState<'auto' | 'gemini' | 'tesseract'>(() => getPreferredOcrEngine());
+  const [isRawTextOpen, setIsRawTextOpen] = useState(false);
   
   // Camera modal state
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+
   const streamRef = useRef<MediaStream | null>(null);
 
   // Hidden file inputs
@@ -125,34 +147,27 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
 
   const processUploadedFile = async (file: File) => {
     setIsScanning(true);
-    setScanProgress(15);
-    setScanStatusText('Preprocessing image contrast & layout...');
+    setScanProgress(10);
+    setScanStatusText('Preparing image for OCR recognition...');
     setSuccessMessage(null);
-
-    const timer1 = setTimeout(() => {
-      setScanProgress(45);
-      setScanStatusText('Detecting supplier headers & text blocks...');
-    }, 400);
-
-    const timer2 = setTimeout(() => {
-      setScanProgress(80);
-      setScanStatusText('Parsing line items, quantities & wholesale prices...');
-    }, 850);
+    setScanWarning(null);
 
     try {
-      const parsed = await parseInvoiceFile(file, products);
-      setTimeout(() => {
-        setScanProgress(100);
-        setScanStatusText('Invoice extraction complete!');
-        setInvoiceData(parsed);
-        setIsScanning(false);
-      }, 1200);
-    } catch (err) {
+      const parsed = await parseInvoiceFile(file, products, (progress, statusText) => {
+        setScanProgress(progress);
+        setScanStatusText(statusText);
+      });
+      setInvoiceData(parsed);
+      if (parsed.items.length === 0) {
+        setScanWarning(
+          'No tabular product rows could be detected automatically from this bill photo. You can add items using the "+ Add Item" button below or check the extracted text.'
+        );
+      }
+    } catch (err: any) {
       console.error('Failed to parse invoice:', err);
-      setIsScanning(false);
+      alert('Failed to parse invoice: ' + (err?.message || 'Unknown error. Please try a clearer photo.'));
     } finally {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
+      setIsScanning(false);
     }
   };
 
@@ -251,31 +266,87 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
     let restockedCount = 0;
 
     try {
+      // Deduplicate items within the invoice batch to prevent redundant inventory rows
+      const mergedBatch: InvoiceLineItem[] = [];
       for (const item of invoiceData.items) {
-        if (item.matchedProductId && onRestock) {
-          // Increase stock for existing product
-          await onRestock(item.matchedProductId, Number(item.quantity));
-          restockedCount++;
-        } else if (onAddProduct) {
-          // Create new product in inventory
-          const now = new Date().toISOString();
-          await onAddProduct({
-            name: item.name,
-            category: item.category || 'Groceries',
-            stock: Number(item.quantity),
-            unit: item.unit || 'pcs',
-            purchasePrice: Number(item.purchasePrice),
-            sellingPrice: Number(item.sellingPrice || item.purchasePrice * 1.2),
-            price: Number(item.sellingPrice || item.purchasePrice * 1.2),
-            reorderLevel: 10,
-            minStock: 10,
-            status: 'In Stock',
-            createdAt: now,
-            updatedAt: now,
-          });
-          addedCount++;
+        const trimmedName = item.name.toLowerCase().trim();
+        const existing = mergedBatch.find(
+          (m) =>
+            (m.matchedProductId && m.matchedProductId === item.matchedProductId) ||
+            m.name.toLowerCase().trim() === trimmedName
+        );
+        if (existing) {
+          existing.quantity = (Number(existing.quantity) || 0) + (Number(item.quantity) || 0);
+          existing.lineTotal = (Number(existing.lineTotal) || 0) + (Number(item.lineTotal) || 0);
+        } else {
+          mergedBatch.push({ ...item });
         }
       }
+
+      for (const item of mergedBatch) {
+        if (item.matchedProductId && onRestock) {
+          // Increase stock for existing product and preserve wholesale purchase price
+          await onRestock(item.matchedProductId, Number(item.quantity), Number(item.purchasePrice));
+          restockedCount++;
+        } else if (onAddProduct) {
+          // Check if product already exists in current store inventory by exact name
+          const existingInStore = products.find(
+            (p) => p.name.toLowerCase().trim() === item.name.toLowerCase().trim()
+          );
+
+          if (existingInStore && onRestock) {
+            await onRestock(existingInStore.id, Number(item.quantity), Number(item.purchasePrice));
+            restockedCount++;
+          } else {
+            // Create new product in inventory
+            const now = new Date().toISOString();
+            await onAddProduct({
+              name: item.name,
+              category: item.category || 'Groceries',
+              stock: Number(item.quantity),
+              unit: item.unit || 'pcs',
+              purchasePrice: Number(item.purchasePrice),
+              sellingPrice: Number(item.sellingPrice || item.purchasePrice * 1.2),
+              price: Number(item.sellingPrice || item.purchasePrice * 1.2),
+              reorderLevel: 10,
+              minStock: 10,
+              status: 'In Stock',
+              createdAt: now,
+              updatedAt: now,
+            });
+            addedCount++;
+          }
+        }
+      }
+
+      // Record purchase transaction in the authenticated user's Firestore workspace
+      const currentUid = getActiveUserId();
+      if (currentUid) {
+        try {
+          await addDoc(collection(db, 'users', currentUid, 'purchases'), {
+            supplierName: invoiceData.supplierName,
+            invoiceNumber: invoiceData.invoiceNumber,
+            invoiceDate: invoiceData.invoiceDate,
+            totalAmount: calculatedTotal,
+            totalUnits,
+            totalItems: mergedBatch.length,
+            items: mergedBatch.map((it) => ({
+              name: it.name,
+              category: it.category,
+              quantity: Number(it.quantity),
+              unit: it.unit,
+              purchasePrice: Number(it.purchasePrice),
+              lineTotal: Number(it.lineTotal),
+            })),
+            createdAt: new Date().toISOString(),
+          });
+        } catch (pErr) {
+          console.warn('Could not record purchase record in Firestore workspace:', pErr);
+        }
+      }
+
+      // Invalidate analytics caches so profit margins and inventory valuation update immediately
+      clearAnalyticsCache();
 
       // Record smart alert
       try {
@@ -283,7 +354,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
           type: 'system',
           priority: 'low',
           productName: invoiceData.supplierName,
-          message: `📦 Restocked ${totalUnits} units across ${invoiceData.items.length} items (Total: ₹${calculatedTotal.toLocaleString('en-IN')}) from Bill #${invoiceData.invoiceNumber}.`,
+          message: `📦 Restocked ${totalUnits} units across ${mergedBatch.length} items (Total: ₹${calculatedTotal.toLocaleString('en-IN')}) from Bill #${invoiceData.invoiceNumber}.`,
         });
       } catch (alertErr) {
         console.warn('Could not post restock alert:', alertErr);
@@ -334,20 +405,45 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
             <Sparkles className="w-4 h-4 animate-pulse" />
           </div>
           <div>
-            <p className="font-extrabold text-slate-900">⚡ Smart Bill AI Scanner Active</p>
-            <p className="text-xs text-slate-600 font-medium">Automatic OCR line-item extraction with instant stock replenishment</p>
+            <div className="flex items-center gap-2">
+              <p className="font-extrabold text-slate-900">
+                {apiKeyInput && selectedEngine !== 'tesseract' ? '⚡ Multimodal AI Vision Active' : '⚡ In-Browser OCR Active (Tesseract.js)'}
+              </p>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black border border-emerald-300">
+                {apiKeyInput && selectedEngine !== 'tesseract' ? 'Gemini AI Vision' : '100% In-Browser'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 font-medium">
+              {apiKeyInput && selectedEngine !== 'tesseract' 
+                ? 'Extracts items, quantities, wholesale rates & retail prices with multimodal AI accuracy' 
+                : 'Scans and parses invoice text locally in your browser. Connect optional free Gemini API for 99%+ accuracy.'}
+            </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-black border border-emerald-300">
-            <Check className="w-3.5 h-3.5 text-emerald-700" /> 98%+ Accuracy
-          </span>
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-teal-100 text-teal-800 text-[11px] font-black border border-teal-300">
-            <Store className="w-3.5 h-3.5 text-teal-700" /> Kirana Ready
-          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsSettingsOpen(true)}
+            icon={<Settings className="w-4 h-4" />}
+            className="text-xs font-bold py-1 px-3 bg-white"
+          >
+            Engine Settings
+          </Button>
         </div>
       </div>
+
+      {/* OCR Extraction Alert / Advice */}
+      {scanWarning && (
+        <div className="p-4 bg-amber-50 rounded-2xl border-2 border-amber-400 text-amber-900 shadow-sm flex items-start gap-3 animate-in fade-in">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-xs sm:text-sm">
+            <p className="font-extrabold">{scanWarning}</p>
+            <p className="text-slate-600 mt-0.5">Tip: Flatten the paper bill, ensure bright ambient light, avoid shadows, and keep the phone camera parallel to the invoice.</p>
+          </div>
+        </div>
+      )}
 
       {/* Success Notification */}
       {successMessage && (
@@ -521,12 +617,19 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                 <CheckCircle2 className="w-6 h-6" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
                     {invoiceData.supplierName}
                   </h3>
                   <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black border border-emerald-300">
                     {invoiceData.confidenceScore}% OCR Match
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-black border border-slate-300">
+                    {invoiceData.engineUsed === 'gemini' 
+                      ? '🤖 Gemini AI Vision' 
+                      : invoiceData.engineUsed === 'tesseract' 
+                      ? '⚡ Tesseract Local OCR' 
+                      : 'Demo Bill'}
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 font-semibold mt-0.5">
@@ -585,6 +688,13 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
               </button>
             </div>
 
+            {invoiceData.confidenceScore < 70 && (
+              <div className="p-3 bg-amber-50 border border-amber-300 rounded-2xl text-amber-900 text-xs font-semibold flex items-center gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Moderate OCR match ({invoiceData.confidenceScore}%). Items with ⚠️ Review have uncertain text or numbers—please check and edit if needed.</span>
+              </div>
+            )}
+
             <div className="overflow-x-auto border border-slate-200 rounded-2xl">
               <table className="w-full text-left text-xs sm:text-sm">
                 <thead className="bg-slate-50 text-slate-700 font-extrabold uppercase text-[11px] border-b border-slate-200 select-none">
@@ -600,15 +710,34 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {invoiceData.items.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                  {invoiceData.items.map((item) => {
+                    const isUncertain = item.lowConfidence || (typeof item.confidence === 'number' && item.confidence < 70);
+                    return (
+                    <tr 
+                      key={item.id} 
+                      className={`transition-colors ${
+                        isUncertain 
+                          ? 'bg-amber-50/70 hover:bg-amber-100/60 border-l-4 border-l-amber-400' 
+                          : 'hover:bg-slate-50/80'
+                      }`}
+                    >
                       <td className="py-2.5 px-3 sm:px-4">
-                        <input
-                          type="text"
-                          value={item.name}
-                          onChange={(e) => handleItemChange(item.id, 'name', e.target.value)}
-                          className="w-full font-bold text-slate-900 bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none"
-                        />
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={item.name}
+                            onChange={(e) => handleItemChange(item.id, 'name', e.target.value)}
+                            className="w-full font-bold text-slate-900 bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none"
+                          />
+                          {isUncertain && (
+                            <span 
+                              className="px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 text-[10px] font-black shrink-0 select-none"
+                              title="Low OCR certainty - please verify"
+                            >
+                              ⚠️ Review
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-2.5 px-2 sm:px-3 text-slate-600">
                         <input
@@ -670,10 +799,48 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                         </button>
                       </td>
                     </tr>
-                  ))}
+                  );
+                })}
                 </tbody>
               </table>
             </div>
+
+            {/* Zero Items Warning */}
+            {invoiceData.items.length === 0 && (
+              <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl text-amber-900 text-xs sm:text-sm font-medium space-y-1">
+                <div className="flex items-center gap-2 font-extrabold text-amber-950">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>No tabular product lines were automatically recognized from this bill.</span>
+                </div>
+                <p className="text-amber-800">
+                  You can click <button type="button" onClick={handleAddItem} className="font-black underline text-emerald-800 cursor-pointer">+ Add Item</button> above to manually input line items, or click below to inspect what text was detected.
+                </p>
+              </div>
+            )}
+
+            {/* Raw Detected OCR Text Accordion */}
+            {invoiceData.rawOcrText && (
+              <div className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50">
+                <button
+                  type="button"
+                  onClick={() => setIsRawTextOpen(!isRawTextOpen)}
+                  className="w-full px-4 py-2.5 flex items-center justify-between text-xs font-black text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-slate-500" />
+                    <span>View Detected Bill Text ({invoiceData.rawOcrText.split('\n').filter(Boolean).length} lines detected)</span>
+                  </span>
+                  <span className="text-[11px] text-emerald-700 font-bold">
+                    {isRawTextOpen ? 'Hide Raw Text ▲' : 'Show Raw Text ▼'}
+                  </span>
+                </button>
+                {isRawTextOpen && (
+                  <div className="p-3 border-t border-slate-200 bg-slate-900 text-slate-200 text-xs font-mono max-h-56 overflow-y-auto whitespace-pre-wrap rounded-b-2xl">
+                    {invoiceData.rawOcrText}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Action Footer */}
@@ -782,6 +949,138 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
         </div>
       )}
 
+      {/* OCR Engine & Gemini API Key Settings Modal */}
+      {isSettingsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 max-w-md w-full shadow-2xl space-y-5 animate-in fade-in">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                  <Cpu className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">OCR & AI Scanner Settings</h3>
+                  <p className="text-xs text-slate-500 font-medium">Configure recognition engine & API keys</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsSettingsOpen(false)} 
+                className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div>
+                <label className="font-extrabold text-slate-800 block mb-1.5 uppercase tracking-wider text-[11px]">
+                  Recognition Engine Mode
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEngine('auto')}
+                    className={`p-2.5 rounded-xl border text-center font-extrabold transition-all cursor-pointer ${
+                      selectedEngine === 'auto' 
+                        ? 'border-emerald-600 bg-emerald-50 text-emerald-900 shadow-2xs' 
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    Auto (Best)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEngine('gemini')}
+                    className={`p-2.5 rounded-xl border text-center font-extrabold transition-all cursor-pointer ${
+                      selectedEngine === 'gemini' 
+                        ? 'border-emerald-600 bg-emerald-50 text-emerald-900 shadow-2xs' 
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    Gemini AI
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEngine('tesseract')}
+                    className={`p-2.5 rounded-xl border text-center font-extrabold transition-all cursor-pointer ${
+                      selectedEngine === 'tesseract' 
+                        ? 'border-emerald-600 bg-emerald-50 text-emerald-900 shadow-2xs' 
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    Local OCR
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1.5">
+                  {selectedEngine === 'auto' && 'Uses Gemini Vision if API key is provided, otherwise falls back to fast in-browser Tesseract OCR.'}
+                  {selectedEngine === 'gemini' && 'Multimodal AI Vision for complex receipts, multi-lingual bills, and thermal printouts.'}
+                  {selectedEngine === 'tesseract' && 'Runs 100% in your browser using Tesseract.js. No internet API required.'}
+                </p>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <label className="font-extrabold text-slate-800 uppercase tracking-wider text-[11px]">
+                    Google Gemini API Key (Optional)
+                  </label>
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] font-black text-emerald-600 hover:underline"
+                  >
+                    Get Free Key ↗
+                  </a>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showApiKey ? 'text' : 'password'}
+                    value={apiKeyInput}
+                    onChange={(e) => setApiKeyInput(e.target.value)}
+                    placeholder="AIzaSy..."
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono text-xs pr-10 focus:outline-none focus:border-emerald-600 focus:bg-white transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                  >
+                    {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Key is saved locally in your browser only. Free Google AI Studio tier includes generous daily quota.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setIsSettingsOpen(false)}
+                className="font-bold"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  setGeminiApiKey(apiKeyInput);
+                  setPreferredOcrEngine(selectedEngine);
+                  setIsSettingsOpen(false);
+                }}
+                className="font-black px-4"
+              >
+                Save Preferences
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
+
