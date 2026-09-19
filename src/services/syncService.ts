@@ -345,3 +345,8 @@ class SyncService {
 }
 
 export const syncService = new SyncService();
+
+if (typeof window !== 'undefined') {
+  (window as any).__shoppulse_sync = syncService;
+}
+

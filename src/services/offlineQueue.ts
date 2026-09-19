@@ -199,3 +199,15 @@ export function getQueueCounts(): { sales: number; inventory: number; total: num
   return { sales, inventory, total: sales + inventory };
 }
 
+if (typeof window !== 'undefined') {
+  (window as any).__shoppulse_queue = {
+    getQueuedSales,
+    getPendingSales,
+    getQueuedInventory,
+    getPendingInventory,
+    getQueueCounts,
+    clearAllQueues
+  };
+}
+
+

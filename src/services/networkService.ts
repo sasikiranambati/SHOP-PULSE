@@ -130,3 +130,8 @@ class NetworkService {
 }
 
 export const networkService = new NetworkService();
+
+if (typeof window !== 'undefined') {
+  (window as any).__shoppulse_network = networkService;
+}
+

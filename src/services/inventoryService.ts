@@ -241,7 +241,7 @@ export async function addProduct(input: ProductInput): Promise<Product> {
     list.unshift(newProduct);
     saveLocalProducts(list);
     await checkAndSyncProductAlerts(newProduct);
-    if (!networkService.isOnline() && !isDemoMode()) {
+    if (!networkService.isOnline()) {
       enqueueInventoryMutation({ mutationType: 'CREATE', productId: id, productData: newProduct });
     }
     return newProduct;
@@ -317,7 +317,7 @@ export async function updateProduct(productId: string, updates: Partial<ProductI
     const list = getLocalProducts().map(p => p.id === productId ? updatedProduct : p);
     saveLocalProducts(list);
     await checkAndSyncProductAlerts(updatedProduct);
-    if (!networkService.isOnline() && !isDemoMode()) {
+    if (!networkService.isOnline()) {
       enqueueInventoryMutation({ mutationType: 'UPDATE', productId, productData: cleanUpdates });
     }
     return;
@@ -345,7 +345,7 @@ export async function deleteProduct(productId: string): Promise<void> {
   if (isDemoMode() || !networkService.isOnline()) {
     const list = getLocalProducts().filter(p => p.id !== productId);
     saveLocalProducts(list);
-    if (!networkService.isOnline() && !isDemoMode()) {
+    if (!networkService.isOnline()) {
       enqueueInventoryMutation({ mutationType: 'DELETE', productId });
     }
     return;
@@ -377,11 +377,12 @@ export async function updateStock(productId: string, newStock: number): Promise<
 export async function setStock(productId: string, newStock: number): Promise<void> {
   if (newStock < 0) throw new Error('Stock quantity cannot be negative.');
 
-  if (isDemoMode()) {
+  if (isDemoMode() || !networkService.isOnline()) {
     const existing = getLocalProducts().find(p => p.id === productId);
     if (!existing) throw new Error(`Product ${productId} not found.`);
     const reorder = existing.reorderLevel ?? existing.minStock ?? 10;
     const status = calculateStockStatus(newStock, reorder);
+    const delta = newStock - existing.stock;
     const updated: Product = {
       ...existing,
       stock: newStock,
@@ -392,6 +393,9 @@ export async function setStock(productId: string, newStock: number): Promise<voi
     const list = getLocalProducts().map(p => p.id === productId ? updated : p);
     saveLocalProducts(list);
     await checkAndSyncProductAlerts(updated);
+    if (!networkService.isOnline()) {
+      enqueueInventoryMutation({ mutationType: 'STOCK_DELTA', productId, stockDelta: delta, productData: { stock: newStock } });
+    }
     return;
   }
 

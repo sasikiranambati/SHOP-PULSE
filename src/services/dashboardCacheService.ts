@@ -104,3 +104,8 @@ class DashboardCacheService {
 }
 
 export const dashboardCacheService = new DashboardCacheService();
+
+if (typeof window !== 'undefined') {
+  (window as any).__shoppulse_cache = dashboardCacheService;
+}
+
