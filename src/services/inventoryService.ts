@@ -477,7 +477,11 @@ export async function setStock(productId: string, newStock: number): Promise<voi
 /**
  * Increase stock quantity using transactions.
  */
-export async function increaseStock(productId: string, quantity: number): Promise<void> {
+export async function increaseStock(
+  productId: string, 
+  quantity: number, 
+  newPurchasePrice?: number
+): Promise<void> {
   const uid = requireActiveUserId();
   if (quantity <= 0) throw new Error('Increase quantity must be greater than 0.');
 
@@ -486,9 +490,11 @@ export async function increaseStock(productId: string, quantity: number): Promis
     if (!existing) throw new Error(`Product ${productId} not found.`);
     const newStock = existing.stock + quantity;
     const status = calculateStockStatus(newStock, existing.reorderLevel);
+    const updatedPurchasePrice = newPurchasePrice && newPurchasePrice > 0 ? newPurchasePrice : existing.purchasePrice;
     const updated: Product = {
       ...existing,
       stock: newStock,
+      purchasePrice: updatedPurchasePrice,
       status,
       lastRestocked: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -513,11 +519,13 @@ export async function increaseStock(productId: string, quantity: number): Promis
       const newStock = current.stock + quantity;
       const reorder = current.reorderLevel ?? current.minStock ?? 10;
       const status = calculateStockStatus(newStock, reorder);
+      const updatedPurchasePrice = newPurchasePrice && newPurchasePrice > 0 ? newPurchasePrice : current.purchasePrice;
 
       updatedProduct = {
         ...current,
         id: productId,
         stock: newStock,
+        purchasePrice: updatedPurchasePrice,
         status,
         lastRestocked: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -525,6 +533,7 @@ export async function increaseStock(productId: string, quantity: number): Promis
 
       transaction.update(docRef, {
         stock: newStock,
+        purchasePrice: updatedPurchasePrice,
         status,
         lastRestocked: updatedProduct.lastRestocked,
         updatedAt: updatedProduct.updatedAt
@@ -540,7 +549,13 @@ export async function increaseStock(productId: string, quantity: number): Promis
     if (existing) {
       const newStock = existing.stock + quantity;
       const status = calculateStockStatus(newStock, existing.reorderLevel);
-      const updated: Product = { ...existing, stock: newStock, status };
+      const updatedPurchasePrice = newPurchasePrice && newPurchasePrice > 0 ? newPurchasePrice : existing.purchasePrice;
+      const updated: Product = {
+        ...existing,
+        stock: newStock,
+        purchasePrice: updatedPurchasePrice,
+        status
+      };
       const list = getLocalProducts(uid).map(p => p.id === productId ? updated : p);
       saveLocalProducts(list, uid);
       await checkAndSyncProductAlerts(updated);

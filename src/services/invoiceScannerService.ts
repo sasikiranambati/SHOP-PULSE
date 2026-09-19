@@ -8,13 +8,7 @@
 import type { Product } from '../types/product';
 import { preprocessInvoiceImage } from './imagePreprocessor';
 import { performOCR } from './ocrService';
-import { clusterWordsIntoRows, detectTableFromRows } from './tableParser';
-import {
-  parseProductRow,
-  extractSupplierInfo,
-  extractGrandTotal,
-  inferProductCategory
-} from './productExtractor';
+import { parseInvoiceDocument, type ClassifiedLine, inferProductCategory } from './invoiceParser';
 
 export interface InvoiceLineItem {
   id: string;
@@ -38,6 +32,8 @@ export interface ParsedInvoice {
   invoiceDate: string;
   items: InvoiceLineItem[];
   totalAmount: number;
+  totalUnits?: number;
+  totalItems?: number;
   confidenceScore: number;
   imagePreviewUrl?: string;
   rawOcrText?: string;
@@ -45,6 +41,7 @@ export interface ParsedInvoice {
   supplierConfidence?: number;
   invoiceNoConfidence?: number;
   dateConfidence?: number;
+  classifiedLines?: ClassifiedLine[];
 }
 
 export const SAMPLE_INVOICES: Array<{ label: string; supplier: string; invoice: ParsedInvoice }> = [
@@ -345,64 +342,31 @@ export async function parseInvoiceWithTesseract(
   imageSource: string | HTMLCanvasElement,
   onProgress?: (progress: number, status: string) => void
 ): Promise<ParsedInvoice> {
-  const ocrResult = await performOCR(imageSource, onProgress);
+  const ocrResult = await performOCR(imageSource, onProgress, 'auto');
 
   if (onProgress) {
-    onProgress(90, 'Aligning table baselines & extracting items...');
+    onProgress(90, 'Classifying invoice lines & extracting items...');
   }
 
-  // 1. Cluster words into visual horizontal rows using geometric bounding boxes
-  const rows = clusterWordsIntoRows(ocrResult.words);
-
-  // 2. Identify table layout and body rows
-  const table = detectTableFromRows(rows);
-
-  // 3. Extract product line items
-  const items: InvoiceLineItem[] = [];
-  for (const bodyRow of table.bodyRows) {
-    const item = parseProductRow(bodyRow);
-    if (item) {
-      items.push(item);
-    }
-  }
-
-  // Fallback: If 0 items detected from table bodyRows, try parsing ALL candidate rows
-  if (items.length === 0) {
-    for (const r of rows) {
-      const item = parseProductRow(r);
-      if (item) {
-        items.push(item);
-      }
-    }
-  }
-
-  // 4. Extract supplier header information
-  const supplierInfo = extractSupplierInfo(rows);
-
-  // 5. Extract or compute grand total
-  const totalAmount = extractGrandTotal(rows, items as any);
-
-  // Confidence calculation
-  const itemConfidenceSum = items.reduce((acc, it) => acc + (it.confidence || 80), 0);
-  const avgItemConf = items.length > 0 ? itemConfidenceSum / items.length : 60;
-  const overallConfidence = Math.min(
-    95,
-    Math.round(supplierInfo.supplierConfidence * 0.3 + avgItemConf * 0.7)
-  );
+  // Layout-aware table parsing with smart line classification & OCR error correction
+  const parsed = parseInvoiceDocument(ocrResult.lines, ocrResult.words, ocrResult.text);
 
   return {
     id: 'inv_' + Date.now().toString(36),
-    supplierName: supplierInfo.supplierName,
-    invoiceNumber: supplierInfo.invoiceNumber,
-    invoiceDate: supplierInfo.invoiceDate,
-    items,
-    totalAmount,
-    confidenceScore: overallConfidence,
+    supplierName: parsed.supplierName,
+    invoiceNumber: parsed.invoiceNumber,
+    invoiceDate: parsed.invoiceDate,
+    items: parsed.items,
+    totalAmount: parsed.totalAmount,
+    totalUnits: parsed.totalUnits,
+    totalItems: parsed.totalItems,
+    confidenceScore: parsed.overallConfidence,
     rawOcrText: ocrResult.text,
     engineUsed: 'tesseract',
-    supplierConfidence: supplierInfo.supplierConfidence,
-    invoiceNoConfidence: supplierInfo.invoiceNoConfidence,
-    dateConfidence: supplierInfo.dateConfidence,
+    supplierConfidence: parsed.supplierConfidence,
+    invoiceNoConfidence: parsed.invoiceNoConfidence,
+    dateConfidence: parsed.dateConfidence,
+    classifiedLines: parsed.classifiedLines,
   };
 }
 

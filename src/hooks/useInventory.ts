@@ -20,7 +20,7 @@ export interface UseInventoryResult {
   deleteProduct: (id: string) => Promise<void>;
   searchProducts: (queryText: string) => Promise<Product[]>;
   refreshInventory: () => Promise<void>;
-  increaseStock: (id: string, quantity: number) => Promise<void>;
+  increaseStock: (id: string, quantity: number, newPurchasePrice?: number) => Promise<void>;
   decreaseStock: (id: string, quantity: number) => Promise<void>;
   setStock: (id: string, newStock: number) => Promise<void>;
   // Backward compatibility aliases
@@ -140,10 +140,10 @@ export function useInventory(initialFilters?: ProductQueryFilters): UseInventory
     }
   }, []);
 
-  const increaseStock = useCallback(async (id: string, quantity: number): Promise<void> => {
+  const increaseStock = useCallback(async (id: string, quantity: number, newPurchasePrice?: number): Promise<void> => {
     setError(null);
     try {
-      await inventoryService.increaseStock(id, quantity);
+      await inventoryService.increaseStock(id, quantity, newPurchasePrice);
     } catch (err: any) {
       setError(err.message || 'Failed to increase stock.');
       throw err;

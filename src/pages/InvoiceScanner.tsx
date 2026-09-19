@@ -38,11 +38,15 @@ import {
   type InvoiceLineItem 
 } from '../services/invoiceScannerService';
 import { createAlert } from '../services/alertService';
+import { clearAnalyticsCache } from '../services/analyticsService';
+import { getActiveUserId } from '../services/authService';
+import { db } from '../services/firebase';
+import { collection, addDoc } from 'firebase/firestore';
 
 interface InvoiceScannerProps {
   products?: Product[];
   onAddProduct?: (newProd: Omit<Product, 'id'>) => Promise<void>;
-  onRestock?: (id: string, amount: number) => Promise<void>;
+  onRestock?: (id: string, amount: number, purchasePrice?: number) => Promise<void>;
   setActivePage?: (page: PageRoute) => void;
 }
 
@@ -281,8 +285,8 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
 
       for (const item of mergedBatch) {
         if (item.matchedProductId && onRestock) {
-          // Increase stock for existing product
-          await onRestock(item.matchedProductId, Number(item.quantity));
+          // Increase stock for existing product and preserve wholesale purchase price
+          await onRestock(item.matchedProductId, Number(item.quantity), Number(item.purchasePrice));
           restockedCount++;
         } else if (onAddProduct) {
           // Check if product already exists in current store inventory by exact name
@@ -291,7 +295,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
           );
 
           if (existingInStore && onRestock) {
-            await onRestock(existingInStore.id, Number(item.quantity));
+            await onRestock(existingInStore.id, Number(item.quantity), Number(item.purchasePrice));
             restockedCount++;
           } else {
             // Create new product in inventory
@@ -314,6 +318,35 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
           }
         }
       }
+
+      // Record purchase transaction in the authenticated user's Firestore workspace
+      const currentUid = getActiveUserId();
+      if (currentUid) {
+        try {
+          await addDoc(collection(db, 'users', currentUid, 'purchases'), {
+            supplierName: invoiceData.supplierName,
+            invoiceNumber: invoiceData.invoiceNumber,
+            invoiceDate: invoiceData.invoiceDate,
+            totalAmount: calculatedTotal,
+            totalUnits,
+            totalItems: mergedBatch.length,
+            items: mergedBatch.map((it) => ({
+              name: it.name,
+              category: it.category,
+              quantity: Number(it.quantity),
+              unit: it.unit,
+              purchasePrice: Number(it.purchasePrice),
+              lineTotal: Number(it.lineTotal),
+            })),
+            createdAt: new Date().toISOString(),
+          });
+        } catch (pErr) {
+          console.warn('Could not record purchase record in Firestore workspace:', pErr);
+        }
+      }
+
+      // Invalidate analytics caches so profit margins and inventory valuation update immediately
+      clearAnalyticsCache();
 
       // Record smart alert
       try {
