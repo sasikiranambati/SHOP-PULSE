@@ -1,11 +1,20 @@
 /**
  * @file invoiceScannerService.ts
- * @description Intelligent invoice parsing service for ShopPulse.
- * Handles image preprocessing, OCR extraction, line item detection,
- * and matching against shop inventory products.
+ * @description Intelligent real invoice parsing service for ShopPulse.
+ * Coordinates client-side image preprocessing, spatial OCR table extraction,
+ * Google Gemini Multimodal Vision AI extraction, and matching against inventory.
  */
 
 import type { Product } from '../types/product';
+import { preprocessInvoiceImage } from './imagePreprocessor';
+import { performOCR } from './ocrService';
+import { clusterWordsIntoRows, detectTableFromRows } from './tableParser';
+import {
+  parseProductRow,
+  extractSupplierInfo,
+  extractGrandTotal,
+  inferProductCategory
+} from './productExtractor';
 
 export interface InvoiceLineItem {
   id: string;
@@ -18,6 +27,8 @@ export interface InvoiceLineItem {
   lineTotal: number;
   matchedProductId?: string;
   currentStock?: number;
+  confidence?: number;
+  lowConfidence?: boolean;
 }
 
 export interface ParsedInvoice {
@@ -29,6 +40,11 @@ export interface ParsedInvoice {
   totalAmount: number;
   confidenceScore: number;
   imagePreviewUrl?: string;
+  rawOcrText?: string;
+  engineUsed?: 'gemini' | 'tesseract' | 'sample';
+  supplierConfidence?: number;
+  invoiceNoConfidence?: number;
+  dateConfidence?: number;
 }
 
 export const SAMPLE_INVOICES: Array<{ label: string; supplier: string; invoice: ParsedInvoice }> = [
@@ -42,6 +58,7 @@ export const SAMPLE_INVOICES: Array<{ label: string; supplier: string; invoice: 
       invoiceDate: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
       confidenceScore: 97,
       totalAmount: 3850,
+      engineUsed: 'sample',
       items: [
         {
           id: 'item_1',
@@ -52,6 +69,8 @@ export const SAMPLE_INVOICES: Array<{ label: string; supplier: string; invoice: 
           purchasePrice: 22,
           sellingPrice: 28,
           lineTotal: 528,
+          confidence: 98,
+          lowConfidence: false,
         },
         {
           id: 'item_2',
@@ -62,6 +81,8 @@ export const SAMPLE_INVOICES: Array<{ label: string; supplier: string; invoice: 
           purchasePrice: 135,
           sellingPrice: 160,
           lineTotal: 2025,
+          confidence: 96,
+          lowConfidence: false,
         },
         {
           id: 'item_3',
@@ -72,6 +93,8 @@ export const SAMPLE_INVOICES: Array<{ label: string; supplier: string; invoice: 
           purchasePrice: 216,
           sellingPrice: 250,
           lineTotal: 1296,
+          confidence: 97,
+          lowConfidence: false,
         },
       ],
     },
@@ -86,6 +109,7 @@ export const SAMPLE_INVOICES: Array<{ label: string; supplier: string; invoice: 
       invoiceDate: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
       confidenceScore: 99,
       totalAmount: 2350,
+      engineUsed: 'sample',
       items: [
         {
           id: 'item_4',
@@ -96,6 +120,8 @@ export const SAMPLE_INVOICES: Array<{ label: string; supplier: string; invoice: 
           purchasePrice: 25,
           sellingPrice: 27,
           lineTotal: 750,
+          confidence: 99,
+          lowConfidence: false,
         },
         {
           id: 'item_5',
@@ -106,6 +132,8 @@ export const SAMPLE_INVOICES: Array<{ label: string; supplier: string; invoice: 
           purchasePrice: 50,
           sellingPrice: 58,
           lineTotal: 1000,
+          confidence: 99,
+          lowConfidence: false,
         },
         {
           id: 'item_6',
@@ -116,6 +144,8 @@ export const SAMPLE_INVOICES: Array<{ label: string; supplier: string; invoice: 
           purchasePrice: 30,
           sellingPrice: 35,
           lineTotal: 600,
+          confidence: 98,
+          lowConfidence: false,
         },
       ],
     },
@@ -130,6 +160,7 @@ export const SAMPLE_INVOICES: Array<{ label: string; supplier: string; invoice: 
       invoiceDate: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
       confidenceScore: 95,
       totalAmount: 1750,
+      engineUsed: 'sample',
       items: [
         {
           id: 'item_7',
@@ -140,6 +171,8 @@ export const SAMPLE_INVOICES: Array<{ label: string; supplier: string; invoice: 
           purchasePrice: 11.5,
           sellingPrice: 14,
           lineTotal: 552,
+          confidence: 96,
+          lowConfidence: false,
         },
         {
           id: 'item_8',
@@ -150,6 +183,8 @@ export const SAMPLE_INVOICES: Array<{ label: string; supplier: string; invoice: 
           purchasePrice: 18,
           sellingPrice: 25,
           lineTotal: 648,
+          confidence: 95,
+          lowConfidence: false,
         },
         {
           id: 'item_9',
@@ -160,11 +195,218 @@ export const SAMPLE_INVOICES: Array<{ label: string; supplier: string; invoice: 
           purchasePrice: 55,
           sellingPrice: 70,
           lineTotal: 550,
+          confidence: 94,
+          lowConfidence: false,
         },
       ],
     },
   },
 ];
+
+// --- Engine and API Key Utilities ---
+
+const GEMINI_KEY_STORAGE = 'shoppulse_gemini_api_key';
+const OCR_ENGINE_STORAGE = 'shoppulse_ocr_engine';
+
+export function getGeminiApiKey(): string {
+  const envKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) || '';
+  const localKey = localStorage.getItem(GEMINI_KEY_STORAGE) || '';
+  return localKey.trim() || envKey.trim();
+}
+
+export function setGeminiApiKey(key: string): void {
+  if (key.trim()) {
+    localStorage.setItem(GEMINI_KEY_STORAGE, key.trim());
+  } else {
+    localStorage.removeItem(GEMINI_KEY_STORAGE);
+  }
+}
+
+export function getPreferredOcrEngine(): 'auto' | 'gemini' | 'tesseract' {
+  const stored = localStorage.getItem(OCR_ENGINE_STORAGE);
+  if (stored === 'gemini' || stored === 'tesseract') return stored;
+  return 'auto';
+}
+
+export function setPreferredOcrEngine(engine: 'auto' | 'gemini' | 'tesseract'): void {
+  localStorage.setItem(OCR_ENGINE_STORAGE, engine);
+}
+
+// --- Google Gemini Multimodal Vision AI Extraction ---
+
+export async function parseInvoiceWithGemini(
+  base64Image: string,
+  mimeType: string,
+  apiKey: string
+): Promise<ParsedInvoice> {
+  const prompt = `You are an expert OCR and retail receipt / invoice reader specialized in Indian FMCG, Kirana, and wholesale invoices.
+Examine this invoice image and extract the structured bill data.
+Return ONLY a valid JSON object matching this schema without any markdown wrapping or extra comments:
+{
+  "supplierName": "Store, Wholesaler or Distributor Name",
+  "invoiceNumber": "Invoice or Bill Reference Number",
+  "invoiceDate": "Date in DD/MM/YYYY or original text format",
+  "confidenceScore": 98,
+  "totalAmount": 1500,
+  "items": [
+    {
+      "name": "Full product title including weight or pack size (e.g. Aashirvaad Atta 5kg)",
+      "category": "Groceries | Dairy | Beverages | Snacks | Personal Care | Household | Other",
+      "quantity": 10,
+      "unit": "pcs | kg | g | l | ml | box | pkt | bag",
+      "purchasePrice": 45,
+      "sellingPrice": 55,
+      "lineTotal": 450
+    }
+  ]
+}
+
+Important Rules:
+1. Extract EVERY distinct product line item present in the invoice table or bill list.
+2. If selling price / MRP is specified, use it. If not printed, calculate a realistic retail selling price (15% to 25% higher than purchasePrice).
+3. Do NOT include taxes (CGST/SGST), subtotals, round-off, or discounts as items.
+4. Output raw JSON only. Do not enclose in backticks or markdown codeblocks.`;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
+  const requestBody = {
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          {
+            inline_data: {
+              mime_type: mimeType,
+              data: base64Image,
+            },
+          },
+        ],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.1,
+      response_mime_type: 'application/json',
+    },
+  };
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini API error (${response.status}): ${errorText}`);
+  }
+
+  const json = await response.json();
+  const textOutput = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  if (!textOutput) {
+    throw new Error('Gemini returned an empty response.');
+  }
+
+  // Clean any markdown backticks if model included them
+  const cleaned = textOutput.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  const parsedData = JSON.parse(cleaned);
+
+  const items: InvoiceLineItem[] = (parsedData.items || []).map((it: any, idx: number) => ({
+    id: 'item_gemini_' + Date.now().toString(36) + '_' + idx,
+    name: String(it.name || 'Product ' + (idx + 1)).trim(),
+    category: String(it.category || inferProductCategory(it.name || '')),
+    quantity: Math.max(1, Number(it.quantity) || 1),
+    unit: String(it.unit || 'pcs').toLowerCase(),
+    purchasePrice: Number(it.purchasePrice) || 0,
+    sellingPrice: Number(it.sellingPrice) || Math.round((Number(it.purchasePrice) || 0) * 1.2),
+    lineTotal: Number(it.lineTotal) || (Number(it.quantity) || 1) * (Number(it.purchasePrice) || 0),
+    confidence: 96,
+    lowConfidence: false,
+  }));
+
+  return {
+    id: 'inv_' + Date.now().toString(36),
+    supplierName: String(parsedData.supplierName || 'Wholesale Supplier').trim(),
+    invoiceNumber: String(parsedData.invoiceNumber || `INV-${Date.now().toString().slice(-6)}`).trim(),
+    invoiceDate: String(parsedData.invoiceDate || new Date().toLocaleDateString('en-IN')).trim(),
+    items,
+    totalAmount: Number(parsedData.totalAmount) || items.reduce((acc, i) => acc + i.lineTotal, 0),
+    confidenceScore: Math.min(99, Math.max(85, Number(parsedData.confidenceScore) || 96)),
+    rawOcrText: textOutput,
+    engineUsed: 'gemini',
+    supplierConfidence: 95,
+    invoiceNoConfidence: 95,
+    dateConfidence: 95,
+  };
+}
+
+// --- In-Browser Tesseract.js Spatial Table OCR Engine ---
+
+export async function parseInvoiceWithTesseract(
+  imageSource: string | HTMLCanvasElement,
+  onProgress?: (progress: number, status: string) => void
+): Promise<ParsedInvoice> {
+  const ocrResult = await performOCR(imageSource, onProgress);
+
+  if (onProgress) {
+    onProgress(90, 'Aligning table baselines & extracting items...');
+  }
+
+  // 1. Cluster words into visual horizontal rows using geometric bounding boxes
+  const rows = clusterWordsIntoRows(ocrResult.words);
+
+  // 2. Identify table layout and body rows
+  const table = detectTableFromRows(rows);
+
+  // 3. Extract product line items
+  const items: InvoiceLineItem[] = [];
+  for (const bodyRow of table.bodyRows) {
+    const item = parseProductRow(bodyRow);
+    if (item) {
+      items.push(item);
+    }
+  }
+
+  // Fallback: If 0 items detected from table bodyRows, try parsing ALL candidate rows
+  if (items.length === 0) {
+    for (const r of rows) {
+      const item = parseProductRow(r);
+      if (item) {
+        items.push(item);
+      }
+    }
+  }
+
+  // 4. Extract supplier header information
+  const supplierInfo = extractSupplierInfo(rows);
+
+  // 5. Extract or compute grand total
+  const totalAmount = extractGrandTotal(rows, items as any);
+
+  // Confidence calculation
+  const itemConfidenceSum = items.reduce((acc, it) => acc + (it.confidence || 80), 0);
+  const avgItemConf = items.length > 0 ? itemConfidenceSum / items.length : 60;
+  const overallConfidence = Math.min(
+    95,
+    Math.round(supplierInfo.supplierConfidence * 0.3 + avgItemConf * 0.7)
+  );
+
+  return {
+    id: 'inv_' + Date.now().toString(36),
+    supplierName: supplierInfo.supplierName,
+    invoiceNumber: supplierInfo.invoiceNumber,
+    invoiceDate: supplierInfo.invoiceDate,
+    items,
+    totalAmount,
+    confidenceScore: overallConfidence,
+    rawOcrText: ocrResult.text,
+    engineUsed: 'tesseract',
+    supplierConfidence: supplierInfo.supplierConfidence,
+    invoiceNoConfidence: supplierInfo.invoiceNoConfidence,
+    dateConfidence: supplierInfo.dateConfidence,
+  };
+}
+
+// --- Inventory Matching ---
 
 /**
  * Matches extracted invoice items against existing shop inventory products.
@@ -175,13 +417,15 @@ export function matchItemsWithInventory(
 ): InvoiceLineItem[] {
   return items.map((item) => {
     const normalizedItemName = item.name.toLowerCase().trim();
-    
+
     // Find closest match by exact or substring name
     const match = existingProducts.find((p) => {
       const pName = p.name.toLowerCase().trim();
-      return pName === normalizedItemName || 
-             pName.includes(normalizedItemName) || 
-             normalizedItemName.includes(pName);
+      return (
+        pName === normalizedItemName ||
+        pName.includes(normalizedItemName) ||
+        normalizedItemName.includes(pName)
+      );
     });
 
     if (match) {
@@ -198,40 +442,61 @@ export function matchItemsWithInventory(
   });
 }
 
+// --- Main Extraction Orchestrator ---
+
 /**
- * Simulates intelligent OCR processing of an invoice image or PDF file.
+ * Parses an uploaded invoice file using AI Vision (if Gemini key available)
+ * or real in-browser OCR (Tesseract.js with spatial table reconstruction).
  */
 export async function parseInvoiceFile(
   file: File,
-  existingProducts: Product[] = []
+  existingProducts: Product[] = [],
+  onProgress?: (progress: number, statusText: string) => void
 ): Promise<ParsedInvoice> {
-  // Generate preview data URL
-  const imagePreviewUrl = await new Promise<string>((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => resolve('');
-    reader.readAsDataURL(file);
-  });
-
-  // Pick a realistic sample dataset based on file name or hash
-  const fileName = file.name.toLowerCase();
-  let baseSample = SAMPLE_INVOICES[0].invoice;
-
-  if (fileName.includes('dairy') || fileName.includes('milk') || fileName.includes('amul')) {
-    baseSample = SAMPLE_INVOICES[1].invoice;
-  } else if (fileName.includes('snack') || fileName.includes('biscuit') || fileName.includes('nestle') || fileName.includes('britannia')) {
-    baseSample = SAMPLE_INVOICES[2].invoice;
+  if (onProgress) {
+    onProgress(5, 'Deskewing, denoising & enhancing image contrast...');
   }
 
-  // Clone sample invoice and assign image preview
-  const parsedInvoice: ParsedInvoice = {
-    ...baseSample,
-    id: 'inv_' + Date.now().toString(36),
-    invoiceNumber: `INV-${Date.now().toString().slice(-6)}`,
-    invoiceDate: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-    imagePreviewUrl,
-    items: matchItemsWithInventory(baseSample.items, existingProducts),
-  };
+  // Preprocess image (deskew, denoise, adaptive threshold, text sharpening)
+  const preprocessed = await preprocessInvoiceImage(file);
+  const geminiApiKey = getGeminiApiKey();
+  const preferredEngine = getPreferredOcrEngine();
+
+  let parsedInvoice: ParsedInvoice | null = null;
+
+  // Tier 1: Try Gemini Vision if preferred or auto-detected key
+  if (geminiApiKey && preferredEngine !== 'tesseract') {
+    try {
+      if (onProgress) {
+        onProgress(25, 'Connecting to Gemini AI Vision...');
+      }
+      parsedInvoice = await parseInvoiceWithGemini(
+        preprocessed.base64Raw,
+        'image/png',
+        geminiApiKey
+      );
+    } catch (err) {
+      console.warn('Gemini AI Vision extraction failed, falling back to local OCR:', err);
+      if (onProgress) {
+        onProgress(20, 'AI Vision unavailable. Switching to Local OCR Engine...');
+      }
+    }
+  }
+
+  // Tier 2: In-browser local Tesseract OCR with spatial table extraction
+  if (!parsedInvoice) {
+    parsedInvoice = await parseInvoiceWithTesseract(preprocessed.processedDataUrl, onProgress);
+  }
+
+  // Attach original image preview for user review
+  parsedInvoice.imagePreviewUrl = preprocessed.originalDataUrl;
+
+  // Match items against store inventory
+  parsedInvoice.items = matchItemsWithInventory(parsedInvoice.items, existingProducts);
+
+  if (onProgress) {
+    onProgress(100, 'Invoice extraction complete!');
+  }
 
   return parsedInvoice;
 }
