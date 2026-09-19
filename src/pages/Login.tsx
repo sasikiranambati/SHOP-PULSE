@@ -15,6 +15,7 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
   const { login } = useAuth();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,7 +48,7 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
 
     try {
       setLoading(true);
-      const profile = await login({ email: emailToUse, password });
+      const profile = await login({ email: emailToUse, password }, rememberMe);
       onLoginSuccess(profile?.shopName || profile?.ownerName || 'Gupta Kirana Store');
       setActivePage('dashboard');
     } catch (err: any) {
@@ -116,6 +117,19 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium disabled:bg-slate-100 disabled:cursor-not-allowed"
             />
+          </div>
+
+          <div className="flex items-center justify-between text-xs sm:text-sm pt-0.5">
+            <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-700 select-none">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                disabled={loading}
+                className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+              />
+              <span>{t('auth.rememberMe') || 'Remember me on this device'}</span>
+            </label>
           </div>
 
           <Button 

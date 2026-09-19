@@ -23,7 +23,7 @@ export interface AuthContextType {
   userProfile: UserProfile | null;
   loading: boolean;
   error: string | null;
-  login: (credentials: LoginCredentials) => Promise<UserProfile | null>;
+  login: (credentials: LoginCredentials, rememberMe?: boolean) => Promise<UserProfile | null>;
   loginWithGoogle: () => Promise<UserProfile>;
   register: (input: RegisterInput) => Promise<UserProfile>;
   logout: () => Promise<void>;
@@ -93,10 +93,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, [fetchProfile]);
 
-  const handleLogin = async (credentials: LoginCredentials): Promise<UserProfile | null> => {
+  const handleLogin = async (credentials: LoginCredentials, rememberMe = false): Promise<UserProfile | null> => {
     setError(null);
     try {
-      const profile = await signInWithEmail(credentials);
+      const profile = await signInWithEmail(credentials, rememberMe);
       setUserProfile(profile);
       return profile;
     } catch (err: any) {
@@ -136,6 +136,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setUserProfile(null);
       setFirebaseUser(null);
+      sessionStorage.removeItem('shoppulse_active_page');
       localStorage.removeItem('shoppulse_active_page');
     }
   };

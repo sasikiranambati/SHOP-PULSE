@@ -13,6 +13,7 @@ import {
 import { Button } from '../components/Button';
 import type { PageRoute } from '../types';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useAuth } from '../hooks/useAuth';
 import { LanguageSelectorModal } from '../components/LanguageSelectorModal';
 
 interface LandingProps {
@@ -21,6 +22,7 @@ interface LandingProps {
 
 export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
   const { t, currentLanguageMeta } = useLanguage();
+  const { firebaseUser } = useAuth();
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
 
   const businessTypes = [
@@ -86,12 +88,20 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
               <span>{currentLanguageMeta.nativeName}</span>
             </button>
 
-            <Button variant="outline" size="sm" onClick={() => setActivePage('login')} className="font-bold">
-              {t('auth.loginHere')}
-            </Button>
-            <Button variant="primary" size="sm" onClick={() => setActivePage('signup')} className="font-black">
-              {t('auth.createAccount')}
-            </Button>
+            {firebaseUser ? (
+              <Button variant="primary" size="sm" onClick={() => setActivePage('dashboard')} className="font-black">
+                {t('landing.launchDashboard')}
+              </Button>
+            ) : (
+              <>
+                <Button variant="outline" size="sm" onClick={() => setActivePage('login')} className="font-bold">
+                  {t('auth.loginHere')}
+                </Button>
+                <Button variant="primary" size="sm" onClick={() => setActivePage('signup')} className="font-black">
+                  {t('auth.createAccount')}
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </nav>
@@ -115,11 +125,11 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
           <Button 
             variant="primary" 
             size="lg" 
-            onClick={() => setActivePage('dashboard')}
+            onClick={() => setActivePage(firebaseUser ? 'dashboard' : 'login')}
             icon={<ArrowRight className="w-5 h-5" />}
             className="font-black py-4"
           >
-            {t('landing.launchDashboard')}
+            {firebaseUser ? t('landing.launchDashboard') : (t('auth.loginBtn') || 'Sign In to Dashboard')}
           </Button>
         </div>
 
