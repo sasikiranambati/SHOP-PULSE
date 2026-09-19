@@ -5,7 +5,7 @@
  * Belongs in `src/services/dashboardCacheService.ts`.
  */
 
-const DASHBOARD_CACHE_KEY = 'shoppulse_dashboard_cache';
+import { getActiveUserId } from './authService';
 
 export interface DashboardCacheSnapshot {
   todayRevenue: number;
@@ -18,23 +18,29 @@ export interface DashboardCacheSnapshot {
 }
 
 const DEFAULT_CACHE: DashboardCacheSnapshot = {
-  todayRevenue: 8450,
-  itemsSoldToday: 42,
-  totalOrdersToday: 18,
-  totalProductsCount: 24,
-  lowStockCount: 3,
-  unreadAlertsCount: 3,
+  todayRevenue: 0,
+  itemsSoldToday: 0,
+  totalOrdersToday: 0,
+  totalProductsCount: 0,
+  lowStockCount: 0,
+  unreadAlertsCount: 0,
   cachedAt: new Date().toISOString()
 };
+
+function getDashboardCacheKey(userUid?: string): string {
+  const uid = userUid || getActiveUserId() || 'global';
+  return `shoppulse_dashboard_cache_${uid}`;
+}
 
 class DashboardCacheService {
   /**
    * Synchronously fetch the cached dashboard metrics snapshot.
    * Returns immediately in < 5ms without awaiting network/Firestore.
    */
-  public getSnapshot(): DashboardCacheSnapshot {
+  public getSnapshot(userUid?: string): DashboardCacheSnapshot {
     try {
-      const raw = localStorage.getItem(DASHBOARD_CACHE_KEY);
+      const key = getDashboardCacheKey(userUid);
+      const raw = localStorage.getItem(key);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed.todayRevenue === 'number') {
@@ -50,15 +56,16 @@ class DashboardCacheService {
   /**
    * Update the cached dashboard snapshot in local storage and notify listeners.
    */
-  public updateSnapshot(updates: Partial<DashboardCacheSnapshot>): void {
+  public updateSnapshot(updates: Partial<DashboardCacheSnapshot>, userUid?: string): void {
     try {
-      const current = this.getSnapshot();
+      const key = getDashboardCacheKey(userUid);
+      const current = this.getSnapshot(userUid);
       const updated: DashboardCacheSnapshot = {
         ...current,
         ...updates,
         cachedAt: new Date().toISOString()
       };
-      localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(updated));
+      localStorage.setItem(key, JSON.stringify(updated));
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('shoppulse_dashboard_cache_updated', { detail: updated }));
       }
@@ -91,9 +98,10 @@ class DashboardCacheService {
   /**
    * Reset or clear the cached snapshot.
    */
-  public clearSnapshot(): void {
+  public clearSnapshot(userUid?: string): void {
     try {
-      localStorage.removeItem(DASHBOARD_CACHE_KEY);
+      const key = getDashboardCacheKey(userUid);
+      localStorage.removeItem(key);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('shoppulse_dashboard_cache_updated', { detail: DEFAULT_CACHE }));
       }

@@ -15,6 +15,7 @@ import type {
 import * as salesService from '../services/salesService';
 import { generateReceipt } from '../utils/receiptGenerator';
 import { dashboardCacheService } from '../services/dashboardCacheService';
+import { useAuth } from './useAuth';
 
 export interface UseSalesResult {
   sales: Sale[];
@@ -34,11 +35,13 @@ export interface UseSalesResult {
  * Hook for sales checkout management, daily revenue metrics, and receipt generation.
  */
 export function useSales(initialLimit: number = 50): UseSalesResult {
+  const { user } = useAuth();
+  const currentUid = user?.uid;
   const [sales, setSales] = useState<Sale[]>([]);
   
   // Instant synchronous initialization from dashboard cache (Stale-While-Revalidate)
   const [todaySummary, setTodaySummary] = useState<DailySalesSummary | null>(() => {
-    const cached = dashboardCacheService.getSnapshot();
+    const cached = dashboardCacheService.getSnapshot(currentUid);
     return {
       todaySales: cached.todayRevenue,
       itemsSoldToday: cached.itemsSoldToday,
@@ -49,14 +52,12 @@ export function useSales(initialLimit: number = 50): UseSalesResult {
   });
 
   const [dashboardStats, setDashboardStats] = useState<DashboardSalesStats | null>(() => {
-    const cached = dashboardCacheService.getSnapshot();
+    const cached = dashboardCacheService.getSnapshot(currentUid);
     return {
       todayRevenue: cached.todayRevenue,
       itemsSoldToday: cached.itemsSoldToday,
       totalTransactionsToday: cached.totalOrdersToday,
       averageBillValue: cached.totalOrdersToday > 0 ? Math.round(cached.todayRevenue / cached.totalOrdersToday) : 0,
-      cashRevenue: Math.round(cached.todayRevenue * 0.7),
-      upiRevenue: Math.round(cached.todayRevenue * 0.3),
       recentSales: []
     };
   });
@@ -66,6 +67,24 @@ export function useSales(initialLimit: number = 50): UseSalesResult {
 
   // Compute live dashboard metrics from sales list
   const updateMetrics = useCallback(async () => {
+    if (!currentUid) {
+      setDashboardStats({
+        todayRevenue: 0,
+        itemsSoldToday: 0,
+        totalTransactionsToday: 0,
+        averageBillValue: 0,
+        recentSales: []
+      });
+      setTodaySummary({
+        todaySales: 0,
+        itemsSoldToday: 0,
+        salesCount: 0,
+        averageBill: 0,
+        date: new Date().toISOString().split('T')[0]
+      });
+      return;
+    }
+
     try {
       const stats = await salesService.getDashboardSalesStats();
       setDashboardStats(stats);
@@ -79,10 +98,17 @@ export function useSales(initialLimit: number = 50): UseSalesResult {
     } catch (err: any) {
       console.warn('Could not compute daily sales stats:', err);
     }
-  }, []);
+  }, [currentUid]);
 
   // Real-time onSnapshot subscription with automatic unsubscribe cleanup
   useEffect(() => {
+    if (!currentUid) {
+      setSales([]);
+      setLoading(false);
+      updateMetrics();
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -102,10 +128,18 @@ export function useSales(initialLimit: number = 50): UseSalesResult {
       updateMetrics();
     }, initialLimit);
 
+    const handleAuthChange = () => {
+      setSales([]);
+      setLoading(true);
+      updateMetrics();
+    };
+    window.addEventListener('shoppulse_auth_changed', handleAuthChange);
+
     return () => {
       unsubscribe();
+      window.removeEventListener('shoppulse_auth_changed', handleAuthChange);
     };
-  }, [initialLimit, updateMetrics]);
+  }, [currentUid, initialLimit, updateMetrics]);
 
   const refreshSales = useCallback(async () => {
     setLoading(true);

@@ -27,9 +27,8 @@ import {
 } from './offlineQueue';
 import type { SyncStats, SyncResult } from '../types/sync';
 import { getFirebaseErrorMessage } from '../utils/firebaseErrorMapper';
+import { getActiveUserId } from './authService';
 
-const SALES_COLLECTION = 'sales';
-const PRODUCTS_COLLECTION = 'products';
 const MAX_ATTEMPTS = 5;
 
 function isDemoMode(): boolean {
@@ -212,32 +211,37 @@ class SyncService {
    * Upload all queued sales to Firestore with deterministic ID deduplication.
    */
   public async syncPendingSales(): Promise<{ synced: number; failed: number; errors: string[] }> {
-    const pending = getPendingSales();
+    const uid = getActiveUserId() || undefined;
+    const pending = getPendingSales(uid);
     let synced = 0;
     let failed = 0;
     const errors: string[] = [];
+
+    if (!uid && pending.length > 0) {
+      return { synced: 0, failed: pending.length, errors: ['No active user authenticated for sync'] };
+    }
 
     for (const item of pending) {
       const attempts = (item.attempts || 0) + 1;
       const nowIso = new Date().toISOString();
 
       if (attempts > MAX_ATTEMPTS) {
-        updateQueuedSale(item.id, { status: 'failed', attempts, lastAttemptAt: nowIso });
+        updateQueuedSale(item.id, { status: 'failed', attempts, lastAttemptAt: nowIso }, uid);
         failed++;
         continue;
       }
 
-      updateQueuedSale(item.id, { status: 'syncing', attempts, lastAttemptAt: nowIso });
+      updateQueuedSale(item.id, { status: 'syncing', attempts, lastAttemptAt: nowIso }, uid);
 
       if (isDemoMode()) {
         // In local/demo mode, acknowledge and clear from queue
-        removeQueuedSale(item.id);
+        removeQueuedSale(item.id, uid);
         synced++;
         continue;
       }
 
       try {
-        const saleDocRef = doc(db, SALES_COLLECTION, item.sale.id);
+        const saleDocRef = doc(db, 'users', uid!, 'sales', item.sale.id);
         const existingSnap = await getDoc(saleDocRef);
 
         // Deduplication guard: if already uploaded to Firestore, avoid duplicate write
@@ -250,7 +254,7 @@ class SyncService {
           });
         }
 
-        removeQueuedSale(item.id);
+        removeQueuedSale(item.id, uid);
         synced++;
       } catch (err: any) {
         const errMsg = getFirebaseErrorMessage(err);
@@ -259,7 +263,7 @@ class SyncService {
           status: 'pending',
           lastError: errMsg,
           lastAttemptAt: nowIso
-        });
+        }, uid);
         failed++;
       }
     }
@@ -271,31 +275,36 @@ class SyncService {
    * Upload all queued inventory modifications with atomic delta conflict resolution.
    */
   public async syncPendingInventory(): Promise<{ synced: number; failed: number; errors: string[] }> {
-    const pending = getPendingInventory();
+    const uid = getActiveUserId() || undefined;
+    const pending = getPendingInventory(uid);
     let synced = 0;
     let failed = 0;
     const errors: string[] = [];
+
+    if (!uid && pending.length > 0) {
+      return { synced: 0, failed: pending.length, errors: ['No active user authenticated for sync'] };
+    }
 
     for (const item of pending) {
       const attempts = (item.attempts || 0) + 1;
       const nowIso = new Date().toISOString();
 
       if (attempts > MAX_ATTEMPTS) {
-        updateQueuedInventory(item.id, { status: 'failed', attempts, lastAttemptAt: nowIso });
+        updateQueuedInventory(item.id, { status: 'failed', attempts, lastAttemptAt: nowIso }, uid);
         failed++;
         continue;
       }
 
-      updateQueuedInventory(item.id, { status: 'syncing', attempts, lastAttemptAt: nowIso });
+      updateQueuedInventory(item.id, { status: 'syncing', attempts, lastAttemptAt: nowIso }, uid);
 
       if (isDemoMode()) {
-        removeQueuedInventory(item.id);
+        removeQueuedInventory(item.id, uid);
         synced++;
         continue;
       }
 
       try {
-        const productDocRef = doc(db, PRODUCTS_COLLECTION, item.productId);
+        const productDocRef = doc(db, 'users', uid!, 'inventory', item.productId);
 
         switch (item.mutationType) {
           case 'CREATE':
@@ -326,7 +335,7 @@ class SyncService {
             break;
         }
 
-        removeQueuedInventory(item.id);
+        removeQueuedInventory(item.id, uid);
         synced++;
       } catch (err: any) {
         const errMsg = getFirebaseErrorMessage(err);
@@ -335,7 +344,7 @@ class SyncService {
           status: 'pending',
           lastError: errMsg,
           lastAttemptAt: nowIso
-        });
+        }, uid);
         failed++;
       }
     }

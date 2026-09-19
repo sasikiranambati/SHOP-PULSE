@@ -15,6 +15,7 @@ import type {
 import type { Product } from '../types/product';
 import * as alertService from '../services/alertService';
 import { calculateReorderSuggestions } from '../utils/reorderEngine';
+import { useAuth } from './useAuth';
 
 export interface UseAlertsResult {
   alerts: Alert[];
@@ -44,6 +45,8 @@ export function useAlerts(
   products: Product[] = [],
   options?: AlertFilterOptions
 ): UseAlertsResult {
+  const { user } = useAuth();
+  const currentUid = user?.uid;
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [dashboardAlertStats, setDashboardAlertStats] = useState<DashboardAlertStats | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -51,16 +54,32 @@ export function useAlerts(
 
   // Compute live dashboard metrics from alert state
   const updateStats = useCallback(async () => {
+    if (!currentUid) {
+      setDashboardAlertStats({
+        totalUnread: 0,
+        criticalAlerts: [],
+        lowStockCount: 0,
+        recentlyResolved: []
+      });
+      return;
+    }
     try {
       const stats = await alertService.getDashboardAlertStats(options?.shopId);
       setDashboardAlertStats(stats);
     } catch (err: any) {
       console.warn('Failed to compute dashboard alert stats:', err);
     }
-  }, [options?.shopId]);
+  }, [currentUid, options?.shopId]);
 
   // Real-time onSnapshot subscription with automatic unsubscribe cleanup
   useEffect(() => {
+    if (!currentUid) {
+      setAlerts([]);
+      setLoading(false);
+      updateStats();
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -80,10 +99,18 @@ export function useAlerts(
       updateStats();
     }, options);
 
+    const handleAuthChange = () => {
+      setAlerts([]);
+      setLoading(true);
+      updateStats();
+    };
+    window.addEventListener('shoppulse_auth_changed', handleAuthChange);
+
     return () => {
       unsubscribe();
+      window.removeEventListener('shoppulse_auth_changed', handleAuthChange);
     };
-  }, [options?.limit, options?.priority, options?.type, updateStats]);
+  }, [currentUid, options?.limit, options?.priority, options?.type, updateStats]);
 
   const refreshAlerts = useCallback(async () => {
     setLoading(true);

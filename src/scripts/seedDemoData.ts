@@ -27,6 +27,7 @@ if (typeof globalThis.window === 'undefined') {
 import { addProduct, getProducts } from '../services/inventoryService';
 import { createSale, getSales } from '../services/salesService';
 import { dashboardCacheService } from '../services/dashboardCacheService';
+import { getActiveUserId } from '../services/authService';
 import type { ProductInput } from '../types/product';
 import type { CreateSaleInput } from '../types/sale';
 
@@ -263,13 +264,14 @@ export async function seedDemoData(options: { overwrite?: boolean } = {}): Promi
     const todayRevenue = todaySalesList.reduce((sum, s) => sum + s.totalAmount, 0);
     const itemsSoldToday = todaySalesList.reduce((sum, s) => sum + (s.items?.reduce((is, i) => is + i.quantity, 0) || 0), 0);
 
+    const uid = getActiveUserId();
     dashboardCacheService.updateSnapshot({
-      todayRevenue: todayRevenue > 0 ? todayRevenue : 8450,
-      itemsSoldToday: itemsSoldToday > 0 ? itemsSoldToday : 42,
-      totalOrdersToday: todaySalesList.length > 0 ? todaySalesList.length : 18,
+      todayRevenue: todayRevenue,
+      itemsSoldToday: itemsSoldToday,
+      totalOrdersToday: todaySalesList.length,
       totalProductsCount: updatedProducts.length,
       lowStockCount: updatedProducts.filter(p => (p.stock <= (p.reorderLevel || 10))).length
-    });
+    }, uid || undefined);
   } catch {
     // Non-critical cache update
   }

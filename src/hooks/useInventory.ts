@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Product, ProductInput, ProductQueryFilters } from '../types/product';
 import * as inventoryService from '../services/inventoryService';
 import { uploadProductImage, replaceProductImage } from '../services/storageService';
+import { useAuth } from './useAuth';
 
 export interface UseInventoryResult {
   products: Product[];
@@ -34,6 +35,8 @@ export interface UseInventoryResult {
  * Hook for managing inventory products, real-time sync, and low stock alerts.
  */
 export function useInventory(initialFilters?: ProductQueryFilters): UseInventoryResult {
+  const { user } = useAuth();
+  const currentUid = user?.uid;
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,8 +45,14 @@ export function useInventory(initialFilters?: ProductQueryFilters): UseInventory
   const searchFilter = initialFilters?.search;
   const statusFilter = initialFilters?.status;
 
-  // Real-time listener for products with automatic unsubscribe cleanup
+  // Real-time listener for products with automatic unsubscribe cleanup and user-isolation reset
   useEffect(() => {
+    if (!currentUid) {
+      setProducts([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -52,10 +61,17 @@ export function useInventory(initialFilters?: ProductQueryFilters): UseInventory
       setLoading(false);
     }, { category: categoryFilter, search: searchFilter, status: statusFilter });
 
+    const handleAuthChange = () => {
+      setProducts([]);
+      setLoading(true);
+    };
+    window.addEventListener('shoppulse_auth_changed', handleAuthChange);
+
     return () => {
       unsubscribe();
+      window.removeEventListener('shoppulse_auth_changed', handleAuthChange);
     };
-  }, [categoryFilter, searchFilter, statusFilter]);
+  }, [currentUid, categoryFilter, searchFilter, statusFilter]);
 
   const refreshInventory = useCallback(async () => {
     setLoading(true);
