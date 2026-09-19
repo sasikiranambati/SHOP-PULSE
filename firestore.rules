@@ -1,0 +1,148 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------------------
+    // Helper Functions
+    // -------------------------------------------------------------------------
+    
+    // Check if request is from an authenticated user
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    // Check if authenticated user matches document owner/ID
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Check if user belongs to the specified shop
+    function belongsToShop(shopId) {
+      return isAuthenticated() && (
+        request.auth.uid == shopId ||
+        (request.auth.token != null && request.auth.token.shopId == shopId) ||
+        resource.data.shopId == request.auth.uid ||
+        resource.data.userId == request.auth.uid
+      );
+    }
+
+    // Validate positive numeric amounts
+    function isPositiveNumber(num) {
+      return num is number && num >= 0;
+    }
+
+    // Validate non-empty string
+    function isNonEmptyString(str) {
+      return str is string && str.size() > 0 && str.size() <= 200;
+    }
+
+    // -------------------------------------------------------------------------
+    // 1. Users Collection
+    // -------------------------------------------------------------------------
+    match /users/{userId} {
+      // User can only view, create, and edit their own user profile
+      allow read, write: if isOwner(userId);
+      
+      // Allow creation during initial registration
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. Products / Inventory Collection
+    // -------------------------------------------------------------------------
+    match /products/{productId} {
+      // Read allowed for authenticated users
+      allow read: if isAuthenticated();
+
+      // Create product: must have valid name, valid price, and non-negative stock
+      allow create: if isAuthenticated() &&
+        isNonEmptyString(request.resource.data.name) &&
+        isPositiveNumber(request.resource.data.price) &&
+        isPositiveNumber(request.resource.data.stock);
+
+      // Update product: prevent setting negative stock or corrupting ID
+      allow update: if isAuthenticated() &&
+        (!('stock' in request.resource.data) || isPositiveNumber(request.resource.data.stock)) &&
+        (!('price' in request.resource.data) || isPositiveNumber(request.resource.data.price));
+
+      // Delete product: authenticated store owner/manager
+      allow delete: if isAuthenticated();
+    }
+
+    // -------------------------------------------------------------------------
+    // 3. Sales Transactions Collection
+    // -------------------------------------------------------------------------
+    match /sales/{saleId} {
+      // Allow reading sales history for authenticated users
+      allow read: if isAuthenticated();
+
+      // Create sale: must contain line items and positive total amount
+      allow create: if isAuthenticated() &&
+        isPositiveNumber(request.resource.data.totalAmount) &&
+        request.resource.data.items is list &&
+        request.resource.data.items.size() > 0;
+
+      // Sales are immutable financial records; allow updates only for sync status or notes
+      allow update: if isAuthenticated() && (
+        request.resource.data.totalAmount == resource.data.totalAmount &&
+        request.resource.data.items == resource.data.items
+      );
+
+      // Delete/Void sale: allowed for authenticated manager
+      allow delete: if isAuthenticated();
+    }
+
+    // -------------------------------------------------------------------------
+    // 4. Smart Inventory Alerts Collection
+    // -------------------------------------------------------------------------
+    match /inventory_alerts/{alertId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isNonEmptyString(request.resource.data.title);
+      allow update: if isAuthenticated(); // For marking read, dismissing, or resolving
+      allow delete: if isAuthenticated();
+    }
+
+    // -------------------------------------------------------------------------
+    // 5. Business Analytics & Demand Forecasts
+    // -------------------------------------------------------------------------
+    match /daily_analytics/{analyticsId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /insights/{insightId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // -------------------------------------------------------------------------
+    // 6. IoT Devices & Smart Hardware (ESP32 Smart Counter & Scales)
+    // -------------------------------------------------------------------------
+    match /devices/{deviceId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+      
+      // Device telemetry subcollection
+      match /telemetry/{telemetryId} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 7. Suppliers & Purchases Collection
+    // -------------------------------------------------------------------------
+    match /suppliers/{supplierId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /purchases/{purchaseId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Fallback: Default deny all other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

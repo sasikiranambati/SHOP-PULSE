@@ -9,7 +9,8 @@ import {
   PhoneCall, 
   IndianRupee,
   Bell,
-  Globe
+  Globe,
+  Sparkles
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { LanguageSelectorModal } from '../components/LanguageSelectorModal';
@@ -29,6 +30,7 @@ export const Settings: React.FC<SettingsProps> = ({
 }) => {
   const { t, currentLanguageMeta } = useLanguage();
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
+  const [isSeeding, setIsSeeding] = useState(false);
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
@@ -161,7 +163,44 @@ export const Settings: React.FC<SettingsProps> = ({
         </div>
       </div>
 
-      {/* 5. Help & About */}
+      {/* 5. Demo Data & Capstone Evaluation */}
+      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs divide-y divide-slate-100 overflow-hidden">
+        <div className="p-4 bg-slate-50 text-xs font-black text-slate-600 uppercase tracking-wider">
+          Demo & Evaluation Mode
+        </div>
+
+        <div className="p-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-extrabold text-slate-900 text-sm sm:text-base">Seed Demo Kirana Catalog</p>
+              <p className="text-xs text-slate-500 font-medium">Populate Milk, Bread, Rice, Sugar, Oil & 7-day sales</p>
+            </div>
+          </div>
+          <button
+            onClick={async () => {
+              setIsSeeding(true);
+              try {
+                const { seedDemoData } = await import('../scripts/seedDemoData');
+                const res = await seedDemoData({ overwrite: false });
+                alert(res.message);
+              } catch (e: any) {
+                alert(e.message || 'Seeding failed');
+              } finally {
+                setIsSeeding(false);
+              }
+            }}
+            disabled={isSeeding}
+            className="text-xs font-bold px-3.5 py-2 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded-xl cursor-pointer transition-all active:scale-95 disabled:opacity-50 shrink-0"
+          >
+            {isSeeding ? 'Seeding...' : 'Seed Data'}
+          </button>
+        </div>
+      </div>
+
+      {/* 6. Help & About */}
       <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs divide-y divide-slate-100 overflow-hidden">
         <div className="p-4 bg-slate-50 text-xs font-black text-slate-600 uppercase tracking-wider">
           {t('settings.helpInfo')}

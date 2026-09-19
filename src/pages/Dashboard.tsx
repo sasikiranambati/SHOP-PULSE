@@ -9,7 +9,8 @@ import {
   ArrowUpRight,
   Flame,
   Plus,
-  ShoppingBag
+  ShoppingBag,
+  CheckCircle2
 } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -140,49 +141,73 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </div>
 
-      {/* 3. ⚠️ NEEDS YOUR ATTENTION Low Stock Banner */}
-      <div className="bg-amber-50/90 rounded-3xl border border-amber-300/80 p-4 sm:p-5 shadow-xs">
-        <div className="flex items-center justify-between gap-3 mb-3">
+      {/* 3. ⚠️ NEEDS YOUR ATTENTION Low Stock Banner OR ✅ Optimal Status */}
+      {lowStockCount > 0 ? (
+        <div className="bg-amber-50/90 rounded-3xl border border-amber-300/80 p-4 sm:p-5 shadow-xs">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xs font-black uppercase tracking-wider text-amber-900">
+                  {t('dashboard.needsAttention')}
+                </div>
+                <p className="font-extrabold text-slate-900 text-sm sm:text-base mt-0.5">
+                  {t('dashboard.itemsRunningLow', { count: lowStockCount })}
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActivePage('inventory')}
+              className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl transition-all cursor-pointer shrink-0"
+            >
+              {t('dashboard.restockAll')}
+            </button>
+          </div>
+
+          {/* Quick horizontal restock list */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-amber-200/80">
+            {lowStockItems.slice(0, 3).map((item) => (
+              <div key={item.id} className="bg-white rounded-2xl p-3 border border-amber-200 flex items-center justify-between gap-2 shadow-2xs">
+                <div className="min-w-0">
+                  <p className="font-extrabold text-slate-900 text-xs truncate">{item.name}</p>
+                  <p className="text-[11px] text-amber-800 font-bold mt-0.5">{item.stock} {item.unit} {t('dashboard.left')}</p>
+                </div>
+                <button
+                  onClick={() => setActivePage('inventory')}
+                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] rounded-lg cursor-pointer shrink-0 active:scale-95 transition-transform"
+                >
+                  {t('dashboard.restock')}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="bg-emerald-50/90 rounded-3xl border border-emerald-300/80 p-4 sm:p-5 shadow-xs flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-sm">
-              <AlertTriangle className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+              <CheckCircle2 className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-xs font-black uppercase tracking-wider text-amber-900">
-                {t('dashboard.needsAttention')}
+              <div className="text-xs font-black uppercase tracking-wider text-emerald-900">
+                Inventory Status Optimal
               </div>
               <p className="font-extrabold text-slate-900 text-sm sm:text-base mt-0.5">
-                {t('dashboard.itemsRunningLow', { count: lowStockCount })}
+                All inventory items are well-stocked. Zero stock alerts.
               </p>
             </div>
           </div>
-
           <button
             onClick={() => setActivePage('inventory')}
-            className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl transition-all cursor-pointer shrink-0"
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl transition-all cursor-pointer shrink-0"
           >
-            {t('dashboard.restockAll')}
+            View Catalog
           </button>
         </div>
-
-        {/* Quick horizontal restock list */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-amber-200/80">
-          {lowStockItems.slice(0, 3).map((item) => (
-            <div key={item.id} className="bg-white rounded-2xl p-3 border border-amber-200 flex items-center justify-between gap-2 shadow-2xs">
-              <div className="min-w-0">
-                <p className="font-extrabold text-slate-900 text-xs truncate">{item.name}</p>
-                <p className="text-[11px] text-amber-800 font-bold mt-0.5">{item.stock} {item.unit} {t('dashboard.left')}</p>
-              </div>
-              <button
-                onClick={() => setActivePage('inventory')}
-                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] rounded-lg cursor-pointer shrink-0 active:scale-95 transition-transform"
-              >
-                {t('dashboard.restock')}
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
+      )}
 
       {/* 4. ⚡ QUICK ACTIONS */}
       <div>
