@@ -138,6 +138,106 @@ export function saveLocalSession(profile: UserProfile | null, rememberMe = false
   }
 }
 
+let testingActiveUid: string | null = null;
+
+/**
+ * Override active user ID for automated test suites.
+ */
+export function setActiveUserIdForTesting(uid: string | null): void {
+  testingActiveUid = uid;
+}
+
+/**
+ * Get active user ID (from Firebase Auth, active local session, or test override).
+ */
+export function getActiveUserId(): string | null {
+  if (testingActiveUid !== null) {
+    return testingActiveUid;
+  }
+  if (auth.currentUser?.uid) {
+    return auth.currentUser.uid;
+  }
+  const session = getLocalSession();
+  return session?.uid || null;
+}
+
+/**
+ * Require active user ID or throw a user-friendly error.
+ */
+export function requireActiveUserId(): string {
+  const uid = getActiveUserId();
+  if (!uid) {
+    throw new Error('User not authenticated. Please log in to access your shop data.');
+  }
+  return uid;
+}
+
+/**
+ * Initialize a new user workspace: creates user document, empty subcollections / local storage entries,
+ * and sets default analytics values.
+ */
+export async function initializeUserWorkspace(uid: string, profile: UserProfile): Promise<void> {
+  // 1. Initialize local storage isolation keys for this UID
+  try {
+    const invKey = `shoppulse_inventory_products_${uid}`;
+    const salesKey = `shoppulse_sales_history_${uid}`;
+    const alertsKey = `shoppulse_alerts_cache_${uid}`;
+    const cacheKey = `shoppulse_dashboard_cache_${uid}`;
+
+    if (!localStorage.getItem(invKey)) {
+      localStorage.setItem(invKey, JSON.stringify([]));
+    }
+    if (!localStorage.getItem(salesKey)) {
+      localStorage.setItem(salesKey, JSON.stringify([]));
+    }
+    if (!localStorage.getItem(alertsKey)) {
+      localStorage.setItem(alertsKey, JSON.stringify([]));
+    }
+    if (!localStorage.getItem(cacheKey)) {
+      localStorage.setItem(cacheKey, JSON.stringify({
+        todayRevenue: 0,
+        totalOrdersToday: 0,
+        itemsSoldToday: 0,
+        activeAlertsCount: 0,
+        recentSales: [],
+        timestamp: Date.now()
+      }));
+    }
+  } catch (lsErr) {
+    console.warn('Could not initialize local storage workspace:', lsErr);
+  }
+
+  // 2. Initialize Firestore workspace documents if Firebase is active
+  if (!isDemoApiKey()) {
+    try {
+      const userDocRef = doc(db, USERS_COLLECTION, uid);
+      await setDoc(userDocRef, profile, { merge: true });
+
+      // Profile subcollection (users/{uid}/profile/main)
+      const profileSubRef = doc(db, USERS_COLLECTION, uid, 'profile', 'main');
+      await setDoc(profileSubRef, profile, { merge: true });
+
+      // Analytics defaults (users/{uid}/analytics/summary)
+      const analyticsDocRef = doc(db, USERS_COLLECTION, uid, 'analytics', 'summary');
+      await setDoc(analyticsDocRef, {
+        totalRevenue: 0,
+        totalOrders: 0,
+        averageOrderValue: 0,
+        itemsSold: 0,
+        topProducts: [],
+        lowStockProducts: [],
+        dailySales: [],
+        weeklySales: [],
+        monthlySales: [],
+        estimatedProfit: 0,
+        generatedAt: new Date().toISOString()
+      }, { merge: true });
+    } catch (fsErr) {
+      console.warn('Could not initialize Firestore user workspace:', fsErr);
+    }
+  }
+}
+
 function registerLocalUser(input: RegisterInput): UserProfile {
   const users = getLocalUsers();
   const normalizedEmail = input.email.toLowerCase().trim();
@@ -168,6 +268,7 @@ function registerLocalUser(input: RegisterInput): UserProfile {
   users.push({ ...profile, password: input.password });
   saveLocalUsers(users);
   saveLocalSession(profile);
+  initializeUserWorkspace(uid, profile);
 
   return profile;
 }
@@ -330,6 +431,7 @@ export async function signInWithGoogle(): Promise<UserProfile> {
     };
 
     await setDoc(doc(db, USERS_COLLECTION, user.uid), newProfile);
+    await initializeUserWorkspace(user.uid, newProfile);
     saveLocalSession(newProfile);
     return newProfile;
   } catch (err) {
@@ -386,6 +488,7 @@ export async function registerWithEmail(input: RegisterInput): Promise<UserProfi
       console.warn('Could not write user profile to Firestore:', fsWriteErr);
     }
 
+    await initializeUserWorkspace(uid, profile);
     saveLocalSession(profile);
     return profile;
   } catch (err: any) {

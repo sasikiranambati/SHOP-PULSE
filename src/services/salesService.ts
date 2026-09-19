@@ -40,16 +40,36 @@ import {
   getFormattedDateKey 
 } from '../utils/billNumberGenerator';
 import { getFirebaseErrorMessage } from '../utils/firebaseErrorMapper';
-import { MOCK_RECENT_SALES } from '../data/mockData';
 import { checkAndSyncProductAlerts } from './alertService';
 import { networkService } from './networkService';
 import { enqueueSale } from './offlineQueue';
 import { dashboardCacheService } from './dashboardCacheService';
+import { getActiveUserId, requireActiveUserId } from './authService';
 
-const SALES_COLLECTION = 'sales';
-const PRODUCTS_COLLECTION = 'products';
-const LOCAL_SALES_STORAGE_KEY = 'shoppulse_sales_history';
-const LOCAL_INVENTORY_KEY = 'shoppulse_inventory_products';
+function getSalesCol(userId?: string) {
+  const uid = userId || requireActiveUserId();
+  return collection(db, 'users', uid, 'sales');
+}
+
+function getSaleDoc(saleId: string, userId?: string) {
+  const uid = userId || requireActiveUserId();
+  return doc(db, 'users', uid, 'sales', saleId);
+}
+
+function getInventoryDoc(productId: string, userId?: string) {
+  const uid = userId || requireActiveUserId();
+  return doc(db, 'users', uid, 'inventory', productId);
+}
+
+function getLocalSalesKey(userId?: string): string | null {
+  const uid = userId || getActiveUserId();
+  return uid ? `shoppulse_sales_history_${uid}` : null;
+}
+
+function getLocalInventoryKey(userId?: string): string | null {
+  const uid = userId || getActiveUserId();
+  return uid ? `shoppulse_inventory_products_${uid}` : null;
+}
 
 /**
  * Check if app is running in development / demo mode.
@@ -134,9 +154,12 @@ export function normalizeSale(id: string, data: any): Sale {
 // Local Offline / Development Mode Store Helpers
 // ---------------------------------------------------------------------------
 
-function getLocalSales(): Sale[] {
+function getLocalSales(userId?: string): Sale[] {
+  const key = getLocalSalesKey(userId);
+  if (!key) return [];
+
   try {
-    const raw = localStorage.getItem(LOCAL_SALES_STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -144,9 +167,9 @@ function getLocalSales(): Sale[] {
         const deduplicated: Sale[] = [];
         for (const item of parsed) {
           const s = normalizeSale(item.id, item);
-          const key = s.id || s.billNumber;
-          if (!seen.has(key)) {
-            seen.add(key);
+          const itemKey = s.id || s.billNumber;
+          if (!seen.has(itemKey)) {
+            seen.add(itemKey);
             deduplicated.push(s);
           }
         }
@@ -157,100 +180,25 @@ function getLocalSales(): Sale[] {
     console.warn('Could not read local sales:', err);
   }
 
-  // Realistic sample seed sales for initial display and demo/offline testing
-  const todayIso = new Date().toISOString();
-  const yesterdayIso = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-  const twoDaysAgoIso = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
-
-  const rawSeedSales = [
-    {
-      id: 'sale_demo_1',
-      billNumber: 'SP-20260919-001',
-      customerName: 'Ramesh Patel',
-      items: [
-        { productId: 'p1', name: 'Fresh Milk (500ml)', quantity: 2, unit: 'packets', price: 28, total: 56 },
-        { productId: 'p2', name: 'Whole Wheat Bread (400g)', quantity: 1, unit: 'loaves', price: 45, total: 45 }
-      ],
-      subtotal: 101,
-      discount: 0,
-      tax: 0,
-      total: 101,
-      paymentMethod: 'UPI' as PaymentMethod,
-      cashierId: 'cashier_1',
-      createdAt: todayIso
-    },
-    {
-      id: 'sale_demo_2',
-      billNumber: 'SP-20260918-002',
-      customerName: 'Sita Devi',
-      items: [
-        { productId: 'p9', name: 'Sunflower Cooking Oil (1L)', quantity: 1, unit: 'pouches', price: 145, total: 145 },
-        { productId: 'p7', name: 'Refined Sugar (1kg)', quantity: 2, unit: 'bags', price: 48, total: 96 }
-      ],
-      subtotal: 241,
-      discount: 0,
-      tax: 0,
-      total: 241,
-      paymentMethod: 'Cash' as PaymentMethod,
-      cashierId: 'cashier_1',
-      createdAt: yesterdayIso
-    },
-    {
-      id: 'sale_demo_3',
-      billNumber: 'SP-20260918-001',
-      customerName: 'Anand Kumar',
-      items: [
-        { productId: 'p10', name: 'Maggi 2-Min Noodles (70g)', quantity: 4, unit: 'packs', price: 14, total: 56 },
-        { productId: 'p4', name: 'Marie Gold Biscuits (200g)', quantity: 1, unit: 'packs', price: 25, total: 25 }
-      ],
-      subtotal: 81,
-      discount: 0,
-      tax: 0,
-      total: 81,
-      paymentMethod: 'Cash' as PaymentMethod,
-      cashierId: 'cashier_1',
-      createdAt: yesterdayIso
-    },
-    {
-      id: 'sale_demo_4',
-      billNumber: 'SP-20260917-001',
-      customerName: 'Priya Sharma',
-      items: [
-        { productId: 'p6', name: 'Basmati Rice (5kg)', quantity: 1, unit: 'bags', price: 450, total: 450 }
-      ],
-      subtotal: 450,
-      discount: 0,
-      tax: 0,
-      total: 450,
-      paymentMethod: 'Card' as PaymentMethod,
-      cashierId: 'cashier_1',
-      createdAt: twoDaysAgoIso
-    }
-  ];
-
-  const seedSales: Sale[] = rawSeedSales.map(s => normalizeSale(s.id, s));
-
-  try {
-    localStorage.setItem(LOCAL_SALES_STORAGE_KEY, JSON.stringify(seedSales));
-  } catch {
-    // Ignore
-  }
-
-  return seedSales;
+  // Brand-new users start with empty sales history
+  return [];
 }
 
-function saveLocalSales(sales: Sale[]): void {
+function saveLocalSales(sales: Sale[], userId?: string): void {
+  const key = getLocalSalesKey(userId);
+  if (!key) return;
+
   try {
     const seen = new Set<string>();
     const deduplicated: Sale[] = [];
     for (const s of sales) {
-      const key = s.id || s.billNumber;
-      if (!seen.has(key)) {
-        seen.add(key);
+      const itemKey = s.id || s.billNumber;
+      if (!seen.has(itemKey)) {
+        seen.add(itemKey);
         deduplicated.push(s);
       }
     }
-    localStorage.setItem(LOCAL_SALES_STORAGE_KEY, JSON.stringify(deduplicated));
+    localStorage.setItem(key, JSON.stringify(deduplicated));
     window.dispatchEvent(new CustomEvent('shoppulse_sales_changed'));
   } catch (err) {
     console.warn('Could not save local sales:', err);
@@ -260,8 +208,11 @@ function saveLocalSales(sales: Sale[]): void {
 /**
  * Deduct inventory in local storage when running in demo/offline mode.
  */
-function deductLocalInventory(items: Array<{ productId: string; quantity: number }>): void {
-  const raw = localStorage.getItem(LOCAL_INVENTORY_KEY);
+function deductLocalInventory(items: Array<{ productId: string; quantity: number }>, userId?: string): void {
+  const key = getLocalInventoryKey(userId);
+  if (!key) return;
+
+  const raw = localStorage.getItem(key);
   if (!raw) return;
 
   const products = JSON.parse(raw);
@@ -286,7 +237,7 @@ function deductLocalInventory(items: Array<{ productId: string; quantity: number
     }
   }
 
-  localStorage.setItem(LOCAL_INVENTORY_KEY, JSON.stringify(products));
+  localStorage.setItem(key, JSON.stringify(products));
   window.dispatchEvent(new CustomEvent('shoppulse_inventory_changed'));
 }
 
@@ -303,6 +254,8 @@ export async function createSale(
   cashierId: string = 'cashier_1',
   shopName: string = 'Kiran General Store'
 ): Promise<Sale> {
+  const uid = requireActiveUserId();
+
   if (!input.items || input.items.length === 0) {
     throw new Error('Cannot complete sale with an empty basket.');
   }
@@ -343,10 +296,10 @@ export async function createSale(
 
   const recordLocalSale = (): Sale => {
     // 1. Transactionally check and deduct local inventory
-    deductLocalInventory(lineItems.map(i => ({ productId: i.productId, quantity: i.quantity })));
+    deductLocalInventory(lineItems.map(i => ({ productId: i.productId, quantity: i.quantity })), uid);
 
     // 2. Generate local sequential bill number
-    const existingSales = getLocalSales();
+    const existingSales = getLocalSales(uid);
     const existingBillNumbers = existingSales.map(s => s.billNumber);
     const billNumber = generateLocalBillNumber(now, existingBillNumbers);
 
@@ -370,7 +323,7 @@ export async function createSale(
       syncStatus: isOffline ? 'pending' : 'synced'
     };
 
-    saveLocalSales([newSale, ...existingSales]);
+    saveLocalSales([newSale, ...existingSales], uid);
 
     // If offline, enqueue for background synchronization
     if (isOffline) {
@@ -379,12 +332,12 @@ export async function createSale(
 
     // Update instant dashboard cache snapshot
     try {
-      const snap = dashboardCacheService.getSnapshot();
+      const snap = dashboardCacheService.getSnapshot(uid);
       dashboardCacheService.updateSnapshot({
         todayRevenue: (snap.todayRevenue || 0) + total,
         itemsSoldToday: (snap.itemsSoldToday || 0) + lineItems.reduce((s, i) => s + i.quantity, 0),
         totalOrdersToday: (snap.totalOrdersToday || 0) + 1
-      });
+      }, uid);
     } catch {
       // Ignore cache update errors
     }
@@ -403,7 +356,7 @@ export async function createSale(
 
   // Firestore Production Mode Execution with Atomic Transactions
   try {
-    const saleDocRef = doc(collection(db, SALES_COLLECTION));
+    const saleDocRef = doc(getSalesCol(uid));
 
     const productDocsToUpdate: Array<{
       ref: any;
@@ -418,7 +371,7 @@ export async function createSale(
       productDocsToUpdate.length = 0;
 
       for (const item of lineItems) {
-        const productRef = doc(db, PRODUCTS_COLLECTION, item.productId);
+        const productRef = getInventoryDoc(item.productId, uid);
         const productSnapshot = await transaction.get(productRef);
 
         if (!productSnapshot.exists()) {
@@ -500,12 +453,12 @@ export async function createSale(
 
     // Update dashboard cache
     try {
-      const snap = dashboardCacheService.getSnapshot();
+      const snap = dashboardCacheService.getSnapshot(uid);
       dashboardCacheService.updateSnapshot({
         todayRevenue: (snap.todayRevenue || 0) + total,
         itemsSoldToday: (snap.itemsSoldToday || 0) + lineItems.reduce((s, i) => s + i.quantity, 0),
         totalOrdersToday: (snap.totalOrdersToday || 0) + 1
-      });
+      }, uid);
     } catch {
       // Ignore
     }
@@ -537,15 +490,17 @@ export async function createSale(
  * Fetch a single sale by ID or bill number.
  */
 export async function getSale(saleIdOrBillNumber: string): Promise<Sale | null> {
+  const uid = requireActiveUserId();
+
   if (isDemoMode()) {
-    const sales = getLocalSales();
+    const sales = getLocalSales(uid);
     const found = sales.find(s => s.id === saleIdOrBillNumber || s.billNumber === saleIdOrBillNumber);
     return found || null;
   }
 
   try {
     // 1. Try by document ID
-    const docRef = doc(db, SALES_COLLECTION, saleIdOrBillNumber);
+    const docRef = getSaleDoc(saleIdOrBillNumber, uid);
     const snap = await getDoc(docRef);
     if (snap.exists()) {
       return normalizeSale(snap.id, snap.data());
@@ -553,7 +508,7 @@ export async function getSale(saleIdOrBillNumber: string): Promise<Sale | null> 
 
     // 2. Try by billNumber
     const q = query(
-      collection(db, SALES_COLLECTION),
+      getSalesCol(uid),
       where('billNumber', '==', saleIdOrBillNumber),
       firestoreLimit(1)
     );
@@ -579,11 +534,14 @@ export async function getSales(options?: number | {
   period?: 'today' | '7days' | '30days';
   billNumber?: string;
 }): Promise<Sale[]> {
+  const uid = getActiveUserId();
+  if (!uid) return [];
+
   const opts = typeof options === 'number' ? { limit: options } : options;
   const maxCount = opts?.limit ?? 50;
 
   if (isDemoMode()) {
-    let sales = getLocalSales();
+    let sales = getLocalSales(uid);
 
     if (opts?.billNumber) {
       const clean = opts.billNumber.toLowerCase();
@@ -631,7 +589,7 @@ export async function getSales(options?: number | {
 
     constraints.push(firestoreLimit(maxCount));
 
-    const q = query(collection(db, SALES_COLLECTION), ...constraints);
+    const q = query(getSalesCol(uid), ...constraints);
     const snap = await getDocs(q);
 
     let sales = snap.docs.map(d => normalizeSale(d.id, d.data()));
@@ -643,7 +601,8 @@ export async function getSales(options?: number | {
 
     return sales;
   } catch (err) {
-    throw new Error(getFirebaseErrorMessage(err));
+    console.warn('Firestore getSales failed, returning local sales:', err);
+    return getLocalSales(uid);
   }
 }
 
@@ -658,8 +617,11 @@ export async function getTodaySales(): Promise<Sale[]> {
  * Fetch sales for a specific calendar date (YYYY-MM-DD).
  */
 export async function getSalesByDate(dateString: string): Promise<Sale[]> {
+  const uid = getActiveUserId();
+  if (!uid) return [];
+
   if (isDemoMode()) {
-    const sales = getLocalSales();
+    const sales = getLocalSales(uid);
     return sales.filter(s => s.createdAt.startsWith(dateString));
   }
 
@@ -668,7 +630,7 @@ export async function getSalesByDate(dateString: string): Promise<Sale[]> {
     const endIso = `${dateString}T23:59:59.999Z`;
 
     const q = query(
-      collection(db, SALES_COLLECTION),
+      getSalesCol(uid),
       where('createdAt', '>=', startIso),
       where('createdAt', '<=', endIso),
       orderBy('createdAt', 'desc')
@@ -692,21 +654,24 @@ export async function searchSalesByBillNumber(billNumberQuery: string): Promise<
  * Delete a sale record (with optional inventory reversal).
  */
 export async function deleteSale(saleId: string, restoreInventory: boolean = false): Promise<void> {
+  const uid = requireActiveUserId();
+
   if (isDemoMode()) {
-    const sales = getLocalSales();
+    const sales = getLocalSales(uid);
     const saleToDelete = sales.find(s => s.id === saleId);
 
     if (restoreInventory && saleToDelete) {
       // Revert stock
       try {
-        const raw = localStorage.getItem(LOCAL_INVENTORY_KEY);
-        if (raw) {
+        const key = getLocalInventoryKey(uid);
+        const raw = key ? localStorage.getItem(key) : null;
+        if (raw && key) {
           const products = JSON.parse(raw);
           for (const item of saleToDelete.items) {
             const p = products.find((x: any) => x.id === item.productId);
             if (p) p.stock += item.quantity;
           }
-          localStorage.setItem(LOCAL_INVENTORY_KEY, JSON.stringify(products));
+          localStorage.setItem(key, JSON.stringify(products));
           window.dispatchEvent(new CustomEvent('shoppulse_inventory_changed'));
         }
       } catch (err) {
@@ -714,7 +679,7 @@ export async function deleteSale(saleId: string, restoreInventory: boolean = fal
       }
     }
 
-    saveLocalSales(sales.filter(s => s.id !== saleId));
+    saveLocalSales(sales.filter(s => s.id !== saleId), uid);
     return;
   }
 
@@ -724,20 +689,20 @@ export async function deleteSale(saleId: string, restoreInventory: boolean = fal
       if (sale) {
         await runTransaction(db, async (tx) => {
           for (const item of sale.items) {
-            const pRef = doc(db, PRODUCTS_COLLECTION, item.productId);
+            const pRef = getInventoryDoc(item.productId, uid);
             const pSnap = await tx.get(pRef);
             if (pSnap.exists()) {
               const currentStock = Number(pSnap.data().stock ?? 0);
               tx.update(pRef, { stock: currentStock + item.quantity });
             }
           }
-          tx.delete(doc(db, SALES_COLLECTION, saleId));
+          tx.delete(getSaleDoc(saleId, uid));
         });
         return;
       }
     }
 
-    await deleteDoc(doc(db, SALES_COLLECTION, saleId));
+    await deleteDoc(getSaleDoc(saleId, uid));
   } catch (err) {
     throw new Error(getFirebaseErrorMessage(err));
   }
@@ -750,12 +715,18 @@ export function subscribeToSales(
   callback: (sales: Sale[]) => void,
   limitCount: number = 50
 ): () => void {
+  const uid = getActiveUserId();
+  if (!uid) {
+    callback([]);
+    return () => {};
+  }
+
   if (isDemoMode()) {
     // Deliver initial sales
-    callback(getLocalSales().slice(0, limitCount));
+    callback(getLocalSales(uid).slice(0, limitCount));
 
     const handler = () => {
-      callback(getLocalSales().slice(0, limitCount));
+      callback(getLocalSales(uid).slice(0, limitCount));
     };
 
     window.addEventListener('shoppulse_sales_changed', handler);
@@ -766,7 +737,7 @@ export function subscribeToSales(
 
   try {
     const q = query(
-      collection(db, SALES_COLLECTION),
+      getSalesCol(uid),
       orderBy('createdAt', 'desc'),
       firestoreLimit(limitCount)
     );
@@ -776,11 +747,11 @@ export function subscribeToSales(
       if (sales.length > 0) {
         callback(sales);
       } else {
-        callback(getLocalSales().slice(0, limitCount));
+        callback(getLocalSales(uid).slice(0, limitCount));
       }
     }, (err) => {
       console.error('Sales onSnapshot error:', err);
-      callback(getLocalSales().slice(0, limitCount));
+      callback(getLocalSales(uid).slice(0, limitCount));
     });
 
     return unsubscribe;
@@ -807,14 +778,13 @@ export async function getDashboardSalesStats(): Promise<DashboardSalesStats> {
       : 0;
 
     // Map recent sales for dashboard activity
-    let recentSales = todaySalesList.slice(0, 5).map(s => {
+    const recentSales = todaySalesList.slice(0, 5).map(s => {
       const summaryItems = s.items
         .map(i => `${i.quantity}x ${i.name}`)
         .slice(0, 2)
         .join(', ');
 
       const moreCount = s.items.length > 2 ? ` +${s.items.length - 2} more` : '';
-
       const timeAgo = formatTimeAgo(s.createdAt);
 
       return {
@@ -826,17 +796,6 @@ export async function getDashboardSalesStats(): Promise<DashboardSalesStats> {
       };
     });
 
-    // If no sales exist today yet, fallback to default mock recent sales
-    if (recentSales.length === 0) {
-      recentSales = MOCK_RECENT_SALES.map((s, idx) => ({
-        id: s.id,
-        items: s.items,
-        total: s.total,
-        time: s.time,
-        billNumber: `SP-MOCK-00${idx + 1}`
-      }));
-    }
-
     return {
       todayRevenue,
       itemsSoldToday,
@@ -847,17 +806,11 @@ export async function getDashboardSalesStats(): Promise<DashboardSalesStats> {
   } catch (err) {
     console.warn('Could not compute dashboard sales stats:', err);
     return {
-      todayRevenue: 8450,
-      itemsSoldToday: 42,
-      totalTransactionsToday: 18,
-      averageBillValue: 469.44,
-      recentSales: MOCK_RECENT_SALES.map((s, idx) => ({
-        id: s.id,
-        items: s.items,
-        total: s.total,
-        time: s.time,
-        billNumber: `SP-MOCK-00${idx + 1}`
-      }))
+      todayRevenue: 0,
+      itemsSoldToday: 0,
+      totalTransactionsToday: 0,
+      averageBillValue: 0,
+      recentSales: []
     };
   }
 }

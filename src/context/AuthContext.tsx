@@ -21,6 +21,7 @@ import {
 export interface AuthContextType {
   firebaseUser: FirebaseUser | null;
   userProfile: UserProfile | null;
+  user: UserProfile | null;
   loading: boolean;
   error: string | null;
   login: (credentials: LoginCredentials, rememberMe?: boolean) => Promise<UserProfile | null>;
@@ -182,11 +183,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const user: UserProfile | null = userProfile || (firebaseUser ? {
+    uid: firebaseUser.uid,
+    email: firebaseUser.email || '',
+    displayName: firebaseUser.displayName || 'Shop Owner',
+    shopName: 'My Store',
+    role: 'owner' as const,
+    theme: 'light' as const,
+    language: 'en' as const,
+    createdAt: new Date().toISOString(),
+    lastLogin: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  } : null);
+
   return (
     <AuthContext.Provider
       value={{
         firebaseUser,
         userProfile,
+        user,
         loading,
         error,
         login: handleLogin,

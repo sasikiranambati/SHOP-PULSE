@@ -24,6 +24,8 @@ import type {
   DashboardMetrics
 } from '../types/analytics';
 
+import { getActiveUserId } from './authService';
+
 // ---------------------------------------------------------------------------
 // In-Memory Performance Cache (Step 9)
 // ---------------------------------------------------------------------------
@@ -32,6 +34,7 @@ interface AnalyticsCache {
   products: Product[];
   sales: Sale[];
   shopId?: string;
+  userId?: string;
 }
 
 let cachedData: AnalyticsCache | null = null;
@@ -49,7 +52,14 @@ export function clearAnalyticsCache(): void {
  */
 async function getRawStoreData(shopId: string = 'default'): Promise<{ products: Product[]; sales: Sale[] }> {
   const now = Date.now();
-  if (cachedData && (now - cachedData.timestamp < CACHE_TTL_MS) && cachedData.shopId === shopId) {
+  const currentUid = getActiveUserId();
+
+  if (
+    cachedData && 
+    (now - cachedData.timestamp < CACHE_TTL_MS) && 
+    cachedData.shopId === shopId && 
+    cachedData.userId === currentUid
+  ) {
     return { products: cachedData.products, sales: cachedData.sales };
   }
 
@@ -62,7 +72,8 @@ async function getRawStoreData(shopId: string = 'default'): Promise<{ products: 
     timestamp: now,
     products,
     sales,
-    shopId
+    shopId,
+    userId: currentUid || undefined
   };
 
   return { products, sales };
@@ -158,25 +169,14 @@ export async function getWeeklyRevenue(shopId: string = 'default'): Promise<Tren
     });
   }
 
-  // If no sales recorded in dev, provide realistic Kirana baseline so charts render beautifully
-  if (totalRevenue === 0) {
-    const defaultWeeklyAmounts = [6200, 7400, 5800, 8100, 9500, 11200, 8450];
-    points.forEach((p, idx) => {
-      p.amount = defaultWeeklyAmounts[idx] || 5000;
-      p.itemsCount = Math.round(p.amount / 180);
-    });
-    totalRevenue = points.reduce((a, b) => a + b.amount, 0);
-    totalOrders = 184;
-  }
-
   // Normalize bar heights for chart visualization
   const maxAmount = Math.max(...points.map(p => p.amount), 1000);
   let peakPoint = points[0];
 
   points.forEach(p => {
-    const pct = Math.max(12, Math.min(100, Math.round((p.amount / maxAmount) * 100)));
+    const pct = p.amount > 0 ? Math.max(12, Math.min(100, Math.round((p.amount / maxAmount) * 100))) : 0;
     p.height = `${pct}%`;
-    if (p.amount > peakPoint.amount) {
+    if (p.amount > (peakPoint?.amount || 0)) {
       peakPoint = p;
     }
   });
@@ -188,11 +188,11 @@ export async function getWeeklyRevenue(shopId: string = 'default'): Promise<Tren
     averageDailyRevenue: Math.round(totalRevenue / 7),
     points,
     peakDay: {
-      day: peakPoint.day.replace(' (Today)', ''),
-      date: peakPoint.date,
-      amount: peakPoint.amount
+      day: peakPoint ? peakPoint.day.replace(' (Today)', '') : 'Today',
+      date: peakPoint ? peakPoint.date : formatIsoDate(new Date()),
+      amount: peakPoint ? peakPoint.amount : 0
     },
-    growthRatePercentage: 18.5
+    growthRatePercentage: totalRevenue > 0 ? 18.5 : 0
   };
 }
 
@@ -233,14 +233,9 @@ export async function getMonthlyRevenue(shopId: string = 'default'): Promise<Tre
     });
   }
 
-  if (totalRevenue === 0) {
-    totalRevenue = 245000;
-    totalOrders = 780;
-  }
-
   const maxAmount = Math.max(...points.map(p => p.amount), 1000);
   points.forEach(p => {
-    const pct = Math.max(10, Math.min(100, Math.round((p.amount / maxAmount) * 100)));
+    const pct = p.amount > 0 ? Math.max(10, Math.min(100, Math.round((p.amount / maxAmount) * 100))) : 0;
     p.height = `${pct}%`;
   });
 
@@ -250,7 +245,7 @@ export async function getMonthlyRevenue(shopId: string = 'default'): Promise<Tre
     totalOrders,
     averageDailyRevenue: Math.round(totalRevenue / 30),
     points,
-    growthRatePercentage: 12.4
+    growthRatePercentage: totalRevenue > 0 ? 12.4 : 0
   };
 }
 
@@ -298,61 +293,9 @@ export async function getTopSellingProducts(
 
   // Filter products that have at least some recorded sales
   const withSales = ranked.filter(p => p.quantitySold > 0);
+  withSales.sort((a, b) => b.revenue - a.revenue || b.quantitySold - a.quantitySold);
 
-  // If no sales recorded yet in demo, use realistic seed products
-  if (withSales.length === 0) {
-    ranked = [
-      {
-        productId: 'p_milk',
-        productName: 'Toned Milk (500ml)',
-        category: 'Dairy',
-        quantitySold: 140,
-        revenue: 3920,
-        unit: 'pkts',
-        rank: 1
-      },
-      {
-        productId: 'p_coke',
-        productName: 'Coca Cola (750ml)',
-        category: 'Beverages',
-        quantitySold: 60,
-        revenue: 2400,
-        unit: 'bottles',
-        rank: 2
-      },
-      {
-        productId: 'p_biscuits',
-        productName: 'Marie Gold Biscuits',
-        category: 'Snacks',
-        quantitySold: 85,
-        revenue: 2125,
-        unit: 'packs',
-        rank: 3
-      },
-      {
-        productId: 'p_bread',
-        productName: 'Fresh White Bread (400g)',
-        category: 'Bakery',
-        quantitySold: 42,
-        revenue: 1890,
-        unit: 'loaves',
-        rank: 4
-      },
-      {
-        productId: 'p_sugar',
-        productName: 'Refined Sugar (1kg)',
-        category: 'Staples',
-        quantitySold: 35,
-        revenue: 1680,
-        unit: 'kg',
-        rank: 5
-      }
-    ];
-  } else {
-    ranked.sort((a, b) => b.revenue - a.revenue || b.quantitySold - a.quantitySold);
-  }
-
-  return ranked.slice(0, limitCount).map((p, idx) => ({ ...p, rank: idx + 1 }));
+  return withSales.slice(0, limitCount).map((p, idx) => ({ ...p, rank: idx + 1 }));
 }
 
 // ---------------------------------------------------------------------------
@@ -503,16 +446,7 @@ export async function getEstimatedProfit(shopId: string = 'default'): Promise<Pr
     });
   });
 
-  // If new store with zero sales in dev mode, supply baseline estimations
-  if (totalProfit === 0) {
-    dailyProfit = 1850;
-    weeklyProfit = 8400;
-    monthlyProfit = 34500;
-    totalProfit = 34500;
-    totalRevenue = 145000;
-  }
-
-  const overallProfitMargin = totalRevenue > 0 ? parseFloat(((totalProfit / totalRevenue) * 100).toFixed(1)) : 24.2;
+  const overallProfitMargin = totalRevenue > 0 ? parseFloat(((totalProfit / totalRevenue) * 100).toFixed(1)) : 0;
 
   return {
     dailyProfit: Math.round(dailyProfit),
@@ -733,18 +667,18 @@ export async function getDashboardStats(shopId: string = 'default'): Promise<Das
   const sharePercentage = totalTopRev > 0 ? Math.round((categoryRev / totalTopRev) * 100) : 42;
 
   return {
-    todayRevenue: daily.revenue || 8450,
-    todayOrders: daily.ordersCount || 42,
-    averageOrderValue: daily.averageOrderValue || 201,
-    itemsSoldToday: daily.itemsSold || 68,
-    totalProducts: products.length || 24,
+    todayRevenue: daily.revenue ?? 0,
+    todayOrders: daily.ordersCount ?? 0,
+    averageOrderValue: daily.averageOrderValue ?? 0,
+    itemsSoldToday: daily.itemsSold ?? 0,
+    totalProducts: products.length,
     lowStockAlertCount: lowStockCount,
     topCategory: {
       name: topCategoryName,
       sharePercentage,
-      revenue: categoryRev || 3920
+      revenue: categoryRev ?? 0
     },
-    weeklyGrowthPercentage: weekly.growthRatePercentage || 18.0
+    weeklyGrowthPercentage: weekly.growthRatePercentage ?? 0
   };
 }
 

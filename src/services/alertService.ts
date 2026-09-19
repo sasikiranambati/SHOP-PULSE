@@ -19,6 +19,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
+import { getActiveUserId, requireActiveUserId } from './authService';
 import type { 
   Alert, 
   CreateAlertInput, 
@@ -31,8 +32,20 @@ import type { Product } from '../types/product';
 import { getFirebaseErrorMessage } from '../utils/firebaseErrorMapper';
 import { sendLowStockNotification, sendCriticalAlert } from './pushNotificationService';
 
-const ALERTS_COLLECTION = 'alerts';
-const LOCAL_ALERTS_KEY = 'shoppulse_alerts_cache';
+function getAlertsCol(userId?: string) {
+  const uid = userId || requireActiveUserId();
+  return collection(db, 'users', uid, 'alerts');
+}
+
+function getAlertDoc(alertId: string, userId?: string) {
+  const uid = userId || requireActiveUserId();
+  return doc(db, 'users', uid, 'alerts', alertId);
+}
+
+function getLocalAlertsKey(userId?: string): string | null {
+  const uid = userId || getActiveUserId();
+  return uid ? `shoppulse_alerts_cache_${uid}` : null;
+}
 
 /**
  * Check if Firebase is running in offline / local development mode.
@@ -74,9 +87,12 @@ export function normalizeAlert(id: string, data: any): Alert {
 // Local / Offline Storage Helpers
 // ---------------------------------------------------------------------------
 
-function getLocalAlerts(): Alert[] {
+function getLocalAlerts(userId?: string): Alert[] {
+  const key = getLocalAlertsKey(userId);
+  if (!key) return [];
+
   try {
-    const raw = localStorage.getItem(LOCAL_ALERTS_KEY);
+    const raw = localStorage.getItem(key);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -96,54 +112,14 @@ function getLocalAlerts(): Alert[] {
     console.warn('Could not read local alerts:', err);
   }
 
-  // Realistic sample seed alerts for day 1 kirana store experience
-  const now = new Date();
-  const seedAlerts: Alert[] = [
-    {
-      id: 'alert_seed_1',
-      productId: 'p11',
-      productName: 'Amul Butter (100g)',
-      type: 'OUT_OF_STOCK',
-      message: 'Amul Butter (100g) is completely out of stock!',
-      priority: 'critical',
-      isRead: false,
-      createdAt: new Date(now.getTime() - 15 * 60 * 1000).toISOString(),
-      shopId: 'default'
-    },
-    {
-      id: 'alert_seed_2',
-      productId: 'p5',
-      productName: 'Farm Fresh Eggs (Tray of 6)',
-      type: 'LOW_STOCK',
-      message: 'Only 4 trays of Farm Fresh Eggs remaining (reorder level: 10).',
-      priority: 'high',
-      isRead: false,
-      createdAt: new Date(now.getTime() - 45 * 60 * 1000).toISOString(),
-      shopId: 'default'
-    },
-    {
-      id: 'alert_seed_3',
-      productId: 'p10',
-      productName: 'Maggi 2-Min Noodles (70g)',
-      type: 'LOW_STOCK',
-      message: 'Only 2 packs of Maggi Noodles remaining (reorder level: 15).',
-      priority: 'high',
-      isRead: false,
-      createdAt: new Date(now.getTime() - 2 * 3600 * 1000).toISOString(),
-      shopId: 'default'
-    }
-  ];
-
-  try {
-    localStorage.setItem(LOCAL_ALERTS_KEY, JSON.stringify(seedAlerts));
-  } catch {
-    // Ignore
-  }
-
-  return seedAlerts;
+  // Brand-new users start with zero alerts
+  return [];
 }
 
-function saveLocalAlerts(alerts: Alert[]): void {
+function saveLocalAlerts(alerts: Alert[], userId?: string): void {
+  const key = getLocalAlertsKey(userId);
+  if (!key) return;
+
   try {
     const seen = new Set<string>();
     const deduplicated: Alert[] = [];
@@ -153,7 +129,7 @@ function saveLocalAlerts(alerts: Alert[]): void {
         deduplicated.push(a);
       }
     }
-    localStorage.setItem(LOCAL_ALERTS_KEY, JSON.stringify(deduplicated));
+    localStorage.setItem(key, JSON.stringify(deduplicated));
     window.dispatchEvent(new CustomEvent('shoppulse_alerts_changed'));
   } catch (err) {
     console.warn('Could not save local alerts:', err);
@@ -168,6 +144,7 @@ function saveLocalAlerts(alerts: Alert[]): void {
  * Persist a new alert to Firestore (or local storage in demo mode).
  */
 export async function createAlert(input: CreateAlertInput): Promise<Alert> {
+  const uid = requireActiveUserId();
   const alertId = `alert_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const nowIso = new Date().toISOString();
 
@@ -187,19 +164,19 @@ export async function createAlert(input: CreateAlertInput): Promise<Alert> {
   };
 
   if (isDemoMode()) {
-    const existing = getLocalAlerts();
-    saveLocalAlerts([alertData, ...existing]);
+    const existing = getLocalAlerts(uid);
+    saveLocalAlerts([alertData, ...existing], uid);
     return alertData;
   }
 
   try {
     const { id: _, ...payload } = alertData;
-    await addDoc(collection(db, ALERTS_COLLECTION), payload);
+    await addDoc(getAlertsCol(uid), payload);
     return alertData;
   } catch (err) {
     console.warn('Failed to save alert in Firestore, saving locally:', err);
-    const existing = getLocalAlerts();
-    saveLocalAlerts([alertData, ...existing]);
+    const existing = getLocalAlerts(uid);
+    saveLocalAlerts([alertData, ...existing], uid);
     return alertData;
   }
 }
@@ -208,8 +185,11 @@ export async function createAlert(input: CreateAlertInput): Promise<Alert> {
  * Fetch all alerts, with support for priority, type, read status, and pagination.
  */
 export async function getAlerts(options?: AlertFilterOptions): Promise<Alert[]> {
+  const uid = getActiveUserId();
+  if (!uid) return [];
+
   if (isDemoMode()) {
-    let list = getLocalAlerts();
+    let list = getLocalAlerts(uid);
 
     if (options?.priority) {
       list = list.filter(a => a.priority === options.priority);
@@ -246,11 +226,11 @@ export async function getAlerts(options?: AlertFilterOptions): Promise<Alert[]> 
       constraints.push(firestoreLimit(options.limit));
     }
 
-    const q = query(collection(db, ALERTS_COLLECTION), ...constraints);
+    const q = query(getAlertsCol(uid), ...constraints);
     const snapshot = await getDocs(q);
 
     if (snapshot.empty) {
-      return getLocalAlerts();
+      return getLocalAlerts(uid);
     }
 
     let alerts = snapshot.docs.map(d => normalizeAlert(d.id, d.data()));
@@ -261,7 +241,7 @@ export async function getAlerts(options?: AlertFilterOptions): Promise<Alert[]> 
     return alerts;
   } catch (err) {
     console.warn('Error fetching alerts from Firestore, returning local alerts:', getFirebaseErrorMessage(err));
-    return getLocalAlerts();
+    return getLocalAlerts(uid);
   }
 }
 
@@ -277,19 +257,21 @@ export async function getUnreadAlerts(shopId?: string): Promise<Alert[]> {
  * Mark a specific alert as read.
  */
 export async function markAsRead(alertId: string): Promise<void> {
+  const uid = requireActiveUserId();
+
   if (isDemoMode()) {
-    const list = getLocalAlerts().map(a => a.id === alertId ? { ...a, isRead: true } : a);
-    saveLocalAlerts(list);
+    const list = getLocalAlerts(uid).map(a => a.id === alertId ? { ...a, isRead: true } : a);
+    saveLocalAlerts(list, uid);
     return;
   }
 
   try {
-    const docRef = doc(db, ALERTS_COLLECTION, alertId);
+    const docRef = getAlertDoc(alertId, uid);
     await updateDoc(docRef, { isRead: true });
   } catch (err) {
     console.warn('Failed to mark alert read in Firestore, updating locally:', err);
-    const list = getLocalAlerts().map(a => a.id === alertId ? { ...a, isRead: true } : a);
-    saveLocalAlerts(list);
+    const list = getLocalAlerts(uid).map(a => a.id === alertId ? { ...a, isRead: true } : a);
+    saveLocalAlerts(list, uid);
   }
 }
 
@@ -297,9 +279,11 @@ export async function markAsRead(alertId: string): Promise<void> {
  * Mark all unread alerts as read in a single batch operation.
  */
 export async function markAllAsRead(shopId?: string): Promise<void> {
+  const uid = requireActiveUserId();
+
   if (isDemoMode()) {
-    const list = getLocalAlerts().map(a => ({ ...a, isRead: true }));
-    saveLocalAlerts(list);
+    const list = getLocalAlerts(uid).map(a => ({ ...a, isRead: true }));
+    saveLocalAlerts(list, uid);
     return;
   }
 
@@ -309,14 +293,14 @@ export async function markAllAsRead(shopId?: string): Promise<void> {
 
     const batch = writeBatch(db);
     for (const a of unread) {
-      const docRef = doc(db, ALERTS_COLLECTION, a.id);
+      const docRef = getAlertDoc(a.id, uid);
       batch.update(docRef, { isRead: true });
     }
     await batch.commit();
   } catch (err) {
     console.warn('Failed to mark all alerts read in Firestore, updating locally:', err);
-    const list = getLocalAlerts().map(a => ({ ...a, isRead: true }));
-    saveLocalAlerts(list);
+    const list = getLocalAlerts(uid).map(a => ({ ...a, isRead: true }));
+    saveLocalAlerts(list, uid);
   }
 }
 
@@ -324,21 +308,22 @@ export async function markAllAsRead(shopId?: string): Promise<void> {
  * Mark an alert as resolved (e.g. when product is restocked).
  */
 export async function resolveAlert(alertId: string): Promise<void> {
+  const uid = requireActiveUserId();
   const nowIso = new Date().toISOString();
 
   if (isDemoMode()) {
-    const list = getLocalAlerts().map(a => a.id === alertId ? { ...a, resolvedAt: nowIso, isRead: true } : a);
-    saveLocalAlerts(list);
+    const list = getLocalAlerts(uid).map(a => a.id === alertId ? { ...a, resolvedAt: nowIso, isRead: true } : a);
+    saveLocalAlerts(list, uid);
     return;
   }
 
   try {
-    const docRef = doc(db, ALERTS_COLLECTION, alertId);
+    const docRef = getAlertDoc(alertId, uid);
     await updateDoc(docRef, { resolvedAt: nowIso, isRead: true });
   } catch (err) {
     console.warn('Failed to resolve alert in Firestore, updating locally:', err);
-    const list = getLocalAlerts().map(a => a.id === alertId ? { ...a, resolvedAt: nowIso, isRead: true } : a);
-    saveLocalAlerts(list);
+    const list = getLocalAlerts(uid).map(a => a.id === alertId ? { ...a, resolvedAt: nowIso, isRead: true } : a);
+    saveLocalAlerts(list, uid);
   }
 }
 
@@ -346,19 +331,21 @@ export async function resolveAlert(alertId: string): Promise<void> {
  * Permanently delete an alert document.
  */
 export async function deleteAlert(alertId: string): Promise<void> {
+  const uid = requireActiveUserId();
+
   if (isDemoMode()) {
-    const list = getLocalAlerts().filter(a => a.id !== alertId);
-    saveLocalAlerts(list);
+    const list = getLocalAlerts(uid).filter(a => a.id !== alertId);
+    saveLocalAlerts(list, uid);
     return;
   }
 
   try {
-    const docRef = doc(db, ALERTS_COLLECTION, alertId);
+    const docRef = getAlertDoc(alertId, uid);
     await deleteDoc(docRef);
   } catch (err) {
     console.warn('Failed to delete alert in Firestore, removing locally:', err);
-    const list = getLocalAlerts().filter(a => a.id !== alertId);
-    saveLocalAlerts(list);
+    const list = getLocalAlerts(uid).filter(a => a.id !== alertId);
+    saveLocalAlerts(list, uid);
   }
 }
 
@@ -369,14 +356,20 @@ export function subscribeToAlerts(
   callback: (alerts: Alert[]) => void,
   options?: AlertFilterOptions
 ): () => void {
+  const uid = getActiveUserId();
+  if (!uid) {
+    callback([]);
+    return () => {};
+  }
+
   const limitCount = options?.limit || 50;
 
   if (isDemoMode()) {
     // Deliver initial alerts
-    callback(getLocalAlerts().slice(0, limitCount));
+    callback(getLocalAlerts(uid).slice(0, limitCount));
 
     const handler = () => {
-      callback(getLocalAlerts().slice(0, limitCount));
+      callback(getLocalAlerts(uid).slice(0, limitCount));
     };
 
     window.addEventListener('shoppulse_alerts_changed', handler);
@@ -387,7 +380,7 @@ export function subscribeToAlerts(
 
   try {
     const q = query(
-      collection(db, ALERTS_COLLECTION),
+      getAlertsCol(uid),
       orderBy('createdAt', 'desc'),
       firestoreLimit(limitCount)
     );
@@ -404,17 +397,17 @@ export function subscribeToAlerts(
         });
         callback(unique);
       } else {
-        callback(getLocalAlerts().slice(0, limitCount));
+        callback(getLocalAlerts(uid).slice(0, limitCount));
       }
     }, (err) => {
       console.error('Alerts onSnapshot error, falling back to local alerts:', err);
-      callback(getLocalAlerts().slice(0, limitCount));
+      callback(getLocalAlerts(uid).slice(0, limitCount));
     });
 
     return unsubscribe;
   } catch (err) {
     console.warn('Could not establish alerts snapshot listener, using local fallback:', err);
-    callback(getLocalAlerts().slice(0, limitCount));
+    callback(getLocalAlerts(uid).slice(0, limitCount));
     return () => {};
   }
 }
@@ -445,10 +438,11 @@ export async function getDashboardAlertStats(shopId?: string): Promise<Dashboard
  * Mark all active alerts for a specific product as resolved (e.g. when product is restocked).
  */
 export async function resolveProductAlerts(productId: string): Promise<Alert[]> {
+  const uid = requireActiveUserId();
   const nowIso = new Date().toISOString();
 
   if (isDemoMode()) {
-    const list = getLocalAlerts();
+    const list = getLocalAlerts(uid);
     const resolved: Alert[] = [];
     const updated = list.map(a => {
       if (a.productId === productId && !a.resolvedAt) {
@@ -459,14 +453,14 @@ export async function resolveProductAlerts(productId: string): Promise<Alert[]> 
       return a;
     });
     if (resolved.length > 0) {
-      saveLocalAlerts(updated);
+      saveLocalAlerts(updated, uid);
     }
     return resolved;
   }
 
   try {
     const q = query(
-      collection(db, ALERTS_COLLECTION),
+      getAlertsCol(uid),
       where('productId', '==', productId)
     );
     const snapshot = await getDocs(q);
@@ -485,7 +479,7 @@ export async function resolveProductAlerts(productId: string): Promise<Alert[]> 
     return resolved;
   } catch (err) {
     console.warn('Failed to resolve product alerts in Firestore, updating locally:', err);
-    const list = getLocalAlerts();
+    const list = getLocalAlerts(uid);
     const resolved: Alert[] = [];
     const updated = list.map(a => {
       if (a.productId === productId && !a.resolvedAt) {
@@ -496,7 +490,7 @@ export async function resolveProductAlerts(productId: string): Promise<Alert[]> 
       return a;
     });
     if (resolved.length > 0) {
-      saveLocalAlerts(updated);
+      saveLocalAlerts(updated, uid);
     }
     return resolved;
   }
@@ -588,8 +582,9 @@ export async function checkAndSyncProductAlerts(
       const updatedMessage = `Only ${stock} ${product.unit} of ${product.name} remaining (reorder level: ${reorderLevel}).`;
       if (existingLowStockAlert.message !== updatedMessage) {
         if (isDemoMode()) {
-          const list = getLocalAlerts().map(a => a.id === existingLowStockAlert.id ? { ...a, message: updatedMessage, isRead: false } : a);
-          saveLocalAlerts(list);
+          const uid = getActiveUserId();
+          const list = getLocalAlerts(uid || undefined).map(a => a.id === existingLowStockAlert.id ? { ...a, message: updatedMessage, isRead: false } : a);
+          saveLocalAlerts(list, uid || undefined);
         }
       }
     }
