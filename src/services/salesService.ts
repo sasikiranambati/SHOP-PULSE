@@ -42,6 +42,9 @@ import {
 import { getFirebaseErrorMessage } from '../utils/firebaseErrorMapper';
 import { MOCK_RECENT_SALES } from '../data/mockData';
 import { checkAndSyncProductAlerts } from './alertService';
+import { networkService } from './networkService';
+import { enqueueSale } from './offlineQueue';
+import { dashboardCacheService } from './dashboardCacheService';
 
 const SALES_COLLECTION = 'sales';
 const PRODUCTS_COLLECTION = 'products';
@@ -342,39 +345,63 @@ export async function createSale(
   const now = new Date();
   const nowIso = now.toISOString();
 
-  // Local / Demo Mode Execution
-  if (isDemoMode()) {
+  const recordLocalSale = (): Sale => {
+    // 1. Transactionally check and deduct local inventory
+    deductLocalInventory(lineItems.map(i => ({ productId: i.productId, quantity: i.quantity })));
+
+    // 2. Generate local sequential bill number
+    const existingSales = getLocalSales();
+    const existingBillNumbers = existingSales.map(s => s.billNumber);
+    const billNumber = generateLocalBillNumber(now, existingBillNumbers);
+
+    const isOffline = !networkService.isOnline();
+    const saleId = `sale_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const newSale: Sale = {
+      id: saleId,
+      billNumber,
+      customerName: input.customerName || undefined,
+      items: lineItems,
+      subtotal,
+      discount,
+      tax,
+      total,
+      totalAmount: total,
+      paymentMethod: input.paymentMethod || 'Cash',
+      cashierId,
+      createdAt: nowIso,
+      shopId: shopName,
+      notes: input.notes,
+      syncStatus: isOffline ? 'pending' : 'synced'
+    };
+
+    saveLocalSales([newSale, ...existingSales]);
+
+    // If offline, enqueue for background synchronization
+    if (isOffline) {
+      enqueueSale(newSale);
+    }
+
+    // Update instant dashboard cache snapshot
     try {
-      // 1. Transactionally check and deduct local inventory
-      deductLocalInventory(lineItems.map(i => ({ productId: i.productId, quantity: i.quantity })));
+      const snap = dashboardCacheService.getSnapshot();
+      dashboardCacheService.updateSnapshot({
+        todayRevenue: (snap.todayRevenue || 0) + total,
+        itemsSoldToday: (snap.itemsSoldToday || 0) + lineItems.reduce((s, i) => s + i.quantity, 0),
+        totalOrdersToday: (snap.totalOrdersToday || 0) + 1
+      });
+    } catch {
+      // Ignore cache update errors
+    }
 
-      // 2. Generate local sequential bill number
-      const existingSales = getLocalSales();
-      const existingBillNumbers = existingSales.map(s => s.billNumber);
-      const billNumber = generateLocalBillNumber(now, existingBillNumbers);
+    return newSale;
+  };
 
-      const saleId = `sale_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      const newSale: Sale = {
-        id: saleId,
-        billNumber,
-        customerName: input.customerName || undefined,
-        items: lineItems,
-        subtotal,
-        discount,
-        tax,
-        total,
-        totalAmount: total,
-        paymentMethod: input.paymentMethod || 'Cash',
-        cashierId,
-        createdAt: nowIso,
-        shopId: shopName,
-        notes: input.notes
-      };
-
-      saveLocalSales([newSale, ...existingSales]);
-      return newSale;
+  // Local / Demo Mode Execution or Network Offline
+  if (isDemoMode() || !networkService.isOnline()) {
+    try {
+      return recordLocalSale();
     } catch (err: any) {
-      throw new Error(err.message || 'Failed to record sale in demo mode.');
+      throw new Error(err.message || 'Failed to record sale in offline mode.');
     }
   }
 
@@ -475,9 +502,38 @@ export async function createSale(
       } as any).catch(() => {});
     }
 
+    // Update dashboard cache
+    try {
+      const snap = dashboardCacheService.getSnapshot();
+      dashboardCacheService.updateSnapshot({
+        todayRevenue: (snap.todayRevenue || 0) + total,
+        itemsSoldToday: (snap.itemsSoldToday || 0) + lineItems.reduce((s, i) => s + i.quantity, 0),
+        totalOrdersToday: (snap.totalOrdersToday || 0) + 1
+      });
+    } catch {
+      // Ignore
+    }
+
     return normalizeSale(resultSale.id, resultSale);
   } catch (err: any) {
-    throw new Error(getFirebaseErrorMessage(err));
+    const errorMsg = getFirebaseErrorMessage(err);
+    const isNetworkOrOffline = 
+      !networkService.isOnline() || 
+      errorMsg.includes('offline') || 
+      errorMsg.includes('network') || 
+      errorMsg.includes('unavailable') || 
+      errorMsg.includes('client is offline');
+
+    if (isNetworkOrOffline) {
+      console.warn('Network unavailable during Firestore transaction, executing optimistic offline sale and queuing:', errorMsg);
+      try {
+        return recordLocalSale();
+      } catch (fallbackErr: any) {
+        throw new Error(fallbackErr.message || 'Failed to record sale offline.');
+      }
+    }
+
+    throw new Error(errorMsg);
   }
 }
 

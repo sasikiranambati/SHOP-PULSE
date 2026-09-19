@@ -1,7 +1,7 @@
 /**
  * @file firebase.ts
  * @description Core Firebase Initialization Module for ShopPulse.
- * Configures Firebase Auth, Firestore with Offline Persistence, and Cloud Storage.
+ * Configures Firebase Auth, Firestore with Hardened Offline Persistence, and Cloud Storage.
  * Belongs in `src/services/firebase.ts`.
  */
 
@@ -13,7 +13,11 @@ import {
   initializeFirestore, 
   getFirestore, 
   persistentLocalCache, 
-  persistentMultipleTabManager 
+  persistentMultipleTabManager,
+  CACHE_SIZE_UNLIMITED,
+  enableNetwork as firestoreEnableNetwork,
+  disableNetwork as firestoreDisableNetwork,
+  waitForPendingWrites as firestoreWaitForPendingWrites
 } from 'firebase/firestore';
 import type { Firestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
@@ -44,18 +48,19 @@ export const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(
 export const auth: Auth = getAuth(app);
 
 /**
- * Cloud Firestore Database Instance with Safe Offline Persistence Initialization.
+ * Cloud Firestore Database Instance with Multi-Tab Persistent Local Cache.
  */
 let firestoreInstance: Firestore;
 
 try {
   firestoreInstance = initializeFirestore(app, {
     localCache: persistentLocalCache({
-      tabManager: persistentMultipleTabManager()
+      tabManager: persistentMultipleTabManager(),
+      cacheSizeBytes: CACHE_SIZE_UNLIMITED
     })
   });
 } catch (err) {
-  console.warn('Firestore offline persistence initialization failed, falling back to standard Firestore:', err);
+  console.warn('Firestore offline multi-tab persistence initialization failed, falling back to standard Firestore instance:', err);
   firestoreInstance = getFirestore(app);
 }
 
@@ -65,3 +70,36 @@ export const db: Firestore = firestoreInstance;
  * Firebase Cloud Storage Instance.
  */
 export const storage: FirebaseStorage = getStorage(app);
+
+/**
+ * Programmatically disable Firestore network connectivity (useful for offline simulation & testing).
+ */
+export async function disableFirestoreNetwork(): Promise<void> {
+  try {
+    await firestoreDisableNetwork(db);
+  } catch (err) {
+    console.warn('Could not disable Firestore network:', err);
+  }
+}
+
+/**
+ * Programmatically enable Firestore network connectivity and resume syncing.
+ */
+export async function enableFirestoreNetwork(): Promise<void> {
+  try {
+    await firestoreEnableNetwork(db);
+  } catch (err) {
+    console.warn('Could not enable Firestore network:', err);
+  }
+}
+
+/**
+ * Wait until all offline writes in the local cache have been acknowledged by the server.
+ */
+export async function waitForPendingFirestoreWrites(): Promise<void> {
+  try {
+    await firestoreWaitForPendingWrites(db);
+  } catch (err) {
+    console.warn('Error waiting for pending Firestore writes:', err);
+  }
+}

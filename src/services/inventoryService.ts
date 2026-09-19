@@ -25,6 +25,8 @@ import { validateProductInput } from '../utils/validators';
 import { getFirebaseErrorMessage } from '../utils/firebaseErrorMapper';
 import { INITIAL_PRODUCTS } from '../data/mockData';
 import { checkAndSyncProductAlerts } from './alertService';
+import { networkService } from './networkService';
+import { enqueueInventoryMutation } from './offlineQueue';
 
 const PRODUCTS_COLLECTION = 'products';
 const LOCAL_STORAGE_KEY = 'shoppulse_inventory_products';
@@ -232,13 +234,16 @@ export async function addProduct(input: ProductInput): Promise<Product> {
     updatedAt: now
   };
 
-  if (isDemoMode()) {
+  if (isDemoMode() || !networkService.isOnline()) {
     const id = `p_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const newProduct: Product = { id, ...productData };
     const list = getLocalProducts();
     list.unshift(newProduct);
     saveLocalProducts(list);
     await checkAndSyncProductAlerts(newProduct);
+    if (!networkService.isOnline() && !isDemoMode()) {
+      enqueueInventoryMutation({ mutationType: 'CREATE', productId: id, productData: newProduct });
+    }
     return newProduct;
   }
 
@@ -252,13 +257,14 @@ export async function addProduct(input: ProductInput): Promise<Product> {
     await checkAndSyncProductAlerts(created);
     return created;
   } catch (err) {
-    console.warn('Firestore addDoc failed, storing locally:', err);
+    console.warn('Firestore addDoc failed, storing locally & queuing:', err);
     const id = `p_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const newProduct: Product = { id, ...productData };
     const list = getLocalProducts();
     list.unshift(newProduct);
     saveLocalProducts(list);
     await checkAndSyncProductAlerts(newProduct);
+    enqueueInventoryMutation({ mutationType: 'CREATE', productId: id, productData: newProduct });
     return newProduct;
   }
 }
@@ -307,10 +313,13 @@ export async function updateProduct(productId: string, updates: Partial<ProductI
 
   const updatedProduct = { ...existing, ...cleanUpdates };
 
-  if (isDemoMode()) {
+  if (isDemoMode() || !networkService.isOnline()) {
     const list = getLocalProducts().map(p => p.id === productId ? updatedProduct : p);
     saveLocalProducts(list);
     await checkAndSyncProductAlerts(updatedProduct);
+    if (!networkService.isOnline() && !isDemoMode()) {
+      enqueueInventoryMutation({ mutationType: 'UPDATE', productId, productData: cleanUpdates });
+    }
     return;
   }
 
@@ -321,10 +330,11 @@ export async function updateProduct(productId: string, updates: Partial<ProductI
     saveLocalProducts(list);
     await checkAndSyncProductAlerts(updatedProduct);
   } catch (err) {
-    console.warn('Firestore updateDoc failed, updating local copy:', err);
+    console.warn('Firestore updateDoc failed, updating local copy & queuing:', err);
     const list = getLocalProducts().map(p => p.id === productId ? updatedProduct : p);
     saveLocalProducts(list);
     await checkAndSyncProductAlerts(updatedProduct);
+    enqueueInventoryMutation({ mutationType: 'UPDATE', productId, productData: cleanUpdates });
   }
 }
 
@@ -332,9 +342,12 @@ export async function updateProduct(productId: string, updates: Partial<ProductI
  * Delete a product from inventory.
  */
 export async function deleteProduct(productId: string): Promise<void> {
-  if (isDemoMode()) {
+  if (isDemoMode() || !networkService.isOnline()) {
     const list = getLocalProducts().filter(p => p.id !== productId);
     saveLocalProducts(list);
+    if (!networkService.isOnline() && !isDemoMode()) {
+      enqueueInventoryMutation({ mutationType: 'DELETE', productId });
+    }
     return;
   }
 
@@ -344,9 +357,10 @@ export async function deleteProduct(productId: string): Promise<void> {
     const list = getLocalProducts().filter(p => p.id !== productId);
     saveLocalProducts(list);
   } catch (err) {
-    console.warn('Firestore deleteDoc failed, removing from local copy:', err);
+    console.warn('Firestore deleteDoc failed, removing from local copy & queuing:', err);
     const list = getLocalProducts().filter(p => p.id !== productId);
     saveLocalProducts(list);
+    enqueueInventoryMutation({ mutationType: 'DELETE', productId });
   }
 }
 
