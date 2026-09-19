@@ -23,5 +23,6 @@ export * from './sale';
 export * from './device';
 export * from './alert';
 export * from './analytics';
+export * from './sync';
 
 

@@ -5,6 +5,7 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { LanguageSelectorModal } from './LanguageSelectorModal';
 
 import { useAlerts } from '../hooks/useAlerts';
+import { useSync } from '../hooks/useSync';
 
 interface NavbarProps {
   activePage: PageRoute;
@@ -41,6 +42,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   // Live real-time alerts connection
   const { alerts, unreadCount, markAsRead, markAllAsRead } = useAlerts();
+  const { isOnline, isSyncing, totalPendingCount, syncNow } = useSync();
 
   const displayedAlerts = alertTab === 'unread'
     ? alerts.filter(a => !a.isRead && !a.resolvedAt)
@@ -87,6 +89,34 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-black">
                 <Store className="w-4 h-4 text-emerald-600" />
                 <span>{shopName}</span>
+              </div>
+
+              {/* Sync & Connectivity Status Indicator */}
+              <div 
+                onClick={() => !isOnline && syncNow()}
+                title={isOnline ? (isSyncing ? 'Syncing data with cloud...' : 'Connected online') : `${totalPendingCount} items queued offline. Click to sync.`}
+                className={`hidden xs:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-extrabold border transition-all select-none ${
+                  !isOnline
+                    ? 'bg-amber-50 text-amber-800 border-amber-300'
+                    : isSyncing
+                      ? 'bg-blue-50 text-blue-800 border-blue-200'
+                      : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                }`}
+              >
+                <span className={`w-2 h-2 rounded-full ${
+                  !isOnline
+                    ? 'bg-amber-500 animate-pulse'
+                    : isSyncing
+                      ? 'bg-blue-500 animate-spin'
+                      : 'bg-emerald-500'
+                }`} />
+                <span>
+                  {!isOnline
+                    ? `Offline (${totalPendingCount})`
+                    : isSyncing
+                      ? 'Syncing...'
+                      : 'Online'}
+                </span>
               </div>
 
               {/* Notification Popover Icon */}

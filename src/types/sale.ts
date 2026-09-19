@@ -64,6 +64,8 @@ export interface Sale {
   shopId?: string;
   createdBy?: string;
   notes?: string;
+  wasOfflineSynced?: boolean;
+  syncStatus?: 'synced' | 'pending' | 'syncing' | 'failed';
 }
 
 /**

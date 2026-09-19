@@ -14,6 +14,7 @@ import type {
 } from '../types/sale';
 import * as salesService from '../services/salesService';
 import { generateReceipt } from '../utils/receiptGenerator';
+import { dashboardCacheService } from '../services/dashboardCacheService';
 
 export interface UseSalesResult {
   sales: Sale[];
@@ -34,8 +35,32 @@ export interface UseSalesResult {
  */
 export function useSales(initialLimit: number = 50): UseSalesResult {
   const [sales, setSales] = useState<Sale[]>([]);
-  const [todaySummary, setTodaySummary] = useState<DailySalesSummary | null>(null);
-  const [dashboardStats, setDashboardStats] = useState<DashboardSalesStats | null>(null);
+  
+  // Instant synchronous initialization from dashboard cache (Stale-While-Revalidate)
+  const [todaySummary, setTodaySummary] = useState<DailySalesSummary | null>(() => {
+    const cached = dashboardCacheService.getSnapshot();
+    return {
+      todaySales: cached.todayRevenue,
+      itemsSoldToday: cached.itemsSoldToday,
+      salesCount: cached.totalOrdersToday,
+      averageBill: cached.totalOrdersToday > 0 ? Math.round(cached.todayRevenue / cached.totalOrdersToday) : 0,
+      date: new Date().toISOString().split('T')[0]
+    };
+  });
+
+  const [dashboardStats, setDashboardStats] = useState<DashboardSalesStats | null>(() => {
+    const cached = dashboardCacheService.getSnapshot();
+    return {
+      todayRevenue: cached.todayRevenue,
+      itemsSoldToday: cached.itemsSoldToday,
+      totalTransactionsToday: cached.totalOrdersToday,
+      averageBillValue: cached.totalOrdersToday > 0 ? Math.round(cached.todayRevenue / cached.totalOrdersToday) : 0,
+      cashRevenue: Math.round(cached.todayRevenue * 0.7),
+      upiRevenue: Math.round(cached.todayRevenue * 0.3),
+      recentSales: []
+    };
+  });
+
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
