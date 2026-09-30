@@ -12,12 +12,26 @@ interface LoginProps {
 
 export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) => {
   const { t } = useLanguage();
-  const { login } = useAuth();
+  const { login, loginDemo } = useAuth();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleDemoLogin = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const profile = await loginDemo(rememberMe);
+      onLoginSuccess(profile?.shopName || 'Gupta Kirana Store');
+      setActivePage('dashboard');
+    } catch (err: any) {
+      setError(err?.message || 'Failed to enter demo mode.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,9 +96,23 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
         </div>
 
         {error && (
-          <div className="p-3.5 mb-5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs sm:text-sm font-semibold flex items-center gap-2.5">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-            <span>{error}</span>
+          <div className="p-3.5 mb-5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm font-semibold space-y-2.5">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+              <span>{error}</span>
+            </div>
+            {(error.includes('502') || error.includes('Backend') || error.includes('backend') || error.includes('connect')) && (
+              <div className="pt-2 border-t border-rose-200/70 flex items-center justify-between gap-2 flex-wrap">
+                <p className="text-[11px] text-rose-700 font-medium">Want to explore right now?</p>
+                <button
+                  type="button"
+                  onClick={handleDemoLogin}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-xs transition-colors cursor-pointer"
+                >
+                  Enter Demo Store ⚡
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -145,6 +173,18 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
           >
             {loading ? (t('common.loading') || 'Logging in...') : t('auth.loginBtn')}
           </Button>
+
+          {/* 1-Click Demo Login Shortcut */}
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={handleDemoLogin}
+              disabled={loading}
+              className="w-full py-2.5 px-3 rounded-xl border border-dashed border-emerald-300 hover:border-emerald-500 bg-emerald-50/60 hover:bg-emerald-50 text-emerald-900 transition-all text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <span>⚡ Try 1-Click Demo (Gupta Kirana Store)</span>
+            </button>
+          </div>
         </form>
 
         <div className="mt-8 pt-6 border-t border-slate-100 text-center">

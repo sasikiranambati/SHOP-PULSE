@@ -236,6 +236,31 @@ export async function signInWithEmail(
 }
 
 /**
+ * Sign in as a local offline Demo Store user (zero backend requirements).
+ */
+export async function loginAsDemo(rememberMe = false): Promise<UserProfile> {
+  await applyAuthPersistence(rememberMe);
+  const now = new Date().toISOString();
+  const demoProfile: UserProfile = {
+    uid: 'demo_owner_gupta',
+    email: 'ramesh.sharma@example.com',
+    displayName: 'Ramesh Sharma',
+    ownerName: 'Ramesh Sharma',
+    shopName: 'Gupta Kirana Store',
+    businessType: 'Kirana Store',
+    phone: '9876543210',
+    role: 'owner',
+    theme: (localStorage.getItem('shoppulse_theme') as any) || 'light',
+    language: (localStorage.getItem('shoppulse_language') as any) || 'en',
+    createdAt: now,
+    lastLogin: now,
+  };
+
+  saveLocalSession(demoProfile, rememberMe);
+  return demoProfile;
+}
+
+/**
  * Fetch current user profile.
  */
 export async function getCurrentUserProfile(_uid?: string): Promise<UserProfile | null> {

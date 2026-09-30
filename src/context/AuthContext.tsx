@@ -13,6 +13,7 @@ import {
   signInWithEmail, 
   signInWithGoogle as googleSignIn,
   registerWithEmail, 
+  loginAsDemo,
   signOutUser,
   resetPassword as sendPasswordReset,
   updateUserProfile as updateProfileDoc
@@ -25,6 +26,7 @@ export interface AuthContextType {
   loading: boolean;
   error: string | null;
   login: (credentials: LoginCredentials, rememberMe?: boolean) => Promise<UserProfile | null>;
+  loginDemo: (rememberMe?: boolean) => Promise<UserProfile>;
   loginWithGoogle: () => Promise<UserProfile>;
   register: (input: RegisterInput) => Promise<UserProfile>;
   logout: () => Promise<void>;
@@ -102,6 +104,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return profile;
     } catch (err: any) {
       setError(err.message || 'Login failed');
+      throw err;
+    }
+  };
+
+  const handleDemoLogin = async (rememberMe = false): Promise<UserProfile> => {
+    setError(null);
+    try {
+      const profile = await loginAsDemo(rememberMe);
+      setUserProfile(profile);
+      return profile;
+    } catch (err: any) {
+      setError(err.message || 'Demo login failed');
       throw err;
     }
   };
@@ -205,6 +219,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         error,
         login: handleLogin,
+        loginDemo: handleDemoLogin,
         loginWithGoogle: handleGoogleLogin,
         register: handleRegister,
         logout: handleLogout,
