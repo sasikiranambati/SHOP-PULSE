@@ -91,17 +91,18 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
       <div 
-        className="bg-white rounded-t-3xl sm:rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in slide-in-from-bottom duration-200"
+        className="bg-white rounded-t-3xl sm:rounded-3xl max-w-md w-full p-5 sm:p-6 max-h-[90dvh] overflow-y-auto shadow-2xl border border-slate-200 animate-in slide-in-from-bottom duration-200 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2 text-emerald-700 font-extrabold text-lg sm:text-xl">
-            <PackageCheck className="w-6 h-6 shrink-0" />
-            <span>{t('addProductModal.title')}</span>
+          <div className="flex items-center gap-2 text-emerald-700 font-extrabold text-base sm:text-xl truncate">
+            <PackageCheck className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+            <span className="truncate">{t('addProductModal.title')}</span>
           </div>
           <button 
             onClick={onClose}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+            aria-label="Close"
+            className="w-10 h-10 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -191,9 +192,9 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 xs:grid-cols-3 gap-2.5 sm:gap-3">
             <div>
-              <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
+              <label className="block text-[11px] sm:text-xs font-bold uppercase text-slate-600 mb-1">
                 {t('addProductModal.initialStock')}
               </label>
               <input
@@ -203,12 +204,12 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                 placeholder="50"
                 value={stock}
                 onChange={(e) => setStock(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm font-medium"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
+              <label className="block text-[11px] sm:text-xs font-bold uppercase text-slate-600 mb-1">
                 {t('addProductModal.minStockAlert')}
               </label>
               <input
@@ -217,12 +218,12 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                 placeholder="10"
                 value={minStock}
                 onChange={(e) => setMinStock(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm font-medium"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
+              <label className="block text-[11px] sm:text-xs font-bold uppercase text-slate-600 mb-1">
                 {t('addProductModal.unit')}
               </label>
               <input
@@ -230,16 +231,16 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                 placeholder="pkts / kg"
                 value={unit}
                 onChange={(e) => setUnit(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm font-medium"
               />
             </div>
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 mt-5">
-            <Button type="button" variant="outline" onClick={onClose} className="rounded-xl">
+            <Button type="button" variant="outline" onClick={onClose} className="rounded-xl min-h-[44px] px-4">
               {t('addProductModal.cancel')}
             </Button>
-            <Button type="submit" variant="primary" icon={<Plus className="w-5 h-5" />} className="rounded-xl font-bold">
+            <Button type="submit" variant="primary" icon={<Plus className="w-5 h-5" />} className="rounded-xl font-bold min-h-[44px] px-5">
               {t('addProductModal.submit')}
             </Button>
           </div>

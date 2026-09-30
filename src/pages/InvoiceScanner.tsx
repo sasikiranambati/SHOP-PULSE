@@ -584,7 +584,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
             {/* Quick Sample Invoices for Instant 1-Click Demo */}
             <div className="pt-4 border-t border-slate-200">
               <p className="text-xs font-black text-slate-500 uppercase tracking-wider mb-2.5">
-                ⚡ Try One-Click Sample Invoices:
+                Try One-Click Sample Invoices:
               </p>
               <div className="flex flex-wrap justify-center gap-2">
                 {SAMPLE_INVOICES.map((sample, idx) => (
@@ -671,7 +671,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
             </div>
           </div>
 
-          {/* Extracted Items Editable Table */}
+          {/* Extracted Items: Mobile Cards & Desktop Table */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
@@ -681,7 +681,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
               <button
                 type="button"
                 onClick={handleAddItem}
-                className="text-xs font-black text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer"
+                className="text-xs font-black text-emerald-700 hover:text-emerald-800 flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-emerald-50 border border-emerald-200 active:scale-95 transition-transform cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add Item</span>
@@ -694,8 +694,99 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                 <span>Moderate OCR match ({invoiceData.confidenceScore}%). Items with ⚠️ Review have uncertain text or numbers—please check and edit if needed.</span>
               </div>
             )}
+            {/* Mobile Cards View (< md) */}
+            <div className="md:hidden space-y-3">
+              {invoiceData.items.map((item) => (
+                <div key={item.id} className="p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Product Name</label>
+                      <input
+                        type="text"
+                        value={item.name}
+                        onChange={(e) => handleItemChange(item.id, 'name', e.target.value)}
+                        className="w-full font-bold text-slate-900 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-base sm:text-sm"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveItem(item.id)}
+                      aria-label="Remove item"
+                      className="text-slate-400 hover:text-rose-600 w-9 h-9 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-xl bg-white border border-slate-200 mt-4 active:scale-95 transition-all cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
 
-            <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Category</label>
+                      <input
+                        type="text"
+                        value={item.category}
+                        onChange={(e) => handleItemChange(item.id, 'category', e.target.value)}
+                        className="w-full text-xs font-semibold bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Quantity</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={item.quantity}
+                        onChange={(e) => handleItemChange(item.id, 'quantity', Math.max(1, Number(e.target.value)))}
+                        className="w-full text-center font-extrabold text-slate-900 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-base sm:text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 text-right">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5 text-left">Purchase</label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={item.purchasePrice}
+                        onChange={(e) => handleItemChange(item.id, 'purchasePrice', Number(e.target.value))}
+                        className="w-full text-right font-bold text-slate-800 bg-white px-2 py-1.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-base sm:text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5 text-left">Selling</label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={item.sellingPrice}
+                        onChange={(e) => handleItemChange(item.id, 'sellingPrice', Number(e.target.value))}
+                        className="w-full text-right font-bold text-emerald-700 bg-white px-2 py-1.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-base sm:text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5 text-right">Total</label>
+                      <div className="h-[38px] flex items-center justify-end px-2 font-black text-slate-900 text-sm">
+                        ₹{item.lineTotal.toLocaleString('en-IN')}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-xs">
+                    <span className="text-[11px] text-slate-500 font-medium">Status:</span>
+                    {item.matchedProductId ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold">
+                        <Check className="w-3 h-3 text-emerald-700" /> Restock Existing
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-extrabold">
+                        <Plus className="w-3 h-3 text-blue-700" /> New Product
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table View (>= md) */}
+            <div className="hidden md:block overflow-x-auto border border-slate-200 rounded-2xl">
               <table className="w-full text-left text-xs sm:text-sm">
                 <thead className="bg-slate-50 text-slate-700 font-extrabold uppercase text-[11px] border-b border-slate-200 select-none">
                   <tr>
@@ -876,17 +967,18 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
 
       {/* Live Camera Viewfinder Modal */}
       {isCameraOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4">
-          <div className="bg-slate-900 rounded-3xl border border-slate-700 overflow-hidden max-w-lg w-full shadow-2xl flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-xs p-3 sm:p-4">
+          <div className="bg-slate-900 rounded-3xl border border-slate-700 overflow-hidden max-w-lg w-full shadow-2xl flex flex-col max-h-[92dvh]">
             
-            <div className="p-4 flex items-center justify-between border-b border-slate-800 text-white">
+            <div className="p-3.5 sm:p-4 flex items-center justify-between border-b border-slate-800 text-white">
               <div className="flex items-center gap-2">
-                <Camera className="w-5 h-5 text-emerald-400" />
-                <span className="font-extrabold text-sm sm:text-base">Align Supplier Bill Inside Frame</span>
+                <Camera className="w-5 h-5 text-emerald-400 shrink-0" />
+                <span className="font-extrabold text-xs sm:text-base">Align Supplier Bill Inside Frame</span>
               </div>
               <button 
                 onClick={closeCamera}
-                className="text-slate-400 hover:text-white p-1 cursor-pointer transition-colors"
+                aria-label="Close camera"
+                className="w-10 h-10 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -898,7 +990,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
               </div>
             )}
 
-            <div className="relative bg-black flex items-center justify-center min-h-[300px] sm:min-h-[380px]">
+            <div className="relative bg-black flex items-center justify-center min-h-[260px] sm:min-h-[380px] grow">
               <video 
                 ref={videoRef} 
                 playsInline 
@@ -908,7 +1000,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
               />
               
               {/* Target scan overlay guides */}
-              <div className="absolute inset-8 border-2 border-dashed border-emerald-400/80 rounded-2xl pointer-events-none flex flex-col justify-between p-3">
+              <div className="absolute inset-6 sm:inset-8 border-2 border-dashed border-emerald-400/80 rounded-2xl pointer-events-none flex flex-col justify-between p-3">
                 <div className="flex justify-between">
                   <div className="w-4 h-4 border-t-2 border-l-2 border-emerald-400" />
                   <div className="w-4 h-4 border-t-2 border-r-2 border-emerald-400" />
@@ -925,12 +1017,12 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
               </div>
             </div>
 
-            <div className="p-4 bg-slate-900 flex items-center justify-between gap-3">
+            <div className="p-3.5 sm:p-4 bg-slate-900 flex items-center justify-between gap-3 border-t border-slate-800">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={closeCamera}
-                className="text-white border-slate-700 hover:bg-slate-800 font-bold"
+                className="text-white border-slate-700 hover:bg-slate-800 font-bold min-h-[44px] px-4"
               >
                 Cancel
               </Button>
@@ -939,7 +1031,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                 size="lg"
                 onClick={capturePhotoFromCamera}
                 icon={<Camera className="w-5 h-5" />}
-                className="font-black px-6 shadow-md shadow-emerald-500/20"
+                className="font-black px-6 shadow-md shadow-emerald-500/20 min-h-[44px]"
               >
                 Capture Bill
               </Button>

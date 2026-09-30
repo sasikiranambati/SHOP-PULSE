@@ -59,14 +59,14 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4 relative">
+    <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4 relative pt-[calc(3.5rem+env(safe-area-inset-top,0px))] pb-[calc(2rem+env(safe-area-inset-bottom,0px))]">
       
       {/* Top Back Link */}
       <button 
         onClick={() => setActivePage('landing')}
-        className="absolute top-6 left-6 flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+        className="fixed sm:absolute top-[calc(1rem+env(safe-area-inset-top,0px))] left-4 sm:top-6 sm:left-6 z-10 flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-slate-900 bg-white/80 sm:bg-transparent backdrop-blur-xs px-3 py-1.5 rounded-full border border-slate-200/80 sm:border-transparent transition-colors cursor-pointer min-h-[40px]"
       >
-        <ArrowLeft className="w-4 h-4" />
+        <ArrowLeft className="w-4 h-4 shrink-0" />
         <span>{t('common.back')}</span>
       </button>
 
@@ -97,10 +97,12 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
               type="text"
               required
               disabled={loading}
+              autoComplete="username email"
+              inputMode="email"
               placeholder="e.g. 9876543210 or shop@pulse.com"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium disabled:bg-slate-100 disabled:cursor-not-allowed"
+              className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm font-medium disabled:bg-slate-100 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -112,10 +114,11 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
               type="password"
               required
               disabled={loading}
+              autoComplete="current-password"
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium disabled:bg-slate-100 disabled:cursor-not-allowed"
+              className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm font-medium disabled:bg-slate-100 disabled:cursor-not-allowed"
             />
           </div>
 

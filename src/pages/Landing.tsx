@@ -70,10 +70,10 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
       {/* 1. MOBILE NATIVE ONBOARDING VIEW (Shown on mobile devices) */}
       {/* Exact match to Image 2 design */}
       {/* ========================================================= */}
-      <div className="md:hidden min-h-screen flex flex-col justify-between p-5 sm:p-6 select-none">
+      <div className="md:hidden min-h-[100dvh] flex flex-col justify-between p-5 sm:p-6 select-none pt-[calc(1.25rem+env(safe-area-inset-top,0px))] pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]">
         
         {/* Mobile Top Header */}
-        <div className="flex items-center justify-between pt-2">
+        <div className="flex items-center justify-between pt-1">
           <span className="inline-flex items-center text-[10px] sm:text-xs font-black uppercase tracking-wider text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200/80">
             {t('landing.kiranaTechBadge')}
           </span>
@@ -86,7 +86,8 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
 
             <button
               onClick={() => setIsLangModalOpen(true)}
-              className="p-1 rounded-lg hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer"
+              aria-label="Change Language"
+              className="w-9 h-9 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-xl hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer"
               title="Change Language"
             >
               <Globe className="w-4 h-4 text-emerald-600" />
@@ -95,7 +96,7 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
         </div>
 
         {/* Mobile Center Hero Card */}
-        <div className="my-auto py-8 flex flex-col items-center text-center">
+        <div className="my-auto py-6 flex flex-col items-center text-center">
           
           {/* Logo Squircle with SP and Sparkle Badge */}
           <div className="relative mb-5">
@@ -132,10 +133,10 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
         </div>
 
         {/* Mobile Bottom Action Buttons */}
-        <div className="w-full max-w-sm mx-auto pb-4">
+        <div className="w-full max-w-sm mx-auto pb-2">
           <button
             onClick={() => setActivePage(firebaseUser ? 'dashboard' : 'login')}
-            className="w-full py-4 bg-emerald-700 hover:bg-emerald-800 active:scale-[0.98] text-white font-black text-base rounded-2xl shadow-lg shadow-emerald-700/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
+            className="w-full py-4 min-h-[50px] bg-emerald-700 hover:bg-emerald-800 active:scale-[0.98] text-white font-black text-base rounded-2xl shadow-lg shadow-emerald-700/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
             <span>{t('landing.getStarted')}</span>
             <ArrowRight className="w-5 h-5" />
@@ -143,7 +144,7 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
 
           <button
             onClick={() => setActivePage('dashboard')}
-            className="mt-3 text-xs font-semibold text-slate-400 hover:text-slate-600 text-center w-full block transition-colors cursor-pointer py-1"
+            className="mt-3 text-xs font-semibold text-slate-400 hover:text-slate-600 text-center w-full block transition-colors cursor-pointer py-2 min-h-[38px] flex items-center justify-center"
           >
             {t('landing.enterDemoShop')}
           </button>
@@ -226,7 +227,7 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
           </div>
 
           <p className="mt-3.5 text-xs font-bold text-slate-500">
-            ⚡ Mobile-first. Built specifically for everyday shop owners.
+            Mobile-first. Built specifically for everyday shop owners.
           </p>
         </section>
 

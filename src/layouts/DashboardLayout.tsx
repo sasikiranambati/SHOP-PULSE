@@ -34,7 +34,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       <div className="flex-1 flex max-w-7xl w-full mx-auto">
         <Sidebar activePage={activePage} setActivePage={setActivePage} />
         
-        <main className="flex-1 p-3.5 sm:p-6 lg:p-8 pb-28 md:pb-12 overflow-x-hidden max-w-full">
+        <main className="flex-1 p-3 sm:p-6 lg:p-8 pb-[calc(6.5rem+env(safe-area-inset-bottom,0px))] md:pb-12 overflow-x-hidden max-w-full">
           {children}
         </main>
       </div>
@@ -43,10 +43,11 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       {activePage !== 'sales' && (
         <button
           onClick={() => setActivePage('sales')}
-          className="md:hidden fixed bottom-20 left-4 z-40 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold px-4 py-3 rounded-full shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition-all cursor-pointer"
+          aria-label="Open Quick Sale POS"
+          className="md:hidden fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] left-3.5 sm:left-4 z-30 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold px-3.5 py-2.5 rounded-full shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 transition-all cursor-pointer min-h-[44px]"
         >
-          <Plus className="w-5 h-5" />
-          <span className="text-xs">Quick Sale</span>
+          <Plus className="w-4 h-4" />
+          <span className="text-xs font-black">Quick Sale</span>
         </button>
       )}
 

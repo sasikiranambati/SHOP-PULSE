@@ -25,6 +25,7 @@ dist-ssr
 
 # Python
 venv/
+.venv/
 __pycache__/
 .env
 *.pyc
@@ -32,4 +33,7 @@ __pycache__/
 
 # OCR models
 *.traineddata
+
+# Scratch / temporary scripts
+scratch/
 

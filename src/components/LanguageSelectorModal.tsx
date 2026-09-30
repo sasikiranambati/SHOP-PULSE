@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Globe, X, Check } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { LanguageCode } from '../i18n/languages';
@@ -11,6 +12,28 @@ interface LanguageSelectorModalProps {
 export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({ isOpen, onClose }) => {
   const { language, setLanguage, languages, t } = useLanguage();
 
+  // Close on Escape key press
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const handleSelect = (code: LanguageCode) => {
@@ -18,10 +41,13 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({ is
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
+  const modalContent = (
+    <div 
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in"
+      onClick={onClose}
+    >
       <div 
-        className="bg-white rounded-t-3xl sm:rounded-3xl max-w-md w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 animate-slide-up sm:animate-fade-in overflow-hidden"
+        className="bg-white rounded-t-3xl sm:rounded-3xl max-w-md w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 animate-slide-up sm:animate-fade-in overflow-hidden my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -43,6 +69,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({ is
           <button
             onClick={onClose}
             className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
+            aria-label="Close"
           >
             <X className="w-5 h-5" />
           </button>
@@ -94,4 +121,6 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({ is
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 };

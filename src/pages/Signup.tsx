@@ -99,35 +99,35 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4 relative">
+    <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4 relative pt-[calc(3.5rem+env(safe-area-inset-top,0px))] pb-[calc(2rem+env(safe-area-inset-bottom,0px))]">
       
       {/* Top Back Link */}
       <button 
         onClick={() => setActivePage('landing')}
-        className="absolute top-6 left-6 flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+        className="fixed sm:absolute top-[calc(1rem+env(safe-area-inset-top,0px))] left-4 sm:top-6 sm:left-6 z-10 flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-slate-900 bg-white/80 sm:bg-transparent backdrop-blur-xs px-3 py-1.5 rounded-full border border-slate-200/80 sm:border-transparent transition-colors cursor-pointer min-h-[40px]"
       >
-        <ArrowLeft className="w-4 h-4" />
+        <ArrowLeft className="w-4 h-4 shrink-0" />
         <span>{t('common.back')}</span>
       </button>
 
-      <div className="max-w-lg w-full bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-md my-8">
+      <div className="max-w-lg w-full bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-8 shadow-md my-4 sm:my-8">
         
         {/* Brand Header */}
         <div className="flex flex-col items-center text-center mb-6">
           <div className="w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center text-white shadow-sm mb-3">
             <Activity className="w-7 h-7" />
           </div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">{t('auth.createShopAccount')}</h1>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">{t('auth.createShopAccount')}</h1>
           <p className="text-xs sm:text-sm text-slate-600 font-semibold mt-1">{t('auth.signupSub')}</p>
 
           {/* Initial Onboarding Language Selector */}
           <button
             type="button"
             onClick={() => setIsLangModalOpen(true)}
-            className="mt-3 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-black flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="mt-3 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-black flex items-center gap-1.5 transition-colors cursor-pointer min-h-[36px]"
           >
             <Globe className="w-4 h-4 text-emerald-600" />
-            <span>🌐 {currentLanguageMeta.nativeName} ({currentLanguageMeta.name})</span>
+            <span>{currentLanguageMeta.nativeName} ({currentLanguageMeta.name})</span>
           </button>
         </div>
 
@@ -155,10 +155,11 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
                 type="text"
                 required
                 disabled={loading}
+                autoComplete="name"
                 placeholder="Ramesh Gupta"
                 value={ownerName}
                 onChange={(e) => setOwnerName(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-medium disabled:bg-slate-100 disabled:cursor-not-allowed"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm font-medium disabled:bg-slate-100 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -170,10 +171,11 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
                 type="text"
                 required
                 disabled={loading}
+                autoComplete="organization"
                 placeholder="Gupta Kirana Store"
                 value={shopName}
                 onChange={(e) => setShopName(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-medium disabled:bg-slate-100 disabled:cursor-not-allowed"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm font-medium disabled:bg-slate-100 disabled:cursor-not-allowed"
               />
             </div>
           </div>
@@ -186,7 +188,7 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
               value={businessType}
               disabled={loading}
               onChange={(e) => setBusinessType(e.target.value as BusinessType)}
-              className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-medium bg-white disabled:bg-slate-100 disabled:cursor-not-allowed"
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm font-medium bg-white disabled:bg-slate-100 disabled:cursor-not-allowed"
             >
               {businessOptions.map((opt) => (
                 <option key={opt} value={opt}>
@@ -204,10 +206,12 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
               type="text"
               required
               disabled={loading}
+              autoComplete="email"
+              inputMode="email"
               placeholder="shop@pulse.com or 9876543210"
               value={contact}
               onChange={(e) => setContact(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-medium disabled:bg-slate-100 disabled:cursor-not-allowed"
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm font-medium disabled:bg-slate-100 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -219,10 +223,11 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
               type="password"
               required
               disabled={loading}
+              autoComplete="new-password"
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-medium disabled:bg-slate-100 disabled:cursor-not-allowed"
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm font-medium disabled:bg-slate-100 disabled:cursor-not-allowed"
             />
           </div>
 

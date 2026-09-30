@@ -45,8 +45,9 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
           <p className="text-sm text-slate-600 font-medium leading-relaxed">
             Are you sure you want to delete <span className="font-extrabold text-slate-900">"{productName}"</span>?
           </p>
-          <p className="text-xs text-rose-600 font-semibold bg-rose-50/80 p-2.5 rounded-xl border border-rose-200/80">
-            ⚠️ This will permanently remove the item from your inventory catalog.
+          <p className="text-xs text-rose-600 font-semibold bg-rose-50/80 p-2.5 rounded-xl border border-rose-200/80 flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
+            <span>This will permanently remove the item from your inventory catalog.</span>
           </p>
         </div>
 

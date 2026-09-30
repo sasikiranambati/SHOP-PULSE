@@ -186,7 +186,7 @@ export const Inventory: React.FC<InventoryProps> = ({
             placeholder={t('inventory.searchPlaceholder')}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm font-medium"
           />
         </div>
 
@@ -318,27 +318,30 @@ export const Inventory: React.FC<InventoryProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                <span className="text-sm font-black text-slate-900">
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-slate-100">
+                <span className="text-xs sm:text-sm font-black text-slate-900 shrink-0">
                   {t('inventory.tableStock')}: {prod.stock} {prod.unit}
                 </span>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     onClick={() => restockItem(prod.id)}
-                    className="text-xs font-black text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-xl border border-emerald-200 flex items-center gap-1 cursor-pointer active:scale-95 transition-all"
+                    aria-label={`Restock 10 units of ${prod.name}`}
+                    className="text-xs font-black text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-xl border border-emerald-200 flex items-center gap-1 cursor-pointer active:scale-95 transition-all min-h-[38px]"
                   >
                     <RefreshCw className="w-3.5 h-3.5 text-emerald-600" /> +10
                   </button>
                   <button
                     onClick={() => setEditingProduct(prod)}
-                    className="text-xs font-black text-slate-700 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-200 flex items-center gap-1 cursor-pointer active:scale-95 transition-all"
+                    aria-label={`Edit ${prod.name}`}
+                    className="text-xs font-black text-slate-700 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-200 flex items-center gap-1 cursor-pointer active:scale-95 transition-all min-h-[38px]"
                   >
                     <Pencil className="w-3.5 h-3.5 text-slate-600" /> Edit
                   </button>
                   <button
                     onClick={() => setDeletingProduct(prod)}
-                    className="p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl border border-rose-200 flex items-center cursor-pointer active:scale-95 transition-all"
+                    className="p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl border border-rose-200 flex items-center justify-center cursor-pointer active:scale-95 transition-all min-h-[38px] min-w-[38px]"
                     title="Delete"
+                    aria-label={`Delete ${prod.name}`}
                   >
                     <Trash2 className="w-3.5 h-3.5 text-rose-600" />
                   </button>

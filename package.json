@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "backend": "python -m uvicorn backend.main:app --reload --port 8000",
+    "server": "python backend/main.py",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test": "vitest run",

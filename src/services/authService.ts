@@ -1,36 +1,17 @@
 /**
  * @file authService.ts
- * @description Production-grade Authentication and User Profile service methods using Firebase Auth & Firestore.
+ * @description Production-grade Authentication and User Profile service integrated with ShopPulse FastAPI backend.
  * Belongs in `src/services/authService.ts`.
  */
 
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signInWithPopup,
-  GoogleAuthProvider,
-  sendPasswordResetEmail,
-  signOut, 
-  onAuthStateChanged,
-  setPersistence,
-  browserLocalPersistence,
-  browserSessionPersistence
-} from 'firebase/auth';
-import type { User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db } from './firebase';
-import { updateDocument } from './firestoreHelpers';
-import type { UserProfile, RegisterInput, LoginCredentials } from '../types/user';
-import { getFirebaseErrorMessage } from '../utils/firebaseErrorMapper';
+import type { UserProfile, RegisterInput, LoginCredentials, BusinessType } from '../types/user';
+import { authApi } from '../api/auth';
+import { shopsApi } from '../api/shops';
+import { getAccessToken } from '../api/client';
 
-const USERS_COLLECTION = 'users';
-const LOCAL_USERS_KEY = 'shoppulse_local_users';
 const LOCAL_SESSION_KEY = 'shoppulse_local_session';
 const REMEMBER_ME_KEY = 'shoppulse_remember_me';
 
-/**
- * Check if the user opted in to Remember Me.
- */
 export function isRememberMeActive(): boolean {
   try {
     return localStorage.getItem(REMEMBER_ME_KEY) === 'true';
@@ -39,67 +20,20 @@ export function isRememberMeActive(): boolean {
   }
 }
 
-/**
- * Set Firebase auth persistence mode dynamically.
- */
 export async function applyAuthPersistence(rememberMe = false): Promise<void> {
   try {
-    const persistence = rememberMe ? browserLocalPersistence : browserSessionPersistence;
-    await setPersistence(auth, persistence);
-  } catch (err) {
-    console.warn('Could not set auth persistence:', err);
-  }
-}
-
-// Initialize Local Session Persistence safely
-try {
-  const remembered = isRememberMeActive();
-  setPersistence(auth, remembered ? browserLocalPersistence : browserSessionPersistence).catch(err => {
-    console.warn('Could not set initial auth persistence:', err);
-  });
-  // If Remember Me was not set to true, clear any lingering stale local session to avoid bypassing login
-  if (!remembered) {
-    localStorage.removeItem(LOCAL_SESSION_KEY);
-    localStorage.removeItem('shoppulse_active_page');
-  }
-} catch {
-  // Ignore in environments where persistence is unavailable
-}
-
-/**
- * Check if the Firebase configuration is using a demo / placeholder key.
- */
-function isDemoApiKey(): boolean {
-  const key = auth.app.options.apiKey || '';
-  return !key || key.includes('DemoKey') || key.includes('YourFirebaseApiKey') || key === 'AIzaSyDemoKeyForShopPulseDevelopmentOnly';
-}
-
-function getLocalUsers(): Array<UserProfile & { password?: string }> {
-  try {
-    const raw = localStorage.getItem(LOCAL_USERS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    localStorage.setItem(REMEMBER_ME_KEY, rememberMe ? 'true' : 'false');
   } catch {
-    return [];
-  }
-}
-
-function saveLocalUsers(users: Array<UserProfile & { password?: string }>) {
-  try {
-    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
-  } catch (err) {
-    console.warn('Could not save local users:', err);
+    // Ignore error
   }
 }
 
 export function getLocalSession(): UserProfile | null {
   try {
-    // Check sessionStorage first for current tab/window session
     const sessionRaw = sessionStorage.getItem(LOCAL_SESSION_KEY);
     if (sessionRaw) {
       return JSON.parse(sessionRaw);
     }
-
-    // Only inspect localStorage if Remember Me was explicitly chosen
     if (isRememberMeActive()) {
       const localRaw = localStorage.getItem(LOCAL_SESSION_KEY);
       if (localRaw) {
@@ -114,16 +48,15 @@ export function getLocalSession(): UserProfile | null {
   }
 }
 
-export function saveLocalSession(profile: UserProfile | null, rememberMe = false) {
+export function saveLocalSession(profile: UserProfile | null, rememberMe = false, emitEvent = true): void {
   try {
     if (profile) {
       sessionStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(profile));
-      if (rememberMe) {
+      if (rememberMe || isRememberMeActive()) {
         localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(profile));
         localStorage.setItem(REMEMBER_ME_KEY, 'true');
       } else {
         localStorage.removeItem(LOCAL_SESSION_KEY);
-        localStorage.setItem(REMEMBER_ME_KEY, 'false');
       }
     } else {
       sessionStorage.removeItem(LOCAL_SESSION_KEY);
@@ -132,7 +65,9 @@ export function saveLocalSession(profile: UserProfile | null, rememberMe = false
       localStorage.removeItem(REMEMBER_ME_KEY);
       localStorage.removeItem('shoppulse_active_page');
     }
-    window.dispatchEvent(new CustomEvent('shoppulse_auth_changed'));
+    if (emitEvent) {
+      window.dispatchEvent(new CustomEvent('shoppulse_auth_changed'));
+    }
   } catch (err) {
     console.warn('Could not save local session:', err);
   }
@@ -140,192 +75,116 @@ export function saveLocalSession(profile: UserProfile | null, rememberMe = false
 
 let testingActiveUid: string | null = null;
 
-/**
- * Override active user ID for automated test suites.
- */
 export function setActiveUserIdForTesting(uid: string | null): void {
   testingActiveUid = uid;
 }
 
-/**
- * Get active user ID (from Firebase Auth, active local session, or test override).
- */
 export function getActiveUserId(): string | null {
   if (testingActiveUid !== null) {
     return testingActiveUid;
-  }
-  if (auth.currentUser?.uid) {
-    return auth.currentUser.uid;
   }
   const session = getLocalSession();
   return session?.uid || null;
 }
 
-/**
- * Require active user ID or throw a user-friendly error.
- */
 export function requireActiveUserId(): string {
   const uid = getActiveUserId();
   if (!uid) {
-    throw new Error('User not authenticated. Please log in to access your shop data.');
+    throw new Error('User is not authenticated. Please log in.');
   }
   return uid;
 }
 
-/**
- * Initialize a new user workspace: creates user document, empty subcollections / local storage entries,
- * and sets default analytics values.
- */
-export async function initializeUserWorkspace(uid: string, profile: UserProfile): Promise<void> {
-  // 1. Initialize local storage isolation keys for this UID
-  try {
-    const invKey = `shoppulse_inventory_products_${uid}`;
-    const salesKey = `shoppulse_sales_history_${uid}`;
-    const alertsKey = `shoppulse_alerts_cache_${uid}`;
-    const cacheKey = `shoppulse_dashboard_cache_${uid}`;
-
-    if (!localStorage.getItem(invKey)) {
-      localStorage.setItem(invKey, JSON.stringify([]));
-    }
-    if (!localStorage.getItem(salesKey)) {
-      localStorage.setItem(salesKey, JSON.stringify([]));
-    }
-    if (!localStorage.getItem(alertsKey)) {
-      localStorage.setItem(alertsKey, JSON.stringify([]));
-    }
-    if (!localStorage.getItem(cacheKey)) {
-      localStorage.setItem(cacheKey, JSON.stringify({
-        todayRevenue: 0,
-        totalOrdersToday: 0,
-        itemsSoldToday: 0,
-        activeAlertsCount: 0,
-        recentSales: [],
-        timestamp: Date.now()
-      }));
-    }
-  } catch (lsErr) {
-    console.warn('Could not initialize local storage workspace:', lsErr);
-  }
-
-  // 2. Initialize Firestore workspace documents if Firebase is active
-  if (!isDemoApiKey()) {
-    try {
-      const userDocRef = doc(db, USERS_COLLECTION, uid);
-      await setDoc(userDocRef, profile, { merge: true });
-
-      // Profile subcollection (users/{uid}/profile/main)
-      const profileSubRef = doc(db, USERS_COLLECTION, uid, 'profile', 'main');
-      await setDoc(profileSubRef, profile, { merge: true });
-
-      // Analytics defaults (users/{uid}/analytics/summary)
-      const analyticsDocRef = doc(db, USERS_COLLECTION, uid, 'analytics', 'summary');
-      await setDoc(analyticsDocRef, {
-        totalRevenue: 0,
-        totalOrders: 0,
-        averageOrderValue: 0,
-        itemsSold: 0,
-        topProducts: [],
-        lowStockProducts: [],
-        dailySales: [],
-        weeklySales: [],
-        monthlySales: [],
-        estimatedProfit: 0,
-        generatedAt: new Date().toISOString()
-      }, { merge: true });
-    } catch (fsErr) {
-      console.warn('Could not initialize Firestore user workspace:', fsErr);
-    }
-  }
+function mapFrontendToBackendBusinessType(type?: string): string {
+  if (!type) return 'Grocery/Kirana';
+  const lower = type.toLowerCase();
+  if (lower.includes('bakery')) return 'Bakery';
+  if (lower.includes('pharm') || lower.includes('med')) return 'Medical/Pharmacy';
+  if (lower.includes('tea') || lower.includes('coffee')) return 'Tea/Coffee Shop';
+  if (lower.includes('sweet')) return 'Sweet Shop';
+  if (lower.includes('fruit') || lower.includes('veg')) return 'Fruit & Vegetable Store';
+  if (lower.includes('mobile') || lower.includes('electronic')) return 'Mobile & Electronics Accessories';
+  if (lower.includes('stationery') || lower.includes('book')) return 'Stationery & Book Store';
+  if (lower.includes('hardware')) return 'Hardware Store';
+  if (lower.includes('electrical')) return 'Electrical Store';
+  if (lower.includes('cosmetic')) return 'Cosmetics & Personal Care';
+  if (lower.includes('household')) return 'Household & General Store';
+  if (lower.includes('plant') || lower.includes('garden')) return 'Plant & Gardening Store';
+  if (lower.includes('kirana') || lower.includes('grocery') || lower.includes('supermarket')) return 'Grocery/Kirana';
+  return 'Other Retail Store';
 }
 
-function registerLocalUser(input: RegisterInput): UserProfile {
-  const users = getLocalUsers();
-  const normalizedEmail = input.email.toLowerCase().trim();
+function mapBackendToFrontendBusinessType(type?: string): BusinessType {
+  if (!type) return 'Kirana Store';
+  const lower = type.toLowerCase();
+  if (lower.includes('bakery')) return 'Bakery';
+  if (lower.includes('pharm') || lower.includes('med')) return 'Pharmacy';
+  if (lower.includes('tea') || lower.includes('coffee')) return 'Tea Stall';
+  if (lower.includes('supermarket')) return 'Supermarket';
+  if (lower.includes('general')) return 'General Store';
+  if (lower.includes('kirana') || lower.includes('grocery')) return 'Kirana Store';
+  return 'Other';
+}
 
-  // Duplicate email handling
-  if (users.some(u => u.email.toLowerCase() === normalizedEmail)) {
-    throw new Error(getFirebaseErrorMessage('auth/email-already-in-use'));
+/**
+ * Register a new user and shop profile against the backend.
+ */
+export async function registerWithEmail(input: RegisterInput): Promise<UserProfile> {
+  const email = input.email.trim().toLowerCase();
+  
+  // 1. Register with backend
+  await authApi.register(email, input.password);
+
+  // 2. Login to acquire JWT access token
+  await authApi.login(email, input.password);
+
+  // 3. Get created user profile
+  const user = await authApi.getProfile();
+
+  // 4. Create user shop profile
+  const mappedType = mapFrontendToBackendBusinessType(input.businessType);
+  const shopName = input.shopName?.trim() || 'My Shop';
+  const ownerName = input.ownerName?.trim() || input.displayName?.trim() || 'Shop Owner';
+
+  let shop;
+  try {
+    shop = await shopsApi.createShop({
+      shop_name: shopName,
+      owner_name: ownerName,
+      business_type: mappedType,
+      location: input.phone || undefined,
+    });
+  } catch (err: any) {
+    console.warn('Shop creation error (may already exist):', err);
+    try {
+      shop = await shopsApi.getMyShop();
+    } catch {
+      shop = null;
+    }
   }
 
   const now = new Date().toISOString();
-  const uid = 'usr_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 6);
-
   const profile: UserProfile = {
-    uid,
-    ownerName: input.ownerName || input.displayName || 'Shop Owner',
-    shopName: input.shopName || 'My Shop',
-    email: normalizedEmail,
-    language: input.language || 'en',
-    theme: input.theme || 'light',
-    createdAt: now,
-    lastLogin: now,
-    displayName: input.displayName || input.ownerName || 'Shop Owner',
+    uid: user.id,
+    email: user.email,
+    displayName: ownerName,
+    ownerName: ownerName,
+    shopName: shop?.shop_name || shopName,
+    businessType: mapBackendToFrontendBusinessType(shop?.business_type || mappedType),
     phone: input.phone || '',
-    businessType: input.businessType || 'General Store',
-    role: 'owner'
+    role: 'owner',
+    theme: input.theme || 'light',
+    language: input.language || 'en',
+    createdAt: user.created_at || now,
+    lastLogin: now,
   };
 
-  users.push({ ...profile, password: input.password });
-  saveLocalUsers(users);
-  saveLocalSession(profile);
-  initializeUserWorkspace(uid, profile);
-
-  return profile;
-}
-
-function signInLocalUser({ email, password }: LoginCredentials, rememberMe = false): UserProfile {
-  const users = getLocalUsers();
-  const normalizedEmail = email.toLowerCase().trim();
-  const user = users.find(u => u.email.toLowerCase() === normalizedEmail);
-
-  if (!user) {
-    throw new Error(getFirebaseErrorMessage('auth/user-not-found'));
-  }
-
-  if (user.password && user.password !== password) {
-    throw new Error(getFirebaseErrorMessage('auth/wrong-password'));
-  }
-
-  const now = new Date().toISOString();
-  user.lastLogin = now;
-  saveLocalUsers(users);
-
-  const { password: _, ...profile } = user;
-  saveLocalSession(profile, rememberMe);
-
+  saveLocalSession(profile, false);
   return profile;
 }
 
 /**
- * Fetch current authenticated user profile from Firestore or local session cache.
- */
-export async function getCurrentUserProfile(uid: string): Promise<UserProfile | null> {
-  const localSession = getLocalSession();
-  if (localSession && localSession.uid === uid) {
-    return localSession;
-  }
-
-  const localUser = getLocalUsers().find(u => u.uid === uid);
-  if (localUser) {
-    const { password: _, ...profile } = localUser;
-    return profile;
-  }
-
-  try {
-    const docRef = doc(db, USERS_COLLECTION, uid);
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      return { uid: snap.id, ...(snap.data() as Omit<UserProfile, 'uid'>) } as UserProfile;
-    }
-    return null;
-  } catch (err) {
-    console.warn('Could not fetch user profile from Firestore:', err);
-    return null;
-  }
-}
-
-/**
- * Sign in existing user with email and password.
+ * Sign in existing user with email and password using backend JWT.
  */
 export async function signInWithEmail(
   { email, password }: LoginCredentials,
@@ -333,267 +192,186 @@ export async function signInWithEmail(
 ): Promise<UserProfile | null> {
   await applyAuthPersistence(rememberMe);
 
-  if (isDemoApiKey()) {
-    return signInLocalUser({ email, password }, rememberMe);
-  }
+  const normalizedEmail = email.trim().toLowerCase();
+  // 1. Login to acquire JWT
+  await authApi.login(normalizedEmail, password);
 
+  // 2. Get user profile
+  const user = await authApi.getProfile();
+
+  // 3. Get user's shop profile
+  let shop;
   try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    const uid = userCredential.user.uid;
-    const now = new Date().toISOString();
-
-    // Check if user profile exists in Firestore and update lastLogin without overwriting
+    shop = await shopsApi.getMyShop();
+  } catch (shopErr) {
     try {
-      const userDocRef = doc(db, USERS_COLLECTION, uid);
-      const userDocSnap = await getDoc(userDocRef);
-      if (userDocSnap.exists()) {
-        await updateDocument(USERS_COLLECTION, uid, { lastLogin: now });
-      } else {
-        const initialProfile: UserProfile = {
-          uid,
-          ownerName: userCredential.user.displayName || 'Shop Owner',
-          shopName: 'My Shop',
-          email: userCredential.user.email || email,
-          language: 'en',
-          theme: 'light',
-          businessType: 'General Store',
-          role: 'owner',
-          displayName: userCredential.user.displayName || 'Shop Owner',
-          createdAt: now,
-          lastLogin: now
-        };
-        await setDoc(userDocRef, initialProfile);
-      }
-    } catch (fsErr) {
-      console.warn('Could not update lastLogin in Firestore:', fsErr);
+      shop = await shopsApi.createShop({
+        shop_name: 'My Shop',
+        owner_name: 'Shop Owner',
+        business_type: 'Grocery/Kirana',
+      });
+    } catch {
+      shop = null;
     }
-
-    const profile = await getCurrentUserProfile(uid);
-    const resolvedProfile = profile || {
-      uid,
-      ownerName: userCredential.user.displayName || 'Shop Owner',
-      shopName: 'My Shop',
-      email: userCredential.user.email || email,
-      language: 'en',
-      theme: 'light',
-      businessType: 'General Store',
-      role: 'owner',
-      displayName: userCredential.user.displayName || 'Shop Owner',
-      createdAt: now,
-      lastLogin: now
-    };
-
-    saveLocalSession(resolvedProfile, rememberMe);
-    return resolvedProfile;
-  } catch (err: any) {
-    const errStr = (err?.code || err?.message || '') + '';
-    if (errStr.includes('api-key-not-valid') || errStr.includes('invalid-api-key')) {
-      return signInLocalUser({ email, password }, rememberMe);
-    }
-    throw new Error(getFirebaseErrorMessage(err));
   }
+
+  const now = new Date().toISOString();
+  const profile: UserProfile = {
+    uid: user.id,
+    email: user.email,
+    displayName: shop?.owner_name || 'Shop Owner',
+    ownerName: shop?.owner_name || 'Shop Owner',
+    shopName: shop?.shop_name || 'My Shop',
+    businessType: mapBackendToFrontendBusinessType(shop?.business_type),
+    phone: shop?.location || '',
+    role: 'owner',
+    theme: (localStorage.getItem('shoppulse_theme') as any) || 'light',
+    language: (localStorage.getItem('shoppulse_language') as any) || 'en',
+    createdAt: user.created_at || now,
+    lastLogin: now,
+  };
+
+  saveLocalSession(profile, rememberMe);
+  return profile;
 }
 
 /**
- * Sign in or sign up with Google Auth provider.
- * Automatically creates a Firestore shop profile if one does not exist.
+ * Fetch current user profile.
  */
-export async function signInWithGoogle(): Promise<UserProfile> {
-  try {
-    const provider = new GoogleAuthProvider();
-    const userCredential = await signInWithPopup(auth, provider);
-    const user = userCredential.user;
-    const now = new Date().toISOString();
-
-    const existingProfile = await getCurrentUserProfile(user.uid);
-
-    if (existingProfile) {
-      // Update last login without overwriting shop details
-      await updateDocument(USERS_COLLECTION, user.uid, { lastLogin: now });
-      return { ...existingProfile, lastLogin: now };
-    }
-
-    // Create new automatic profile for Google user
-    const newProfile: UserProfile = {
-      uid: user.uid,
-      email: user.email || '',
-      displayName: user.displayName || 'Shop Owner',
-      ownerName: user.displayName || 'Shop Owner',
-      shopName: `${user.displayName || 'My'} Shop`,
-      businessType: 'General Store',
-      role: 'owner',
-      phone: user.phoneNumber || '',
-      photoURL: user.photoURL || undefined,
-      theme: 'light',
-      language: 'en',
-      createdAt: now,
-      lastLogin: now
-    };
-
-    await setDoc(doc(db, USERS_COLLECTION, user.uid), newProfile);
-    await initializeUserWorkspace(user.uid, newProfile);
-    saveLocalSession(newProfile);
-    return newProfile;
-  } catch (err) {
-    throw new Error(getFirebaseErrorMessage(err));
-  }
-}
-
-/**
- * Register a new user with Email and Password.
- * Automatically creates Firestore document `users/{uid}`.
- */
-export async function registerWithEmail(input: RegisterInput): Promise<UserProfile> {
-  if (isDemoApiKey()) {
-    return registerLocalUser(input);
+export async function getCurrentUserProfile(_uid?: string): Promise<UserProfile | null> {
+  const token = getAccessToken();
+  if (!token) {
+    return getLocalSession();
   }
 
   try {
-    const userCredential = await createUserWithEmailAndPassword(auth, input.email, input.password);
-    const uid = userCredential.user.uid;
-    const now = new Date().toISOString();
-
-    const userDocRef = doc(db, USERS_COLLECTION, uid);
-    
-    // Check if user document already exists to never overwrite existing users
+    const user = await authApi.getProfile();
+    let shop;
     try {
-      const userDocSnap = await getDoc(userDocRef);
-      if (userDocSnap.exists()) {
-        const existing = { uid: userDocSnap.id, ...(userDocSnap.data() as Omit<UserProfile, 'uid'>) } as UserProfile;
-        saveLocalSession(existing);
-        return existing;
-      }
-    } catch (fsCheckErr) {
-      console.warn('Could not check existing Firestore document:', fsCheckErr);
+      shop = await shopsApi.getMyShop();
+    } catch {
+      shop = null;
     }
 
+    const cached = getLocalSession();
     const profile: UserProfile = {
-      uid,
-      ownerName: input.ownerName || input.displayName || 'Shop Owner',
-      shopName: input.shopName || 'My Shop',
-      email: input.email,
-      language: input.language || 'en',
-      theme: input.theme || 'light',
-      createdAt: now,
-      lastLogin: now,
-      displayName: input.displayName || input.ownerName || 'Shop Owner',
-      phone: input.phone || '',
-      businessType: input.businessType || 'General Store',
-      role: 'owner'
+      uid: user.id,
+      email: user.email,
+      displayName: shop?.owner_name || cached?.displayName || 'Shop Owner',
+      ownerName: shop?.owner_name || cached?.ownerName || 'Shop Owner',
+      shopName: shop?.shop_name || cached?.shopName || 'My Shop',
+      businessType: mapBackendToFrontendBusinessType(shop?.business_type || cached?.businessType),
+      phone: shop?.location || cached?.phone || '',
+      role: 'owner',
+      theme: cached?.theme || (localStorage.getItem('shoppulse_theme') as any) || 'light',
+      language: cached?.language || (localStorage.getItem('shoppulse_language') as any) || 'en',
+      createdAt: user.created_at || cached?.createdAt || new Date().toISOString(),
+      lastLogin: new Date().toISOString(),
     };
 
-    try {
-      await setDoc(userDocRef, profile);
-    } catch (fsWriteErr) {
-      console.warn('Could not write user profile to Firestore:', fsWriteErr);
-    }
-
-    await initializeUserWorkspace(uid, profile);
-    saveLocalSession(profile);
+    saveLocalSession(profile, isRememberMeActive(), false);
     return profile;
-  } catch (err: any) {
-    const errStr = (err?.code || err?.message || '') + '';
-    if (errStr.includes('api-key-not-valid') || errStr.includes('invalid-api-key')) {
-      return registerLocalUser(input);
-    }
-    throw new Error(getFirebaseErrorMessage(err));
-  }
-}
-
-/**
- * Send password reset email to user.
- */
-export async function resetPassword(email: string): Promise<void> {
-  try {
-    await sendPasswordResetEmail(auth, email);
   } catch (err) {
-    throw new Error(getFirebaseErrorMessage(err));
+    return getLocalSession();
   }
 }
 
 /**
- * Sign out current user safely.
+ * Log out user and clear all auth state.
  */
 export async function signOutUser(): Promise<void> {
+  authApi.logout();
   saveLocalSession(null);
-  try {
-    await signOut(auth);
-  } catch (err) {
-    console.warn('Firebase signOut warning:', err);
-  }
 }
 
 /**
- * Update UserProfile document fields in Firestore.
+ * Subscribe to auth state changes.
  */
-export async function updateUserProfile(uid: string, updates: Partial<UserProfile>): Promise<void> {
-  try {
-    await updateDocument(USERS_COLLECTION, uid, {
-      ...updates,
-      updatedAt: new Date().toISOString()
-    });
-    const session = getLocalSession();
-    if (session && session.uid === uid) {
-      saveLocalSession({ ...session, ...updates });
+export function onAuthUserChanged(callback: (user: any) => void): () => void {
+  const token = getAccessToken();
+  if (token) {
+    getCurrentUserProfile()
+      .then((profile) => {
+        if (profile) {
+          callback({ uid: profile.uid, email: profile.email, displayName: profile.displayName });
+        } else {
+          callback(null);
+        }
+      })
+      .catch(() => callback(null));
+  } else {
+    const local = getLocalSession();
+    if (local) {
+      callback({ uid: local.uid, email: local.email, displayName: local.displayName });
+    } else {
+      callback(null);
     }
-  } catch (err) {
-    throw new Error(getFirebaseErrorMessage(err));
   }
-}
 
-/**
- * Get current authenticated Firebase User.
- */
-export function getCurrentUser(): FirebaseUser | null {
-  if (auth.currentUser) return auth.currentUser;
-  const localSession = getLocalSession();
-  if (localSession?.uid) {
-    return {
-      uid: localSession.uid,
-      email: localSession.email,
-      displayName: localSession.displayName || localSession.ownerName,
-      emailVerified: true
-    } as unknown as FirebaseUser;
-  }
-  return null;
-}
+  const handleAuthChange = () => {
+    const current = getLocalSession();
+    if (current && getAccessToken()) {
+      callback({ uid: current.uid, email: current.email, displayName: current.displayName });
+    } else {
+      callback(null);
+    }
+  };
 
-/**
- * Listen for Firebase Auth state changes.
- */
-export function onAuthUserChanged(callback: (user: FirebaseUser | null) => void): () => void {
-  const checkState = (firebaseUser: FirebaseUser | null) => {
-    if (firebaseUser) {
-      callback(firebaseUser);
-      return;
-    }
-    const localSession = getLocalSession();
-    if (localSession?.uid) {
-      const mockUser = {
-        uid: localSession.uid,
-        email: localSession.email,
-        displayName: localSession.displayName || localSession.ownerName,
-        emailVerified: true
-      } as unknown as FirebaseUser;
-      callback(mockUser);
-      return;
-    }
+  const handleExpired = () => {
+    signOutUser();
     callback(null);
   };
 
-  const unsubscribe = onAuthStateChanged(auth, checkState);
-
-  const handleCustomEvent = () => {
-    checkState(auth.currentUser);
-  };
-
-  window.addEventListener('shoppulse_auth_changed', handleCustomEvent);
-
-  // Immediate check
-  checkState(auth.currentUser);
+  window.addEventListener('shoppulse_auth_changed', handleAuthChange);
+  window.addEventListener('shoppulse_auth_expired', handleExpired);
 
   return () => {
-    unsubscribe();
-    window.removeEventListener('shoppulse_auth_changed', handleCustomEvent);
+    window.removeEventListener('shoppulse_auth_changed', handleAuthChange);
+    window.removeEventListener('shoppulse_auth_expired', handleExpired);
   };
+}
+
+/**
+ * Update user / shop profile in the backend.
+ */
+export async function updateUserProfile(_uid: string, updates: Partial<UserProfile>): Promise<void> {
+  try {
+    const shop = await shopsApi.getMyShop();
+    if (shop) {
+      await shopsApi.updateShop(shop.id, {
+        shop_name: updates.shopName,
+        owner_name: updates.ownerName || updates.displayName,
+        business_type: updates.businessType ? mapFrontendToBackendBusinessType(updates.businessType) : undefined,
+      });
+    }
+  } catch (err) {
+    console.warn('Could not update backend shop profile:', err);
+  }
+
+  const current = getLocalSession();
+  if (current) {
+    const updated = { ...current, ...updates };
+    saveLocalSession(updated, isRememberMeActive());
+  }
+}
+
+/**
+ * Initialize workspace helper for backward compatibility.
+ */
+export function initializeUserWorkspace(_uid: string, _profile?: any): void {
+  // Backend automatically initializes tables and user scope
+}
+
+/**
+ * Password reset placeholder.
+ */
+export async function resetPassword(email: string): Promise<void> {
+  console.info('Password reset requested for:', email);
+}
+
+/**
+ * Google Sign In placeholder for backend integration.
+ */
+export async function signInWithGoogle(): Promise<UserProfile> {
+  throw new Error('Google Sign-In is not configured for the local backend. Please use email and password.');
 }

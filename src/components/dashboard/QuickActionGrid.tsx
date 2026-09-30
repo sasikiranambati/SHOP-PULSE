@@ -3,7 +3,8 @@ import {
   ShoppingCart, 
   PackagePlus, 
   ArrowUpCircle, 
-  ScanLine 
+  ScanLine,
+  Zap
 } from 'lucide-react';
 import { useLanguage } from '../../i18n/LanguageContext';
 
@@ -73,7 +74,7 @@ export const QuickActionGrid: React.FC<QuickActionGridProps> = ({
     <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 p-4 sm:p-5 shadow-xs flex flex-col justify-between h-full">
       <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
         <h2 className="font-black text-slate-900 text-sm sm:text-base flex items-center gap-2">
-          <span className="text-amber-500">⚡</span>
+          <Zap className="w-4 h-4 text-amber-500" />
           <span>{t('dashboard.quickActions')}</span>
         </h2>
         <span className="text-[11px] font-extrabold text-slate-400">

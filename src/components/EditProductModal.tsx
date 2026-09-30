@@ -100,17 +100,18 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
       <div 
-        className="bg-white rounded-t-3xl sm:rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in slide-in-from-bottom duration-200"
+        className="bg-white rounded-t-3xl sm:rounded-3xl max-w-md w-full p-5 sm:p-6 max-h-[90dvh] overflow-y-auto shadow-2xl border border-slate-200 animate-in slide-in-from-bottom duration-200 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2 text-slate-800 font-extrabold text-lg sm:text-xl">
+          <div className="flex items-center gap-2 text-slate-800 font-extrabold text-base sm:text-xl truncate">
             <Edit3 className="w-5 h-5 text-emerald-600 shrink-0" />
-            <span>Edit Product</span>
+            <span className="truncate">Edit Product</span>
           </div>
           <button 
             onClick={onClose}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+            aria-label="Close"
+            className="w-10 h-10 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -197,9 +198,9 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 xs:grid-cols-3 gap-2.5 sm:gap-3">
             <div>
-              <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
+              <label className="block text-[11px] sm:text-xs font-bold uppercase text-slate-600 mb-1">
                 Stock *
               </label>
               <input
@@ -208,12 +209,12 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
                 min="0"
                 value={stock}
                 onChange={(e) => setStock(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm font-medium"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
+              <label className="block text-[11px] sm:text-xs font-bold uppercase text-slate-600 mb-1">
                 Min Stock Alert
               </label>
               <input
@@ -221,19 +222,19 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
                 min="1"
                 value={minStock}
                 onChange={(e) => setMinStock(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm font-medium"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
+              <label className="block text-[11px] sm:text-xs font-bold uppercase text-slate-600 mb-1">
                 Unit
               </label>
               <input
                 type="text"
                 value={unit}
                 onChange={(e) => setUnit(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm font-medium"
               />
             </div>
           </div>
@@ -244,7 +245,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
               variant="outline" 
               onClick={onClose} 
               disabled={isSubmitting}
-              className="rounded-xl"
+              className="rounded-xl min-h-[44px] px-4"
             >
               Cancel
             </Button>
@@ -253,7 +254,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
               variant="primary" 
               disabled={isSubmitting}
               icon={<Save className="w-4 h-4" />} 
-              className="rounded-xl font-bold"
+              className="rounded-xl font-bold min-h-[44px] px-5"
             >
               {isSubmitting ? 'Saving...' : 'Save Changes'}
             </Button>

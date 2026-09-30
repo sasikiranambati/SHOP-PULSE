@@ -1,64 +1,65 @@
 /**
  * @file inventoryService.ts
- * @description Production-grade Product Inventory & Stock Management Service for ShopPulse.
+ * @description Production-grade Product Inventory & Stock Management Service integrated with ShopPulse FastAPI backend.
  * Belongs in `src/services/inventoryService.ts`.
  */
 
-import { 
-  collection, 
-  doc, 
-  getDoc, 
-  getDocs, 
-  addDoc,
-  updateDoc, 
-  deleteDoc, 
-  query, 
-  where, 
-  orderBy, 
-  onSnapshot, 
-  runTransaction 
-} from 'firebase/firestore';
-import type { QueryConstraint } from 'firebase/firestore';
-import { db, auth } from './firebase';
-import { getActiveUserId, requireActiveUserId } from './authService';
-import type { Product, ProductInput, StockStatus, ProductQueryFilters, ProductCategory } from '../types/product';
-import { validateProductInput } from '../utils/validators';
-import { getFirebaseErrorMessage } from '../utils/firebaseErrorMapper';
-import { checkAndSyncProductAlerts } from './alertService';
-import { networkService } from './networkService';
-import { enqueueInventoryMutation } from './offlineQueue';
+import type { Product, ProductInput, StockStatus, ProductQueryFilters } from '../types/product';
+import { productsApi, type ProductBackend } from '../api/products';
 
-function getInventoryCol(userId?: string) {
-  const uid = userId || requireActiveUserId();
-  return collection(db, 'users', uid, 'inventory');
+export function calculateStockStatus(stock: number, reorderLevel: number): StockStatus {
+  if (stock <= 0) return 'Out of Stock';
+  if (stock <= reorderLevel) return 'Low Stock';
+  return 'In Stock';
 }
 
-function getProductDoc(productId: string, userId?: string) {
-  const uid = userId || requireActiveUserId();
-  return doc(db, 'users', uid, 'inventory', productId);
-}
-
-function getLocalInventoryKey(userId?: string): string | null {
-  const uid = userId || getActiveUserId();
-  return uid ? `shoppulse_inventory_products_${uid}` : null;
+export function isLowStock(product: Product): boolean {
+  return product.stock <= (product.reorderLevel ?? product.minStock ?? 0);
 }
 
 /**
- * Check if running in development / demo mode.
+ * Map backend product model to frontend Product interface.
  */
-function isDemoMode(): boolean {
-  const key = auth.app.options.apiKey || '';
-  return !key || key.includes('DemoKey') || key.includes('YourFirebaseApiKey') || key === 'AIzaSyDemoKeyForShopPulseDevelopmentOnly';
+export function mapBackendProductToFrontend(bp: ProductBackend): Product {
+  const stock = Number(bp.current_stock ?? 0);
+  const sellingPrice = Number(bp.selling_price ?? 0);
+  const purchasePrice = Number(bp.purchase_price ?? 0);
+  const reorderLevel = Number(bp.reorder_level ?? 0);
+
+  let status: StockStatus = 'In Stock';
+  if (stock <= 0) {
+    status = 'Out of Stock';
+  } else if (bp.stock_status === 'Critical') {
+    status = 'Critical';
+  } else if (bp.stock_status === 'Low Stock' || stock <= reorderLevel) {
+    status = 'Low Stock';
+  }
+
+  return {
+    id: bp.id,
+    name: bp.name,
+    category: bp.category || 'Other',
+    stock,
+    unit: bp.unit || 'pcs',
+    sellingPrice,
+    price: sellingPrice,
+    purchasePrice,
+    reorderLevel,
+    minStock: reorderLevel,
+    status,
+    barcode: bp.sku || undefined,
+    sku: bp.sku || undefined,
+    supplierId: bp.supplier_id || undefined,
+    createdAt: bp.created_at || new Date().toISOString(),
+    updatedAt: bp.updated_at || new Date().toISOString(),
+  };
 }
 
-/**
- * Helper to normalize and synchronize product fields for backward and forward compatibility.
- */
 export function normalizeProduct(id: string, data: any): Product {
-  const sellingPrice = Number(data.sellingPrice ?? data.price ?? 0);
-  const purchasePrice = Number(data.purchasePrice ?? (sellingPrice > 0 ? Math.round(sellingPrice * 0.7) : 0));
-  const reorderLevel = Number(data.reorderLevel ?? data.minStock ?? 10);
-  const stock = Number(data.stock ?? 0);
+  const sellingPrice = Number(data.sellingPrice ?? data.price ?? data.selling_price ?? 0);
+  const purchasePrice = Number(data.purchasePrice ?? data.purchase_price ?? 0);
+  const reorderLevel = Number(data.reorderLevel ?? data.minStock ?? data.reorder_level ?? 10);
+  const stock = Number(data.stock ?? data.current_stock ?? 0);
   const status: StockStatus = data.status || calculateStockStatus(stock, reorderLevel);
 
   return {
@@ -66,664 +67,187 @@ export function normalizeProduct(id: string, data: any): Product {
     name: data.name || 'Unnamed Product',
     category: data.category || 'Other',
     stock,
-    unit: data.unit || 'units',
+    unit: data.unit || 'pcs',
     sellingPrice,
     price: sellingPrice,
     purchasePrice,
     reorderLevel,
     minStock: reorderLevel,
-    imageUrl: data.imageUrl || undefined,
-    barcode: data.barcode || undefined,
     status,
-    sku: data.sku || undefined,
-    supplierId: data.supplierId || undefined,
-    lastRestocked: data.lastRestocked || undefined,
+    barcode: data.barcode || data.sku,
+    sku: data.sku || data.barcode,
     createdAt: data.createdAt || new Date().toISOString(),
-    updatedAt: data.updatedAt || new Date().toISOString()
+    updatedAt: data.updatedAt || new Date().toISOString(),
   };
 }
 
 /**
- * Local storage fallback helpers for development mode, isolated per user.
- */
-function getLocalProducts(userId?: string): Product[] {
-  const key = getLocalInventoryKey(userId);
-  if (!key) return [];
-
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return parsed.map((p: any) => normalizeProduct(p.id, p));
-      }
-    }
-  } catch (err) {
-    console.warn('Could not parse local inventory products:', err);
-  }
-
-  // Brand-new users start with an empty catalog
-  return [];
-}
-
-function saveLocalProducts(products: Product[], userId?: string): void {
-  const key = getLocalInventoryKey(userId);
-  if (!key) return;
-
-  try {
-    localStorage.setItem(key, JSON.stringify(products));
-    window.dispatchEvent(new CustomEvent('shoppulse_inventory_changed'));
-  } catch (err) {
-    console.warn('Could not save local inventory products:', err);
-  }
-}
-
-/**
- * Calculate dynamic StockStatus based on stock and reorderLevel.
- */
-export function calculateStockStatus(stock: number, reorderLevel: number): StockStatus {
-  if (stock <= 0) return 'Out of Stock';
-  if (stock <= Math.floor(reorderLevel / 2)) return 'Critical';
-  if (stock <= reorderLevel) return 'Low Stock';
-  return 'In Stock';
-}
-
-/**
- * Check if a product is at or below its reorder level.
- */
-export function isLowStock(product: Product): boolean {
-  const reorder = product.reorderLevel ?? product.minStock ?? 10;
-  return product.stock <= reorder;
-}
-
-/**
- * Fetch all products from Firestore, optionally filtered.
+ * Fetch all products from the backend with optional category/search filters.
  */
 export async function getProducts(filters?: ProductQueryFilters): Promise<Product[]> {
-  const uid = getActiveUserId();
-  if (!uid) return [];
-
-  if (isDemoMode()) {
-    let list = getLocalProducts(uid);
-    if (filters?.category && filters.category !== 'All') {
-      list = list.filter(p => p.category.toLowerCase() === filters.category!.toLowerCase());
-    }
-    if (filters?.search) {
-      const q = filters.search.toLowerCase();
-      list = list.filter(p => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
-    }
-    if (filters?.status) {
-      list = list.filter(p => p.status === filters.status);
-    }
-    return list;
-  }
-
   try {
-    const colRef = getInventoryCol(uid);
-    const constraints: QueryConstraint[] = [orderBy('name', 'asc')];
+    const res = await productsApi.getProducts({
+      search: filters?.search,
+      category: filters?.category,
+      limit: 100,
+    });
 
-    if (filters?.category && filters.category !== 'All') {
-      constraints.push(where('category', '==', filters.category));
-    }
-
-    const q = query(colRef, ...constraints);
-    const snapshot = await getDocs(q);
-    let products = snapshot.docs.map(docSnap => normalizeProduct(docSnap.id, docSnap.data()));
-
-    if (filters?.search) {
-      const searchLower = filters.search.toLowerCase();
-      products = products.filter(p => 
-        p.name.toLowerCase().includes(searchLower) || 
-        p.category.toLowerCase().includes(searchLower) ||
-        (p.barcode && p.barcode.includes(searchLower))
-      );
-    }
+    let mapped = res.items.map(mapBackendProductToFrontend);
 
     if (filters?.status) {
-      products = products.filter(p => p.status === filters.status);
+      if (filters.status === 'Low Stock') {
+        mapped = mapped.filter((p) => p.status === 'Low Stock' || p.status === 'Critical' || isLowStock(p));
+      } else if (filters.status === 'Out of Stock') {
+        mapped = mapped.filter((p) => p.stock <= 0);
+      } else if (filters.status === 'In Stock') {
+        mapped = mapped.filter((p) => p.status === 'In Stock' && p.stock > 0);
+      }
     }
 
-    return products;
+    return mapped;
   } catch (err) {
-    console.warn('Firestore getProducts failed, falling back to local inventory:', err);
-    return getLocalProducts(uid);
+    console.warn('Failed to load products from backend API:', err);
+    return [];
   }
 }
 
 /**
- * Fetch a single product by ID.
+ * Get product by ID.
  */
-export async function getProduct(productId: string): Promise<Product | null> {
-  return getProductById(productId);
-}
-
-export async function getProductById(productId: string): Promise<Product | null> {
-  const uid = getActiveUserId();
-  if (!uid) return null;
-
-  if (isDemoMode()) {
-    const found = getLocalProducts(uid).find(p => p.id === productId);
-    return found || null;
-  }
-
+export async function getProductById(id: string): Promise<Product | null> {
   try {
-    const docRef = getProductDoc(productId, uid);
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      return normalizeProduct(snap.id, snap.data());
-    }
+    const bp = await productsApi.getProduct(id);
+    return mapBackendProductToFrontend(bp);
+  } catch {
     return null;
-  } catch (err) {
-    console.warn(`Firestore getProductById failed for ${productId}:`, err);
-    return getLocalProducts(uid).find(p => p.id === productId) || null;
   }
 }
 
 /**
- * Add a new product to user's Firestore inventory.
+ * Add a new product to inventory.
  */
 export async function addProduct(input: ProductInput): Promise<Product> {
-  const uid = requireActiveUserId();
-
-  const validation = validateProductInput(input);
-  if (!validation.isValid) {
-    const firstError = Object.values(validation.errors)[0];
-    throw new Error(firstError || 'Please provide valid product information.');
-  }
-
   const sellingPrice = Number(input.sellingPrice ?? input.price ?? 0);
-  const purchasePrice = Number(input.purchasePrice ?? (sellingPrice > 0 ? Math.round(sellingPrice * 0.7) : 0));
-  const reorderLevel = Number(input.reorderLevel ?? input.minStock ?? 10);
+  const purchasePrice = Number(input.purchasePrice ?? 0);
+  const reorderLevel = Number(input.reorderLevel ?? input.minStock ?? 0);
   const stock = Number(input.stock ?? 0);
-  const status = calculateStockStatus(stock, reorderLevel);
-  const now = new Date().toISOString();
 
-  const productData = {
+  const bp = await productsApi.createProduct({
     name: input.name.trim(),
     category: input.category || 'Other',
-    stock,
-    unit: input.unit || 'units',
-    sellingPrice,
-    price: sellingPrice,
-    purchasePrice,
-    reorderLevel,
-    minStock: reorderLevel,
-    imageUrl: input.imageUrl || '',
-    barcode: input.barcode || '',
-    status,
-    sku: input.sku || '',
-    supplierId: input.supplierId || '',
-    lastRestocked: now,
-    createdAt: now,
-    updatedAt: now
+    selling_price: sellingPrice,
+    purchase_price: purchasePrice,
+    current_stock: stock,
+    reorder_level: reorderLevel,
+    unit: input.unit || 'pcs',
+    sku: input.barcode || input.sku || undefined,
+  });
+
+  const product = mapBackendProductToFrontend(bp);
+  window.dispatchEvent(new CustomEvent('shoppulse_inventory_changed'));
+  return product;
+}
+
+/**
+ * Update an existing product.
+ */
+export async function updateProduct(id: string, updates: Partial<ProductInput>): Promise<void> {
+  await productsApi.updateProduct(id, {
+    name: updates.name?.trim(),
+    category: updates.category,
+    selling_price: updates.sellingPrice ?? updates.price,
+    purchase_price: updates.purchasePrice,
+    current_stock: updates.stock,
+    reorder_level: updates.reorderLevel ?? updates.minStock,
+    unit: updates.unit,
+    sku: updates.barcode || updates.sku,
+  });
+
+  window.dispatchEvent(new CustomEvent('shoppulse_inventory_changed'));
+}
+
+/**
+ * Delete a product.
+ */
+export async function deleteProduct(id: string): Promise<void> {
+  await productsApi.deleteProduct(id);
+  window.dispatchEvent(new CustomEvent('shoppulse_inventory_changed'));
+}
+
+/**
+ * Increase stock for a product (restock).
+ */
+export async function increaseStock(id: string, quantity: number = 10, newPurchasePrice?: number): Promise<void> {
+  const current = await getProductById(id);
+  if (!current) throw new Error('Product not found');
+  const updatePayload: any = {
+    current_stock: current.stock + quantity,
   };
-
-  if (isDemoMode() || !networkService.isOnline()) {
-    const id = `p_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const newProduct: Product = { id, ...productData };
-    const list = getLocalProducts(uid);
-    list.unshift(newProduct);
-    saveLocalProducts(list, uid);
-    await checkAndSyncProductAlerts(newProduct);
-    if (!networkService.isOnline()) {
-      enqueueInventoryMutation({ mutationType: 'CREATE', productId: id, productData: newProduct }, uid);
-    }
-    return newProduct;
+  if (newPurchasePrice && newPurchasePrice > 0) {
+    updatePayload.purchase_price = newPurchasePrice;
   }
-
-  try {
-    const colRef = getInventoryCol(uid);
-    const docRef = await addDoc(colRef, productData);
-    const created: Product = { id: docRef.id, ...productData };
-    const list = getLocalProducts(uid);
-    list.unshift(created);
-    saveLocalProducts(list, uid);
-    await checkAndSyncProductAlerts(created);
-    return created;
-  } catch (err) {
-    console.warn('Firestore addDoc failed, storing locally & queuing:', err);
-    const id = `p_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const newProduct: Product = { id, ...productData };
-    const list = getLocalProducts(uid);
-    list.unshift(newProduct);
-    saveLocalProducts(list, uid);
-    await checkAndSyncProductAlerts(newProduct);
-    enqueueInventoryMutation({ mutationType: 'CREATE', productId: id, productData: newProduct }, uid);
-    return newProduct;
-  }
+  await productsApi.updateProduct(id, updatePayload);
+  window.dispatchEvent(new CustomEvent('shoppulse_inventory_changed'));
 }
 
 /**
- * Update product attributes.
+ * Decrease stock for a product.
  */
-export async function updateProduct(productId: string, updates: Partial<ProductInput>): Promise<void> {
-  const uid = requireActiveUserId();
-  const existing = await getProductById(productId);
-  if (!existing) throw new Error(`Product with ID ${productId} not found.`);
-
-  const validation = validateProductInput({ ...existing, ...updates });
-  if (!validation.isValid) {
-    const firstError = Object.values(validation.errors)[0];
-    throw new Error(firstError || 'Invalid product updates.');
-  }
-
-  const newStock = updates.stock !== undefined ? Number(updates.stock) : existing.stock;
-  const newReorder = updates.reorderLevel !== undefined 
-    ? Number(updates.reorderLevel) 
-    : updates.minStock !== undefined 
-    ? Number(updates.minStock) 
-    : existing.reorderLevel;
-
-  const sellingPrice = updates.sellingPrice !== undefined 
-    ? Number(updates.sellingPrice) 
-    : updates.price !== undefined 
-    ? Number(updates.price) 
-    : existing.sellingPrice;
-
-  const purchasePrice = updates.purchasePrice !== undefined ? Number(updates.purchasePrice) : existing.purchasePrice;
-  const status = calculateStockStatus(newStock, newReorder);
-  const now = new Date().toISOString();
-
-  const cleanUpdates = {
-    ...updates,
-    stock: newStock,
-    sellingPrice,
-    price: sellingPrice,
-    purchasePrice,
-    reorderLevel: newReorder,
-    minStock: newReorder,
-    status,
-    updatedAt: now
-  };
-
-  const updatedProduct = { ...existing, ...cleanUpdates };
-
-  if (isDemoMode() || !networkService.isOnline()) {
-    const list = getLocalProducts(uid).map(p => p.id === productId ? updatedProduct : p);
-    saveLocalProducts(list, uid);
-    await checkAndSyncProductAlerts(updatedProduct);
-    if (!networkService.isOnline()) {
-      enqueueInventoryMutation({ mutationType: 'UPDATE', productId, productData: cleanUpdates }, uid);
-    }
-    return;
-  }
-
-  try {
-    const docRef = getProductDoc(productId, uid);
-    await updateDoc(docRef, cleanUpdates);
-    const list = getLocalProducts(uid).map(p => p.id === productId ? updatedProduct : p);
-    saveLocalProducts(list, uid);
-    await checkAndSyncProductAlerts(updatedProduct);
-  } catch (err) {
-    console.warn('Firestore updateDoc failed, updating local copy & queuing:', err);
-    const list = getLocalProducts(uid).map(p => p.id === productId ? updatedProduct : p);
-    saveLocalProducts(list, uid);
-    await checkAndSyncProductAlerts(updatedProduct);
-    enqueueInventoryMutation({ mutationType: 'UPDATE', productId, productData: cleanUpdates }, uid);
-  }
+export async function decreaseStock(id: string, quantity: number = 1): Promise<void> {
+  const current = await getProductById(id);
+  if (!current) throw new Error('Product not found');
+  await productsApi.updateProduct(id, {
+    current_stock: Math.max(0, current.stock - quantity),
+  });
+  window.dispatchEvent(new CustomEvent('shoppulse_inventory_changed'));
 }
 
 /**
- * Delete a product from inventory.
+ * Set exact stock count for a product.
  */
-export async function deleteProduct(productId: string): Promise<void> {
-  const uid = requireActiveUserId();
-
-  if (isDemoMode() || !networkService.isOnline()) {
-    const list = getLocalProducts(uid).filter(p => p.id !== productId);
-    saveLocalProducts(list, uid);
-    if (!networkService.isOnline()) {
-      enqueueInventoryMutation({ mutationType: 'DELETE', productId }, uid);
-    }
-    return;
-  }
-
-  try {
-    const docRef = getProductDoc(productId, uid);
-    await deleteDoc(docRef);
-    const list = getLocalProducts(uid).filter(p => p.id !== productId);
-    saveLocalProducts(list, uid);
-  } catch (err) {
-    console.warn('Firestore deleteDoc failed, removing from local copy & queuing:', err);
-    const list = getLocalProducts(uid).filter(p => p.id !== productId);
-    saveLocalProducts(list, uid);
-    enqueueInventoryMutation({ mutationType: 'DELETE', productId }, uid);
-  }
+export async function setStock(id: string, newStock: number): Promise<void> {
+  await productsApi.updateProduct(id, {
+    current_stock: Math.max(0, newStock),
+  });
+  window.dispatchEvent(new CustomEvent('shoppulse_inventory_changed'));
 }
 
 /**
- * Direct update of product stock quantity.
- */
-export async function updateStock(productId: string, newStock: number): Promise<void> {
-  await setStock(productId, newStock);
-}
-
-/**
- * Set exact stock quantity for a product.
- */
-export async function setStock(productId: string, newStock: number): Promise<void> {
-  const uid = requireActiveUserId();
-  if (newStock < 0) throw new Error('Stock quantity cannot be negative.');
-
-  if (isDemoMode() || !networkService.isOnline()) {
-    const existing = getLocalProducts(uid).find(p => p.id === productId);
-    if (!existing) throw new Error(`Product ${productId} not found.`);
-    const reorder = existing.reorderLevel ?? existing.minStock ?? 10;
-    const status = calculateStockStatus(newStock, reorder);
-    const delta = newStock - existing.stock;
-    const updated: Product = {
-      ...existing,
-      stock: newStock,
-      status,
-      lastRestocked: newStock > existing.stock ? new Date().toISOString() : existing.lastRestocked,
-      updatedAt: new Date().toISOString()
-    };
-    const list = getLocalProducts(uid).map(p => p.id === productId ? updated : p);
-    saveLocalProducts(list, uid);
-    await checkAndSyncProductAlerts(updated);
-    if (!networkService.isOnline()) {
-      enqueueInventoryMutation({ mutationType: 'STOCK_DELTA', productId, stockDelta: delta, productData: { stock: newStock } }, uid);
-    }
-    return;
-  }
-
-  try {
-    const docRef = getProductDoc(productId, uid);
-    let updatedProduct: Product | null = null;
-
-    await runTransaction(db, async (transaction) => {
-      const sfDoc = await transaction.get(docRef);
-      if (!sfDoc.exists()) {
-        throw new Error(`Product with ID ${productId} does not exist.`);
-      }
-
-      const current = sfDoc.data() as Product;
-      const reorder = current.reorderLevel ?? current.minStock ?? 10;
-      const status = calculateStockStatus(newStock, reorder);
-
-      updatedProduct = {
-        ...current,
-        id: productId,
-        stock: newStock,
-        status,
-        lastRestocked: newStock > current.stock ? new Date().toISOString() : current.lastRestocked,
-        updatedAt: new Date().toISOString()
-      };
-
-      transaction.update(docRef, {
-        stock: newStock,
-        status,
-        lastRestocked: updatedProduct.lastRestocked,
-        updatedAt: updatedProduct.updatedAt
-      });
-    });
-
-    if (updatedProduct) {
-      await checkAndSyncProductAlerts(updatedProduct);
-    }
-  } catch (err: any) {
-    console.warn('Transaction setStock failed, updating local store:', err);
-    const existing = getLocalProducts(uid).find(p => p.id === productId);
-    if (existing) {
-      const status = calculateStockStatus(newStock, existing.reorderLevel);
-      const updated: Product = { ...existing, stock: newStock, status };
-      const list = getLocalProducts(uid).map(p => p.id === productId ? updated : p);
-      saveLocalProducts(list, uid);
-      await checkAndSyncProductAlerts(updated);
-    }
-  }
-}
-
-/**
- * Increase stock quantity using transactions.
- */
-export async function increaseStock(
-  productId: string, 
-  quantity: number, 
-  newPurchasePrice?: number
-): Promise<void> {
-  const uid = requireActiveUserId();
-  if (quantity <= 0) throw new Error('Increase quantity must be greater than 0.');
-
-  if (isDemoMode()) {
-    const existing = getLocalProducts(uid).find(p => p.id === productId);
-    if (!existing) throw new Error(`Product ${productId} not found.`);
-    const newStock = existing.stock + quantity;
-    const status = calculateStockStatus(newStock, existing.reorderLevel);
-    const updatedPurchasePrice = newPurchasePrice && newPurchasePrice > 0 ? newPurchasePrice : existing.purchasePrice;
-    const updated: Product = {
-      ...existing,
-      stock: newStock,
-      purchasePrice: updatedPurchasePrice,
-      status,
-      lastRestocked: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    const list = getLocalProducts(uid).map(p => p.id === productId ? updated : p);
-    saveLocalProducts(list, uid);
-    await checkAndSyncProductAlerts(updated);
-    return;
-  }
-
-  try {
-    const docRef = getProductDoc(productId, uid);
-    let updatedProduct: Product | null = null;
-
-    await runTransaction(db, async (transaction) => {
-      const sfDoc = await transaction.get(docRef);
-      if (!sfDoc.exists()) {
-        throw new Error(`Product ${productId} not found.`);
-      }
-
-      const current = sfDoc.data() as Product;
-      const newStock = current.stock + quantity;
-      const reorder = current.reorderLevel ?? current.minStock ?? 10;
-      const status = calculateStockStatus(newStock, reorder);
-      const updatedPurchasePrice = newPurchasePrice && newPurchasePrice > 0 ? newPurchasePrice : current.purchasePrice;
-
-      updatedProduct = {
-        ...current,
-        id: productId,
-        stock: newStock,
-        purchasePrice: updatedPurchasePrice,
-        status,
-        lastRestocked: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      transaction.update(docRef, {
-        stock: newStock,
-        purchasePrice: updatedPurchasePrice,
-        status,
-        lastRestocked: updatedProduct.lastRestocked,
-        updatedAt: updatedProduct.updatedAt
-      });
-    });
-
-    if (updatedProduct) {
-      await checkAndSyncProductAlerts(updatedProduct);
-    }
-  } catch (err: any) {
-    console.warn('Transaction increaseStock failed, updating local store:', err);
-    const existing = getLocalProducts(uid).find(p => p.id === productId);
-    if (existing) {
-      const newStock = existing.stock + quantity;
-      const status = calculateStockStatus(newStock, existing.reorderLevel);
-      const updatedPurchasePrice = newPurchasePrice && newPurchasePrice > 0 ? newPurchasePrice : existing.purchasePrice;
-      const updated: Product = {
-        ...existing,
-        stock: newStock,
-        purchasePrice: updatedPurchasePrice,
-        status
-      };
-      const list = getLocalProducts(uid).map(p => p.id === productId ? updated : p);
-      saveLocalProducts(list, uid);
-      await checkAndSyncProductAlerts(updated);
-    }
-  }
-}
-
-/**
- * Decrease stock quantity using transactions with negative stock prevention.
- */
-export async function decreaseStock(productId: string, quantity: number): Promise<void> {
-  const uid = requireActiveUserId();
-  if (quantity <= 0) throw new Error('Decrease quantity must be greater than 0.');
-
-  if (isDemoMode()) {
-    const existing = getLocalProducts(uid).find(p => p.id === productId);
-    if (!existing) throw new Error(`Product ${productId} not found.`);
-    if (existing.stock < quantity) {
-      throw new Error(`Cannot decrease stock below zero. Current stock: ${existing.stock}, requested: ${quantity}.`);
-    }
-    const newStock = existing.stock - quantity;
-    const status = calculateStockStatus(newStock, existing.reorderLevel);
-    const updated: Product = {
-      ...existing,
-      stock: newStock,
-      status,
-      updatedAt: new Date().toISOString()
-    };
-    const list = getLocalProducts(uid).map(p => p.id === productId ? updated : p);
-    saveLocalProducts(list, uid);
-    await checkAndSyncProductAlerts(updated);
-    return;
-  }
-
-  try {
-    const docRef = getProductDoc(productId, uid);
-    let updatedProduct: Product | null = null;
-
-    await runTransaction(db, async (transaction) => {
-      const sfDoc = await transaction.get(docRef);
-      if (!sfDoc.exists()) {
-        throw new Error(`Product ${productId} not found.`);
-      }
-
-      const current = sfDoc.data() as Product;
-      if (current.stock < quantity) {
-        throw new Error(`Insufficient stock. Current: ${current.stock}, requested: ${quantity}.`);
-      }
-
-      const newStock = current.stock - quantity;
-      const reorder = current.reorderLevel ?? current.minStock ?? 10;
-      const status = calculateStockStatus(newStock, reorder);
-
-      updatedProduct = {
-        ...current,
-        id: productId,
-        stock: newStock,
-        status,
-        updatedAt: new Date().toISOString()
-      };
-
-      transaction.update(docRef, {
-        stock: newStock,
-        status,
-        updatedAt: updatedProduct.updatedAt
-      });
-    });
-
-    if (updatedProduct) {
-      await checkAndSyncProductAlerts(updatedProduct);
-    }
-  } catch (err: any) {
-    throw new Error(err.message || getFirebaseErrorMessage(err));
-  }
-}
-
-/**
- * Search products by query term across name, category, or barcode.
+ * Search products by name, category, or barcode.
  */
 export async function searchProducts(queryText: string): Promise<Product[]> {
   return getProducts({ search: queryText });
 }
 
 /**
- * Filter products by category.
- */
-export async function filterProductsByCategory(category: ProductCategory | string): Promise<Product[]> {
-  return getProducts({ category });
-}
-
-/**
- * Real-time subscription to inventory products using onSnapshot with cleanup.
+ * Subscribe to real-time inventory updates.
  */
 export function subscribeToProducts(
   callback: (products: Product[]) => void,
   filters?: ProductQueryFilters
 ): () => void {
-  const uid = getActiveUserId();
-  if (!uid) {
-    callback([]);
-    return () => {};
-  }
+  let active = true;
 
-  if (isDemoMode()) {
-    const emit = () => {
-      let list = getLocalProducts(uid);
-      if (filters?.category && filters.category !== 'All') {
-        list = list.filter(p => p.category.toLowerCase() === filters.category!.toLowerCase());
-      }
-      if (filters?.search) {
-        const q = filters.search.toLowerCase();
-        list = list.filter(p => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
-      }
-      if (filters?.status) {
-        list = list.filter(p => p.status === filters.status);
-      }
-      callback(list);
-    };
+  const refresh = async () => {
+    if (!active) return;
+    const items = await getProducts(filters);
+    if (active) callback(items);
+  };
 
-    emit();
-    const handleEvent = () => emit();
-    window.addEventListener('shoppulse_inventory_changed', handleEvent);
-    return () => window.removeEventListener('shoppulse_inventory_changed', handleEvent);
-  }
+  // Immediate initial load
+  refresh();
 
-  try {
-    const colRef = getInventoryCol(uid);
-    const constraints: QueryConstraint[] = [orderBy('name', 'asc')];
+  // Listen to local mutations
+  const handleInventoryChange = () => {
+    refresh();
+  };
 
-    if (filters?.category && filters.category !== 'All') {
-      constraints.push(where('category', '==', filters.category));
-    }
+  window.addEventListener('shoppulse_inventory_changed', handleInventoryChange);
+  window.addEventListener('shoppulse_auth_changed', handleInventoryChange);
 
-    const q = query(colRef, ...constraints);
-    return onSnapshot(
-      q,
-      (snapshot) => {
-        let products = snapshot.docs.map(docSnap => normalizeProduct(docSnap.id, docSnap.data()));
-        if (filters?.search) {
-          const searchLower = filters.search.toLowerCase();
-          products = products.filter(p => 
-            p.name.toLowerCase().includes(searchLower) || 
-            p.category.toLowerCase().includes(searchLower) ||
-            (p.barcode && p.barcode.includes(searchLower))
-          );
-        }
-        if (filters?.status) {
-          products = products.filter(p => p.status === filters.status);
-        }
-        callback(products);
-      },
-      (error) => {
-        console.warn('Firestore onSnapshot subscription failed, using local store:', error);
-        callback(getLocalProducts(uid));
-      }
-    );
-  } catch (err) {
-    console.warn('Could not initialize Firestore onSnapshot listener:', err);
-    callback(getLocalProducts(uid));
-    return () => {};
-  }
+  return () => {
+    active = false;
+    window.removeEventListener('shoppulse_inventory_changed', handleInventoryChange);
+    window.removeEventListener('shoppulse_auth_changed', handleInventoryChange);
+  };
 }
-
-/**
- * Query products that require restocking (stock <= reorderLevel).
- */
-export async function getLowStockProducts(): Promise<Product[]> {
-  const products = await getProducts();
-  return products.filter(isLowStock);
-}
-

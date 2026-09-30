@@ -81,15 +81,15 @@ export const SalesOverview: React.FC<SalesOverviewProps> = ({
         </div>
 
         {/* Clean 7-Day Bar Chart */}
-        <div className="h-36 sm:h-40 flex items-end justify-between gap-1.5 sm:gap-2.5 pt-4 pb-1 px-1">
+        <div className="h-36 sm:h-40 flex items-end justify-between gap-1 sm:gap-2.5 pt-4 pb-1 px-0.5 sm:px-1">
           {data.map((item, idx) => (
             <div
               key={idx}
               className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end group min-w-0"
             >
-              {/* Tooltip Amount */}
+              {/* Amount Label */}
               <span
-                className={`text-[10px] font-extrabold transition-opacity truncate max-w-full ${
+                className={`text-[9px] xs:text-[10px] font-extrabold transition-opacity truncate max-w-full text-center ${
                   item.isToday
                     ? 'text-emerald-700 font-black opacity-100'
                     : 'text-slate-400 group-hover:text-slate-700'
@@ -99,7 +99,7 @@ export const SalesOverview: React.FC<SalesOverviewProps> = ({
               </span>
 
               {/* Bar track and fill */}
-              <div className="w-full max-w-[24px] sm:max-w-[32px] bg-slate-100 rounded-t-lg relative flex items-end overflow-hidden h-full">
+              <div className="w-full max-w-[20px] xs:max-w-[24px] sm:max-w-[32px] bg-slate-100 rounded-t-lg relative flex items-end overflow-hidden h-full">
                 <div
                   style={{ height: item.height }}
                   className={`w-full rounded-t-lg transition-all duration-300 ${
@@ -112,7 +112,7 @@ export const SalesOverview: React.FC<SalesOverviewProps> = ({
 
               {/* Day Label */}
               <span
-                className={`text-[10px] sm:text-xs font-bold truncate max-w-full ${
+                className={`text-[9px] xs:text-[10px] sm:text-xs font-bold truncate max-w-full text-center ${
                   item.isToday ? 'text-emerald-700 font-black' : 'text-slate-500'
                 }`}
               >

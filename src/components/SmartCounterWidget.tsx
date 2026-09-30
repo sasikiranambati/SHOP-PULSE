@@ -43,7 +43,7 @@ export const SmartCounterWidget: React.FC = () => {
       </div>
 
       {/* Sensor Event Summary */}
-      <div className="mt-3.5 grid grid-cols-2 gap-3">
+      <div className="mt-3.5 grid grid-cols-1 xs:grid-cols-2 gap-2.5 sm:gap-3">
         <div className="bg-slate-800/80 rounded-xl p-3 border border-slate-700">
           <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">{t('smartCounter.lastDetection')}</span>
           <p className="text-xs sm:text-sm font-extrabold text-emerald-300 mt-0.5 flex items-center gap-1">
@@ -68,7 +68,7 @@ export const SmartCounterWidget: React.FC = () => {
         <button
           onClick={handleSimulateSensor}
           disabled={isSimulating}
-          className="w-full sm:w-auto px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-extrabold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+          className="w-full sm:w-auto px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 min-h-[44px]"
         >
           {isSimulating ? (
             <RefreshCw className="w-3.5 h-3.5 animate-spin" />

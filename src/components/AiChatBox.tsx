@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, X, Send, Sparkles, User } from 'lucide-react';
+import { Bot, X, Send, Sparkles, User, MessageSquare } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 
 interface ChatMessage {
@@ -91,23 +91,23 @@ export const AiChatBox: React.FC = () => {
       switch (language) {
         case 'te':
           if (isRestockIntent) {
-            botText = '⚠️ **రీస్టాక్ అలర్ట్**: బ్రెడ్ (12 ప్యాకెట్లు), မੈગી నూడుల్స్ (2 ప్యాకెట్లు), మరియు కోడిగుడ్లు (4 ട്രੇలు) స్టాక్ తక్కువగా ఉన్నాయి. ఈరోజు కొత్త ఆర్డర్ ఇవ్వండి.';
+            botText = '**రీస్టాక్ అలర్ట్**: బ్రెడ్ (12 ప్యాకెట్లు), మ్యాగీ నూడుల్స్ (2 ప్యాకెట్లు), మరియు కోడిగుడ్లు (4 ట్రేలు) స్టాక్ తక్కువగా ఉన్నాయి. ఈరోజు కొత్త ఆర్డర్ ఇవ్వండి.';
           } else if (isTopSellerIntent) {
-            botText = '🔥 **ఎక్కువగా అమ్మినవి**: పాలు 500ml (42 అమ్మకాలు), బ్రెడ్ (31 అమ్మకాలు), ಮತ್ತು ਮاری ಗೋಲ್ಡ್ బిస్కెట్లు (26 అమ్మకాలు).';
+            botText = '**ఎక్కువగా అమ్మినవి**: పాలు 500ml (42 అమ్మకాలు), బ్రెడ్ (31 అమ్మకాలు), మరియు మారీ గోల్డ్ బిస్కెట్లు (26 అమ్మకాలు).';
           } else if (isSalesIntent) {
-            botText = '📈 **ఈరోజు అమ్మకాల మొత్తం**: ₹8,450 (42 అమ్మకాల బిల్‌లలో). నిన్నటి కంటే 12% ఎక్కువ!';
+            botText = '**ఈరోజు అమ్మకాల మొత్తం**: ₹8,450 (42 అమ్మకాల బిల్‌లలో). నిన్నటి కంటే 12% ఎక్కువ!';
           } else {
-            botText = `మీరు అడిగిన "${query}" ని పరిశీలిస్తున్నాను. તમારા స్టాక్ వివరాలు భద్రంగా ఉన్నాయి, 3 వస్తువులకు రీస్టాక్ అవసరం.`;
+            botText = `మీరు అడిగిన "${query}" ని పరిశీలిస్తున్నాను. మీ స్టాక్ వివరాలు భద్రంగా ఉన్నాయి, 3 వస్తువులకు రీస్టాక్ అవసరం.`;
           }
           break;
 
         case 'hi':
           if (isRestockIntent) {
-            botText = '⚠️ **रीस्टॉक अलर्ट**: ब्रेड (12 बाकी), मैगी नूडल्स (2 बाकी), और अंडे (4 ट्रे) का स्टॉक कम है। आज नया ऑर्डर दें।';
+            botText = '**रीस्टॉक अलर्ट**: ब्रेड (12 बाकी), मैगी नूडल्स (2 बाकी), और अंडे (4 ट्रे) का स्टॉक कम है। आज नया ऑर्डर दें।';
           } else if (isTopSellerIntent) {
-            botText = '🔥 **टॉप सेलिंग सामान**: दूध 500ml (42 बिके), ब्रेड (31 बिके), और मारी गोल्ड बिस्किट (26 बिके)।';
+            botText = '**टॉप सेलिंग सामान**: दूध 500ml (42 बिके), ब्रेड (31 बिके), और मारी गोल्ड बिस्किट (26 बिके)।';
           } else if (isSalesIntent) {
-            botText = '📈 **आज की कुल बिक्री**: ₹8,450 दर्ज हुई है। कल से 12% ज्यादा!';
+            botText = '**आज की कुल बिक्री**: ₹8,450 दर्ज हुई है। कल से 12% ज्यादा!';
           } else {
             botText = `मैं "${query}" के लिए आपकी दुकान का स्टॉक देख रहा हूँ। 3 सामानों का रीस्टॉक आवश्यक है।`;
           }
@@ -115,11 +115,11 @@ export const AiChatBox: React.FC = () => {
 
         case 'ta':
           if (isRestockIntent) {
-            botText = '⚠️ **இருப்பு எச்சரிக்கை**: பிரெட், மேகி நூடுல்ஸ் மற்றும் முட்டை இருப்பு குறைவாக உள்ளது. இன்று ஆர்டர் செய்யவும்.';
+            botText = '**இருப்பு எச்சரிக்கை**: பிரெட், மேகி நூடுல்ஸ் மற்றும் முட்டை இருப்பு குறைவாக உள்ளது. இன்று ஆர்டர் செய்யவும்.';
           } else if (isTopSellerIntent) {
-            botText = '🔥 **அதிகம் விற்றவை**: பால் (42 பாக்கெட்டுகள்), பிரெட் (31), மாரிகோல்ட் பிஸ்கட் (26).';
+            botText = '**அதிகம் விற்றவை**: பால் (42 பாக்கெட்டுகள்), பிரெட் (31), மாரிகோல்ட் பிஸ்கட் (26).';
           } else if (isSalesIntent) {
-            botText = '📈 **இன்றைய விற்பனை**: ₹8,450 (42 பில்கள்). நேற்று விட 12% அதிகம்!';
+            botText = '**இன்றைய விற்பனை**: ₹8,450 (42 பில்கள்). நேற்று விட 12% அதிகம்!';
           } else {
             botText = `உங்கள் "${query}" தேடலை ஆய்வு செய்கிறேன். 3 பொருட்களுக்கு இருப்பு தேவை.`;
           }
@@ -127,11 +127,11 @@ export const AiChatBox: React.FC = () => {
 
         case 'ur':
           if (isRestockIntent) {
-            botText = '⚠️ **ری اسٹاک الرٹ**: ڈبل روٹی (12 باقی)، میگی نوڈلز (2 باقی)، اور انڈے (4 ٹرے) کا اسٹاک کم ہے۔ آج نیا آرڈر دیں۔';
+            botText = '**ری اسٹاک الرٹ**: ڈبل روٹی (12 باقی)، میگی نوڈلز (2 باقی)، اور انڈے (4 ٹرے) کا اسٹاک کم ہے۔ آج نیا آرڈر دیں۔';
           } else if (isTopSellerIntent) {
-            botText = '🔥 **ٹاپ فروخت شدہ اشیاء**: دودھ (42 پیکٹ)، ڈبل روٹی (31)، اور بسکٹ (26)۔';
+            botText = '**ٹاپ فروخت شدہ اشیاء**: دودھ (42 پیکٹ)، ڈبل روٹی (31)، اور بسکٹ (26)۔';
           } else if (isSalesIntent) {
-            botText = '📈 **آج کی کل فروخت**: ₹8,450 درج ہوئی ہے۔ کل سے 12٪ زیادہ!';
+            botText = '**آج کی کل فروخت**: ₹8,450 درج ہوئی ہے۔ کل سے 12٪ زیادہ!';
           } else {
             botText = `میں "${query}" کے لیے آپ کی دکان کا اسٹاک دیکھ رہا ہوں۔ 3 اشیاء کا ری اسٹاک ضروری ہے۔`;
           }
@@ -139,15 +139,14 @@ export const AiChatBox: React.FC = () => {
 
         default: // English & fallback
           if (isRestockIntent) {
-            botText = '⚠️ **Restock Alert**: Fresh White Bread (12 left), Maggi Noodles (2 left), and Farm Fresh Eggs (4 trays left) are critically low. Place supplier orders today.';
+            botText = '**Restock Alert**: Fresh White Bread (12 left), Maggi Noodles (2 left), and Farm Fresh Eggs (4 trays left) are critically low. Place supplier orders today.';
           } else if (isTopSellerIntent) {
-            botText = '🔥 **Top Sellers Today**: Toned Milk 500ml (42 sold), White Bread (31 sold), and Marie Gold Biscuits (26 sold). Dairy represents 42% of total store revenue.';
+            botText = '**Top Sellers Today**: Toned Milk 500ml (42 sold), White Bread (31 sold), and Marie Gold Biscuits (26 sold). Dairy represents 42% of total store revenue.';
           } else if (isSalesIntent) {
-            botText = "📈 **Today's Sales Total**: ₹8,450 collected across 42 transactions. Up 12% vs yesterday!";
+            botText = "**Today's Sales Total**: ₹8,450 collected across 42 transactions. Up 12% vs yesterday!";
           } else {
             botText = `I am analyzing inventory trends for "${query}". Your store stock levels look healthy overall, but 3 items need reordering soon.`;
           }
-          break;
       }
 
       const botMsg: ChatMessage = {
@@ -168,11 +167,12 @@ export const AiChatBox: React.FC = () => {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-20 md:bottom-6 right-4 z-40 bg-slate-900 hover:bg-slate-800 text-white p-3.5 rounded-full shadow-xl ring-4 ring-emerald-500/20 flex items-center gap-2.5 active:scale-95 transition-all cursor-pointer group"
+          aria-label="Open ShopPulse Assistant"
+          className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:bottom-6 right-3.5 sm:right-4 z-30 bg-slate-900 hover:bg-slate-800 text-white p-3 sm:p-3.5 rounded-full shadow-xl ring-4 ring-emerald-500/20 flex items-center gap-2 active:scale-95 transition-all cursor-pointer group min-h-[44px]"
           title="Open ShopPulse Assistant"
         >
-          <div className="w-7 h-7 rounded-full bg-emerald-600 flex items-center justify-center text-white shrink-0 group-hover:scale-110 transition-transform">
-            <Sparkles className="w-4 h-4" />
+          <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-emerald-600 flex items-center justify-center text-white shrink-0 group-hover:scale-110 transition-transform">
+            <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </div>
           <span className="text-xs font-black pr-1 hidden sm:inline">Shop Assistant</span>
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -182,7 +182,7 @@ export const AiChatBox: React.FC = () => {
       {/* Assistant Modal / Drawer Sheet */}
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white w-full max-w-lg h-[85vh] sm:h-[620px] rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-slide-up sm:animate-fade-in">
+          <div className="bg-white w-full max-w-lg h-[88vh] h-[88dvh] sm:h-[620px] rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-slide-up sm:animate-fade-in">
             
             {/* Header */}
             <div className="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0 border-b border-slate-800">
@@ -203,6 +203,7 @@ export const AiChatBox: React.FC = () => {
 
               <button
                 onClick={() => setIsOpen(false)}
+                aria-label="Close assistant"
                 className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -210,7 +211,7 @@ export const AiChatBox: React.FC = () => {
             </div>
 
             {/* Chat Messages Body */}
-            <div className="flex-1 p-4 overflow-y-auto space-y-3.5 bg-slate-50">
+            <div className="flex-1 p-3.5 sm:p-4 overflow-y-auto space-y-3.5 bg-slate-50">
               {messages.map((msg) => (
                 <div
                   key={msg.id}
@@ -222,9 +223,9 @@ export const AiChatBox: React.FC = () => {
                     </div>
                   )}
 
-                  <div className={`max-w-[82%] ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
+                  <div className={`max-w-[85%] sm:max-w-[82%] ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
                     <div
-                      className={`p-3.5 rounded-2xl text-xs sm:text-sm font-medium leading-relaxed ${
+                      className={`p-3 sm:p-3.5 rounded-2xl text-xs sm:text-sm font-medium leading-relaxed ${
                         msg.sender === 'user'
                           ? 'bg-emerald-600 text-white rounded-tr-xs shadow-xs'
                           : 'bg-white text-slate-800 border border-slate-200/90 rounded-tl-xs shadow-xs'
@@ -250,9 +251,10 @@ export const AiChatBox: React.FC = () => {
                             <button
                               key={idx}
                               onClick={() => handleSendMessage(chip)}
-                              className="text-left text-xs font-bold text-slate-700 bg-white hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 border border-slate-200 px-3 py-1.5 rounded-xl transition-all cursor-pointer shadow-2xs active:scale-95"
+                              className="text-left text-xs font-bold text-slate-700 bg-white hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 border border-slate-200 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer shadow-2xs active:scale-95 flex items-center gap-1.5 min-h-[36px]"
                             >
-                              💬 {chip}
+                              <MessageSquare className="w-3 h-3 text-slate-400 shrink-0" />
+                              <span>{chip}</span>
                             </button>
                           ))}
                         </div>
@@ -284,8 +286,8 @@ export const AiChatBox: React.FC = () => {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Bar */}
-            <div className="p-3 bg-white border-t border-slate-200 shrink-0">
+            {/* Input Bar with safe-area-inset-bottom */}
+            <div className="p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] bg-white border-t border-slate-200 shrink-0">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -298,12 +300,13 @@ export const AiChatBox: React.FC = () => {
                   placeholder={t('chatbot.placeholder')}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white"
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm font-medium bg-slate-50 focus:bg-white"
                 />
                 <button
                   type="submit"
                   disabled={!input.trim()}
-                  className="w-10 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                  aria-label="Send message"
+                  className="w-10 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0 min-h-[40px] min-w-[40px]"
                 >
                   <Send className="w-4 h-4" />
                 </button>

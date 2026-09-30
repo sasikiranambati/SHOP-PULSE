@@ -21,7 +21,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
         <div className="flex items-center gap-2 flex-wrap">
           <span className="inline-flex items-center gap-1.5 text-[11px] sm:text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200/80">
             <Store className="w-3.5 h-3.5 text-emerald-600" />
-            <span className="truncate max-w-[200px] sm:max-w-none">{shopName}</span>
+            <span className="truncate max-w-[150px] xs:max-w-[200px] sm:max-w-none">{shopName}</span>
           </span>
           <span className="hidden xs:inline-flex items-center gap-1 text-[11px] font-bold text-slate-400 bg-slate-50 px-2.5 py-0.5 rounded-full border border-slate-200/60">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -29,7 +29,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
           </span>
         </div>
 
-        <h1 className="text-2xl sm:text-3xl font-black text-slate-900 mt-2 tracking-tight">
+        <h1 className="text-xl xs:text-2xl sm:text-3xl font-black text-slate-900 mt-2 tracking-tight">
           {t('dashboard.goodMorning')}
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 font-semibold mt-0.5">
@@ -37,13 +37,13 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
         </p>
       </div>
 
-      <div className="flex items-center gap-2.5 shrink-0">
+      <div className="flex items-center gap-2.5 shrink-0 w-full sm:w-auto">
         <Button
           variant="primary"
           size="md"
           onClick={() => setActivePage('sales')}
           icon={<Plus className="w-5 h-5" />}
-          className="w-full sm:w-auto font-black shadow-md shadow-emerald-600/20"
+          className="w-full sm:w-auto font-black shadow-md shadow-emerald-600/20 min-h-[44px]"
         >
           {t('dashboard.newSale')}
         </Button>

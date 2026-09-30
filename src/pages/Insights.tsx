@@ -59,7 +59,7 @@ export const Insights: React.FC = () => {
         </button>
       </div>
 
-      {/* 1. 💰 Business Overview Stat Row */}
+      {/* 1. Business Overview Stat Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard
           title={t('insights.weeklyRevenue')}
@@ -87,13 +87,13 @@ export const Insights: React.FC = () => {
         />
       </div>
 
-      {/* 2. 📈 Sales Trend Chart */}
+      {/* 2. Sales Trend Chart */}
       <SalesChart 
         data={weeklyTrend?.points} 
         peakText={weeklyTrend?.peakDay ? `Peak: ${weeklyTrend.peakDay.day} (₹${(weeklyTrend.peakDay.amount / 1000).toFixed(1)}k)` : undefined}
       />
 
-      {/* 3. 🔥 Best Sellers & ⚠️ Stock Alerts Grid */}
+      {/* 3. Best Sellers & Stock Alerts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
         {/* Top Selling Products List */}
@@ -135,7 +135,7 @@ export const Insights: React.FC = () => {
           </div>
         </Card>
 
-        {/* ⚠️ Stock Alerts Summary */}
+        {/* Stock Alerts Summary */}
         <Card className="flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -204,7 +204,7 @@ export const Insights: React.FC = () => {
 
       </div>
 
-      {/* 4. 🤖 AI Demand Forecasting & Smart Recommendations */}
+      {/* 4. AI Demand Forecasting & Smart Recommendations */}
       <Card className="border-2 border-dashed border-emerald-300 bg-emerald-50/20">
         <div className="flex items-center justify-between pb-3 border-b border-emerald-200">
           <div className="flex items-center gap-2 text-slate-900 font-black text-base sm:text-lg">

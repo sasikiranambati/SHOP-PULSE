@@ -47,7 +47,7 @@ def get_sales(
     *,
     db: Session = Depends(deps.get_db),
     skip: int = Query(0, ge=0),
-    limit: int = Query(10, ge=1, le=100),
+    limit: int = Query(10, ge=1, le=500),
     current_user: User = Depends(deps.get_current_user)
 ) -> Any:
     """

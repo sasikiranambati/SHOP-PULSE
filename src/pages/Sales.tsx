@@ -16,12 +16,14 @@ import {
   Smartphone,
   User,
   AlertTriangle,
-  X
+  X,
+  Mic
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { ReceiptModal } from '../components/ReceiptModal';
+import { VoiceBillModal } from '../components/VoiceBillModal';
 import type { Product, CartItem, Sale, PaymentMethod } from '../types';
 import { PRODUCT_CATEGORIES } from '../data/mockData';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -76,6 +78,38 @@ export const Sales: React.FC<SalesProps> = ({
   const [lastSaleTotal, setLastSaleTotal] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [saleError, setSaleError] = useState<string | null>(null);
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+
+  // ---------------------------------------------------------------------------
+  // Voice-to-Bill Cart Integration (Phase 8)
+  // ---------------------------------------------------------------------------
+  const handleVoiceItemsConfirmed = (items: Array<{ product: Product; quantity: number }>) => {
+    setSaleError(null);
+    setCart(prev => {
+      const updated = [...prev];
+      for (const item of items) {
+        const existingIdx = updated.findIndex(c => c.product.id === item.product.id);
+        if (existingIdx >= 0) {
+          updated[existingIdx] = {
+            ...updated[existingIdx],
+            quantity: updated[existingIdx].quantity + item.quantity
+          };
+        } else {
+          updated.push({ product: item.product, quantity: item.quantity });
+        }
+      }
+      return updated;
+    });
+
+    // Smooth scroll to bill section
+    setTimeout(() => {
+      document.getElementById('customer-bill-section')?.scrollIntoView({ behavior: 'smooth' });
+    }, 150);
+  };
+
+  const handleVoiceDirectCheckout = (items: Array<{ product: Product; quantity: number }>) => {
+    handleVoiceItemsConfirmed(items);
+  };
 
   // History State & Receipt Modal
   const [showReceiptModal, setShowReceiptModal] = useState(false);
@@ -318,13 +352,24 @@ export const Sales: React.FC<SalesProps> = ({
             </Button>
           </div>
         ) : (
-          <button
-            onClick={() => setActiveTab('history')}
-            className="text-xs font-black text-emerald-700 hover:underline flex items-center gap-1 cursor-pointer self-end sm:self-auto px-2"
-          >
-            <span>View Recent Bills ({sales.length})</span>
-            <span>→</span>
-          </button>
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            <button
+              type="button"
+              onClick={() => setShowVoiceModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-300 text-emerald-800 hover:bg-emerald-100 text-xs font-black transition-all cursor-pointer shadow-2xs"
+              title="Voice-to-Bill assistant"
+            >
+              <Mic className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+              <span>Voice to Bill</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className="text-xs font-black text-emerald-700 hover:underline flex items-center gap-1 cursor-pointer px-2"
+            >
+              <span>View Recent Bills ({sales.length})</span>
+              <span>→</span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -363,15 +408,34 @@ export const Sales: React.FC<SalesProps> = ({
 
           {/* Search & Category Filter Bar */}
           <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-xs space-y-3">
-            <div className="relative">
-              <Search className="w-5 h-5 absolute left-3.5 top-3 text-slate-400" />
-              <input
-                type="text"
-                placeholder={t('sales.searchPlaceholder')}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm sm:text-base font-medium"
-              />
+            <div className="flex gap-2 items-center">
+              <div className="relative flex-1">
+                <Search className="w-5 h-5 absolute left-3.5 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder={t('sales.searchPlaceholder')}
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm font-medium"
+                />
+              </div>
+
+              {/* Voice-to-Bill Interactive Trigger Button */}
+              <button
+                type="button"
+                onClick={() => setShowVoiceModal(true)}
+                className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 active:scale-95 text-white font-black text-xs sm:text-sm rounded-xl sm:rounded-2xl shadow-lg shadow-emerald-600/30 hover:shadow-emerald-500/40 hover:scale-[1.02] flex items-center gap-2 cursor-pointer transition-all shrink-0 min-h-[44px] border border-emerald-400/30 ring-2 ring-emerald-500/20"
+                title="Create bill with Voice in 12 Indian Languages (बोलकर बिल बनाएं)"
+                aria-label="Open Voice-to-Bill"
+              >
+                <div className="w-7 h-7 rounded-lg sm:rounded-xl bg-white/20 flex items-center justify-center shadow-xs shrink-0">
+                  <Mic className="w-4 h-4 text-white animate-pulse" />
+                </div>
+                <div className="flex flex-col text-left">
+                  <span className="leading-tight font-black text-xs sm:text-sm">🎙️ Voice-to-Bill</span>
+                  <span className="text-[10px] text-emerald-100 font-bold hidden sm:inline">12 Languages</span>
+                </div>
+              </button>
             </div>
 
             {/* Category Pills */}
@@ -455,7 +519,7 @@ export const Sales: React.FC<SalesProps> = ({
             </div>
 
             {/* Right Col (1/3): Current Customer Basket */}
-            <div className="space-y-4">
+            <div id="customer-bill-section" className="space-y-4">
               <Card className="sticky top-20 border-2 border-emerald-300 shadow-md">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2 text-slate-900 font-black text-base">
@@ -475,13 +539,13 @@ export const Sales: React.FC<SalesProps> = ({
                 {/* Optional Customer Name Input */}
                 <div className="pt-2.5">
                   <div className="relative">
-                    <User className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                    <User className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
                     <input
                       type="text"
                       placeholder="Customer name (optional)"
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
-                      className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium bg-slate-50"
+                      className="w-full pl-9 pr-3 py-2 text-base sm:text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium bg-slate-50 min-h-[40px]"
                     />
                   </div>
                 </div>
@@ -499,29 +563,32 @@ export const Sales: React.FC<SalesProps> = ({
                         </p>
                       </div>
 
-                      {/* Quantity Stepper [-] Qty [+] */}
+                      {/* Quantity Stepper [-] Qty [+] with comfortable touch area */}
                       <div className="flex items-center gap-1 shrink-0 bg-slate-100 p-1 rounded-xl">
                         <button
                           type="button"
                           onClick={() => updateQuantity(item.product.id, -1)}
-                          className="w-7 h-7 rounded-lg bg-white border border-slate-200 text-slate-700 flex items-center justify-center font-bold active:scale-90 cursor-pointer"
+                          aria-label={`Decrease quantity of ${item.product.name}`}
+                          className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-700 flex items-center justify-center font-bold active:scale-90 cursor-pointer min-h-[32px] min-w-[32px]"
                         >
                           <Minus className="w-3.5 h-3.5" />
                         </button>
-                        <span className="font-black text-sm text-slate-900 w-5 text-center">
+                        <span className="font-black text-sm text-slate-900 w-6 text-center">
                           {item.quantity}
                         </span>
                         <button
                           type="button"
                           onClick={() => updateQuantity(item.product.id, 1)}
-                          className="w-7 h-7 rounded-lg bg-white border border-slate-200 text-slate-700 flex items-center justify-center font-bold active:scale-90 cursor-pointer"
+                          aria-label={`Increase quantity of ${item.product.name}`}
+                          className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-700 flex items-center justify-center font-bold active:scale-90 cursor-pointer min-h-[32px] min-w-[32px]"
                         >
                           <Plus className="w-3.5 h-3.5" />
                         </button>
                         <button
                           type="button"
                           onClick={() => removeFromCart(item.product.id)}
-                          className="p-1 text-slate-400 hover:text-rose-600 ml-0.5 cursor-pointer"
+                          aria-label={`Remove ${item.product.name} from bill`}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 ml-0.5 cursor-pointer min-h-[32px] min-w-[32px] flex items-center justify-center"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -549,7 +616,7 @@ export const Sales: React.FC<SalesProps> = ({
                         key={method}
                         type="button"
                         onClick={() => setPaymentMethod(method)}
-                        className={`py-2 text-xs font-black rounded-xl border transition-all cursor-pointer ${
+                        className={`py-2.5 text-xs font-black rounded-xl border transition-all cursor-pointer min-h-[42px] active:scale-95 ${
                           paymentMethod === method
                             ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                             : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
@@ -581,7 +648,7 @@ export const Sales: React.FC<SalesProps> = ({
                   <Button
                     variant="primary"
                     size="lg"
-                    className="w-full font-black text-base py-3.5 rounded-2xl shadow-md shadow-emerald-600/20"
+                    className="w-full font-black text-base py-4 rounded-2xl shadow-md shadow-emerald-600/20 min-h-[50px]"
                     disabled={cart.length === 0 || isProcessing}
                     onClick={handleCompleteSale}
                     icon={<CheckCircle2 className="w-5 h-5" />}
@@ -593,6 +660,37 @@ export const Sales: React.FC<SalesProps> = ({
             </div>
 
           </div>
+
+          {/* Mobile Floating Cart Summary Bar (Quick Jump to Bill) */}
+          {cart.length > 0 && (
+            <div className="lg:hidden fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] left-3.5 right-3.5 z-30 bg-slate-900/95 backdrop-blur-md text-white p-2.5 sm:p-3 rounded-2xl shadow-xl border border-slate-700 flex items-center justify-between animate-slide-up">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white shrink-0">
+                  <ShoppingCart className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold text-slate-300 truncate">
+                    {totalItemCount} {totalItemCount === 1 ? 'item' : 'items'} in bill
+                  </p>
+                  <p className="text-sm font-black text-emerald-400 leading-tight">
+                    ₹{totalAmount}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const el = document.getElementById('customer-bill-section');
+                  el?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-black text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shrink-0 min-h-[38px]"
+              >
+                <span>View Bill</span>
+                <span>→</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -640,7 +738,7 @@ export const Sales: React.FC<SalesProps> = ({
                 placeholder="Search by Bill Number (e.g. SP-2026...), customer name, or item..."
                 value={historySearch}
                 onChange={(e) => setHistorySearch(e.target.value)}
-                className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-medium"
+                className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm font-medium"
               />
               {historySearch && (
                 <button
@@ -862,7 +960,7 @@ export const Sales: React.FC<SalesProps> = ({
       {/* Sale Complete Success Modal Sheet */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-t-3xl sm:rounded-3xl p-6 max-w-sm w-full text-center shadow-xl border border-slate-200 animate-slide-up sm:animate-fade-in">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 max-w-sm w-full text-center shadow-xl border border-slate-200 animate-slide-up sm:animate-fade-in max-h-[90vh] max-h-[90dvh] overflow-y-auto">
             <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center mb-3 shadow-inner">
               <Sparkles className="w-8 h-8" />
             </div>
@@ -891,31 +989,33 @@ export const Sales: React.FC<SalesProps> = ({
               <Button
                 variant="outline"
                 size="md"
-                className="w-full font-extrabold py-2.5 rounded-xl border-slate-300"
+                className="w-full font-extrabold py-2.5 rounded-xl border-slate-300 min-h-[44px]"
+                icon={<Receipt className="w-4 h-4" />}
                 onClick={() => {
                   setSelectedReceiptSale(completedSale);
                   setShowReceiptModal(true);
                 }}
               >
-                🧾 View & Print Receipt
+                View & Print Receipt
               </Button>
 
               <Button
                 variant="outline"
                 size="md"
-                className="w-full font-extrabold py-2.5 rounded-xl border-slate-300 text-slate-700 hover:bg-slate-50"
+                className="w-full font-extrabold py-2.5 rounded-xl border-slate-300 text-slate-700 hover:bg-slate-50 min-h-[44px]"
+                icon={<Clock className="w-4 h-4" />}
                 onClick={() => {
                   setShowSuccessModal(false);
                   setActiveTab('history');
                 }}
               >
-                📜 View in Sales History
+                View in Sales History
               </Button>
 
               <Button
                 variant="primary"
                 size="md"
-                className="w-full font-extrabold py-3 rounded-xl"
+                className="w-full font-extrabold py-3.5 rounded-xl min-h-[48px]"
                 onClick={() => setShowSuccessModal(false)}
               >
                 {t('sales.nextCustomer')}
@@ -936,7 +1036,7 @@ export const Sales: React.FC<SalesProps> = ({
       {/* Delete Sale Confirmation Modal */}
       {deletingSale && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-3xl max-w-sm sm:max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 max-h-[90vh] max-h-[90dvh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2.5 text-rose-600 font-extrabold text-lg">
                 <div className="w-9 h-9 rounded-xl bg-rose-50 flex items-center justify-center text-rose-600 shrink-0 border border-rose-200">
@@ -957,8 +1057,9 @@ export const Sales: React.FC<SalesProps> = ({
               <p className="text-sm text-slate-700 font-medium leading-relaxed">
                 Are you sure you want to delete bill <span className="font-extrabold text-slate-900">"{deletingSale.billNumber}"</span> (₹{deletingSale.total})?
               </p>
-              <p className="text-xs text-rose-700 font-semibold bg-rose-50 p-2.5 rounded-xl border border-rose-200">
-                ⚠️ This will cancel the transaction and automatically return the sold items back to your inventory stock.
+              <p className="text-xs text-rose-700 font-semibold bg-rose-50 p-2.5 rounded-xl border border-rose-200 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-600" />
+                <span>This will cancel the transaction and automatically return the sold items back to your inventory stock.</span>
               </p>
             </div>
 
@@ -986,6 +1087,15 @@ export const Sales: React.FC<SalesProps> = ({
           </div>
         </div>
       )}
+
+      {/* Voice-to-Bill Modal (Phases 3, 6, 7, 8, 10) */}
+      <VoiceBillModal
+        isOpen={showVoiceModal}
+        onClose={() => setShowVoiceModal(false)}
+        products={products}
+        onConfirmToCart={handleVoiceItemsConfirmed}
+        onDirectCheckout={handleVoiceDirectCheckout}
+      />
 
     </div>
   );

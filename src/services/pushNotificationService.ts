@@ -21,7 +21,7 @@ export interface PushNotificationPayload {
  */
 export async function sendLowStockNotification(product: Product, alert: Alert): Promise<void> {
   const payload: PushNotificationPayload = {
-    title: `⚠️ Low Stock: ${product.name}`,
+    title: `Low Stock: ${product.name}`,
     body: alert.message || `Only ${product.stock} ${product.unit} remaining. Restock recommended.`,
     priority: 'normal',
     data: {
@@ -46,7 +46,7 @@ export async function sendLowStockNotification(product: Product, alert: Alert): 
  */
 export async function sendCriticalAlert(alert: Alert): Promise<void> {
   const payload: PushNotificationPayload = {
-    title: `🚨 CRITICAL: ${alert.productName || 'Inventory Alert'}`,
+    title: `CRITICAL: ${alert.productName || 'Inventory Alert'}`,
     body: alert.message,
     priority: 'high',
     data: {

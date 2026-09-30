@@ -11,7 +11,6 @@ import { Card } from '../components/Card';
 import { Receipt, ArrowUpRight } from 'lucide-react';
 
 import type { PageRoute, Product } from '../types';
-import { MOCK_RECENT_SALES } from '../data/mockData';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useSales } from '../hooks/useSales';
 import { useAlerts } from '../hooks/useAlerts';
@@ -36,10 +35,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
 
-  // Live or fallback performance metrics
-  const todayRevenue = todaySummary ? todaySummary.todaySales : 8450;
-  const itemsSoldToday = todaySummary ? todaySummary.itemsSoldToday : 42;
-  const productsCount = products && products.length > 0 ? products.length : 38;
+  // Live performance metrics from backend API
+  const todayRevenue = todaySummary ? todaySummary.todaySales : (dashboardStats?.todayRevenue ?? 0);
+  const itemsSoldToday = todaySummary ? todaySummary.itemsSoldToday : (dashboardStats?.itemsSoldToday ?? 0);
+  const productsCount = products ? products.length : 0;
 
   // Filter low stock items from live products list
   const lowStockItems = products.filter(
@@ -80,10 +79,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  const recentSalesList =
-    dashboardStats?.recentSales && dashboardStats.recentSales.length > 0
-      ? dashboardStats.recentSales
-      : MOCK_RECENT_SALES;
+  const recentSalesList = dashboardStats?.recentSales ?? [];
 
   return (
     <div className="space-y-5 sm:space-y-6 max-w-5xl mx-auto pb-10">
@@ -159,19 +155,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         <div className="divide-y divide-slate-100 mt-1">
-          {recentSalesList.slice(0, 4).map((sale: any) => (
-            <div key={sale.id} className="py-2.5 sm:py-3 flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="font-extrabold text-slate-900 text-xs sm:text-sm leading-tight truncate">
-                  {sale.items}
-                </p>
-                <p className="text-[11px] text-slate-400 font-medium mt-0.5">{sale.time}</p>
-              </div>
-              <div className="text-right font-black text-emerald-700 text-sm sm:text-base shrink-0">
-                ₹{sale.total}
-              </div>
+          {recentSalesList.length === 0 ? (
+            <div className="py-6 text-center text-slate-400 text-xs font-semibold">
+              No sales recorded yet today.
             </div>
-          ))}
+          ) : (
+            recentSalesList.slice(0, 5).map((sale: any) => {
+              const itemSummary = Array.isArray(sale.items)
+                ? sale.items.map((i: any) => `${i.quantity}x ${i.name || i.productName || 'Item'}`).join(', ')
+                : (sale.items || 'Counter Sale');
+              const timeFormatted = sale.time || (sale.createdAt ? new Date(sale.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently');
+
+              return (
+                <div key={sale.id} className="py-2.5 sm:py-3 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-extrabold text-slate-900 text-xs sm:text-sm leading-tight truncate">
+                      {itemSummary}
+                    </p>
+                    <p className="text-[11px] text-slate-400 font-medium mt-0.5">{timeFormatted}</p>
+                  </div>
+                  <div className="text-right font-black text-emerald-700 text-sm sm:text-base shrink-0">
+                    ₹{sale.total ?? sale.totalAmount ?? 0}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </Card>
 
