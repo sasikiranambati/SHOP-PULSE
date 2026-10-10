@@ -25,8 +25,108 @@ import {
   mapWordsToColumns,
   mapTokensToColumns,
 } from './semanticColumnDetector';
-import { isDisallowedItemLine, classifyDocumentSection } from './sectionClassifier';
+import { isDisallowedItemLine, classifyDocumentSection, cleanProductName, isPlausibleProductName } from './sectionClassifier';
 import { cleanNumericToken, normalizeUnit, splitMergedUnits } from './invoiceParser';
+
+export { cleanProductName, isPlausibleProductName };
+
+/**
+ * Distinguishes product pack size (e.g. 500 ml, 400 g, 1 kg) and attaches it cleanly
+ * to the product title so it is never confused with purchased quantity.
+ */
+export function extractProductSizeAndTitle(
+  rawName: string,
+  rawLineText?: string
+): { title: string; unitSize?: string } {
+  let title = cleanProductName(rawName);
+  const sizeRegex = /\b(\d+(?:\.\d+)?)\s*(ml|g|gm|gms|kg|kgs|l|ltr|ltrs|liter|litres)\b/i;
+
+  const existingMatch = title.match(sizeRegex);
+  if (existingMatch) {
+    return { title, unitSize: `${existingMatch[1]} ${existingMatch[2]}` };
+  }
+
+  if (rawLineText) {
+    const lineMatch = rawLineText.match(sizeRegex);
+    if (lineMatch) {
+      const sizeStr = `${lineMatch[1]} ${lineMatch[2]}`;
+      if (!title.toLowerCase().includes(sizeStr.toLowerCase())) {
+        title = `${title} ${sizeStr}`.trim();
+      }
+      return { title, unitSize: sizeStr };
+    }
+  }
+
+  return { title };
+}
+
+/**
+ * Deduplicates candidate line items from overlapping OCR fragments or multiple extraction passes,
+ * ensuring that genuinely separate rows with distinct totals or quantities are preserved.
+ */
+export function deduplicateExtractedItems(items: RawExtractedItem[]): RawExtractedItem[] {
+  const result: RawExtractedItem[] = [];
+
+  for (const it of items) {
+    const itName = it.productName.toLowerCase().trim();
+    if (!itName || !isPlausibleProductName(it.productName)) continue;
+
+    const dupIndex = result.findIndex((existing) => {
+      const exName = existing.productName.toLowerCase().trim();
+
+      // Exact duplicate by lineIndex or sourceText
+      if (it.lineIndex !== undefined && existing.lineIndex !== undefined && it.lineIndex === existing.lineIndex) {
+        return true;
+      }
+      if (it.sourceText && existing.sourceText && it.sourceText.trim() === existing.sourceText.trim()) {
+        return true;
+      }
+
+      // Check if one candidate is an OCR fragment of the other
+      const nameMatch = exName === itName || exName.includes(itName) || itName.includes(exName);
+      const totalsMatch =
+        it.lineTotal != null &&
+        existing.lineTotal != null &&
+        Math.abs(it.lineTotal - existing.lineTotal) < 1;
+      const pricesMatch =
+        it.purchasePrice != null &&
+        existing.purchasePrice != null &&
+        Math.abs(it.purchasePrice - existing.purchasePrice) < 1;
+      const qtysMatch =
+        it.quantity != null &&
+        existing.quantity != null &&
+        it.quantity === existing.quantity;
+
+      if (nameMatch && (totalsMatch || (pricesMatch && qtysMatch))) {
+        return true;
+      }
+
+      return false;
+    });
+
+    if (dupIndex >= 0) {
+      const existing = result[dupIndex];
+      const existingScore =
+        (existing.productName.length || 0) +
+        (existing.quantity != null ? 10 : 0) +
+        (existing.purchasePrice != null ? 10 : 0) +
+        (existing.lineTotal != null ? 10 : 0);
+      const itScore =
+        (it.productName.length || 0) +
+        (it.quantity != null ? 10 : 0) +
+        (it.purchasePrice != null ? 10 : 0) +
+        (it.lineTotal != null ? 10 : 0);
+
+      if (itScore > existingScore) {
+        result[dupIndex] = it;
+      }
+    } else {
+      result.push(it);
+    }
+  }
+
+  return result;
+}
 
 export interface RawExtractedItem {
   productName: string;
@@ -184,6 +284,18 @@ export function parseSmartQuantity(raw: string | null): number | null {
   let clean = raw.trim();
   // Strip thousands separator commas
   clean = clean.replace(/,/g, '');
+
+  // If string has a pack size followed by an explicit quantity: "500 ml 24" -> "24"
+  const packAndQtyMatch = clean.match(/^\d+(?:\.\d+)?\s*(?:ml|g|gm|gms|kg|kgs|l|ltr|can|tin|pkt|box|bag)\s+(\d+(?:\.\d+)?)$/i);
+  if (packAndQtyMatch) {
+    clean = packAndQtyMatch[1];
+  }
+
+  // Standalone liquid/gram pack sizes (e.g. 500 ml, 400 g) are unit sizes, NOT purchase quantities!
+  if (/^\d+(?:\.\d+)?\s*(?:ml|g|gm|cl)$/i.test(clean)) {
+    return null;
+  }
+
   // Strip unit suffix
   clean = clean.replace(/(?:pcs|pc|pkt|box|bag|bor|pet|kg|g|gm|l|ltr|can|tin|fc|fcs|rcs|orcs)$/i, '').trim();
 
@@ -389,6 +501,17 @@ export function resolveItemArithmetic(
     if (withTaxTotal > total && String(Math.round(withTaxTotal)).endsWith(String(Math.round(total)))) {
       return { quantity: qty, rate: rate, purchasePrice: rate, lineTotal: withTaxTotal };
     }
+
+    // 10. Check if quantity was mistakenly taken from pack size (e.g. qty=500, rate=18, total=432 -> genuine qty is 432/18 = 24)
+    if (rate > 0) {
+      const calculatedQty = Math.round(((total - tVal) / rate) * 100) / 100;
+      if (calculatedQty > 0 && Math.abs(calculatedQty * rate + tVal - total) <= Math.max(2, total * 0.03)) {
+        const isPackSizeNumber = [100, 150, 200, 250, 400, 500, 750, 1000].includes(qty);
+        if ((isPackSizeNumber || qty > calculatedQty * 3) && Math.abs(qty * rate + tVal - total) > 5) {
+          return { quantity: calculatedQty, rate: rate, purchasePrice: rate, lineTotal: total };
+        }
+      }
+    }
   }
 
   // Derive missing values
@@ -444,7 +567,7 @@ function tryStructuredTableExtraction(
     amount: string;
   }> = [];
 
-  for (let i = 0; i < Math.min(lines.length, 15); i++) {
+  for (let i = 0; i < Math.min(lines.length, 35); i++) {
     if (isCandidateHeaderLine(lines[i].text)) {
       if (lines[i].words && lines[i].words!.length > 0) {
         const maxW = Math.max(1600, ...lines.flatMap((ln) => (ln.words || []).map((w) => w.bbox.x1)));
@@ -484,7 +607,7 @@ function tryStructuredTableExtraction(
     // Check if line is a summary/total/footer row -> commit and terminate table extraction
     const lower = l.text.toLowerCase();
     const isSummaryOrFooter =
-      /grand total|net amount|balance amount|received amount|payment|terms and|hsn\/sac|tax amount|table value|eeceveoamouw/i.test(lower) ||
+      /grand total|sub\s*total|bill\s*total|net amount|total\s*amount|total\s*value|taxable\s*value|round\s*off|balance amount|received amount|payment|terms and|hsn\/sac|tax amount|table value|authorized\s*signatory|authorised\s*signature|eeceveoamouw/i.test(lower) ||
       isDisallowedItemLine(l.text);
 
     if (isSummaryOrFooter) {
@@ -492,7 +615,7 @@ function tryStructuredTableExtraction(
         items.push(currentPendingItem);
         currentPendingItem = null;
       }
-      if (/grand total|net amount|balance amount|received amount|payment|terms and|hsn\/sac|tax amount|table value|eeceveoamouw/i.test(lower)) {
+      if (/grand total|sub\s*total|bill\s*total|net amount|total\s*amount|balance amount|received amount|payment|terms and|authorized\s*signatory|authorised\s*signature|eeceveoamouw/i.test(lower)) {
         break;
       }
       continue;
@@ -762,7 +885,7 @@ function tryStructuredTableExtraction(
 
   const filteredItems = items.filter((it) => {
     const cleanName = it.productName ? it.productName.trim() : '';
-    const hasValidName = cleanName.length >= 2 && !/^[|*.\-_=~0-9#\s]+$/.test(cleanName) && !isDisallowedItemLine(cleanName);
+    const hasValidName = isPlausibleProductName(cleanName);
     const hasFinancials =
       (it.purchasePrice != null && it.purchasePrice > 0) ||
       (it.sellingPrice != null && it.sellingPrice > 0) ||
@@ -772,7 +895,8 @@ function tryStructuredTableExtraction(
     return hasValidName && (hasFinancials || (it.quantity != null && it.quantity > 0));
   });
 
-  return { items: filteredItems, detectedColumns, detectedRows };
+  const deduplicated = deduplicateExtractedItems(filteredItems);
+  return { items: deduplicated, detectedColumns, detectedRows };
 }
 
 // ===========================================================================
@@ -787,6 +911,18 @@ function trySpatialLayoutExtraction(
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
     if (isDisallowedItemLine(l.text)) continue;
+
+    const sec = classifyDocumentSection(l.text, i, lines.length);
+    if (
+      sec === 'SUPPLIER_INFO' ||
+      sec === 'CUSTOMER_INFO' ||
+      sec === 'HEADER' ||
+      sec === 'TOTAL_SUMMARY' ||
+      sec === 'TAX_SUMMARY' ||
+      sec === 'FOOTER'
+    ) {
+      continue;
+    }
 
     // Check if line has words with coordinates
     if (l.words && l.words.length >= 2) {
@@ -810,50 +946,44 @@ function trySpatialLayoutExtraction(
         }
       }
 
-      const candidateName = cleanProductName(nameTokens.join(' '));
+      const { title: candidateName } = extractProductSizeAndTitle(nameTokens.join(' '), l.text);
 
-      if (candidateName.length >= 2 && numTokens.length >= 1) {
+      if (isPlausibleProductName(candidateName) && numTokens.length >= 1) {
         let qty: number | null = null;
         let rate: number | null = null;
         let total: number | null = null;
 
         if (numTokens.length >= 3) {
-          // Assume [..., qty, rate, total] or check if n0 * n1 ≈ n2
           const [n0, n1, n2] = [
             numTokens[numTokens.length - 3].val,
             numTokens[numTokens.length - 2].val,
             numTokens[numTokens.length - 1].val,
           ];
 
-          if (Math.abs(n0 * n1 - n2) < 2) {
-            qty = n0;
-            rate = n1;
-            total = n2;
-          } else {
-            qty = n0;
-            rate = n1;
-            total = n2;
-          }
+          const resolved = resolveItemArithmetic(n0, n1, n2);
+          qty = resolved.quantity;
+          rate = resolved.rate;
+          total = resolved.lineTotal;
         } else if (numTokens.length === 2) {
           const [n0, n1] = [numTokens[0].val, numTokens[1].val];
           if (n0 > 0 && n0 <= 1000 && Math.round(n0) === n0 && n1 > n0) {
             qty = n0;
-            rate = n1 / n0;
+            rate = Math.round((n1 / n0) * 100) / 100;
             total = n1;
           } else {
             rate = n0;
             total = n1;
-            qty = 1;
+            qty = null;
           }
         } else if (numTokens.length === 1) {
           total = numTokens[0].val;
           rate = numTokens[0].val;
-          qty = 1;
+          qty = null;
         }
 
         items.push({
           productName: candidateName,
-          quantity: qty || 1,
+          quantity: qty,
           unit: unitToken,
           rate: rate,
           purchasePrice: rate,
@@ -878,7 +1008,7 @@ function trySpatialLayoutExtraction(
     }
   }
 
-  return items;
+  return deduplicateExtractedItems(items);
 }
 
 // ===========================================================================
@@ -894,13 +1024,25 @@ function tryTextLineItemExtraction(
     const l = lines[i];
     if (isDisallowedItemLine(l.text)) continue;
 
+    const sec = classifyDocumentSection(l.text, i, lines.length);
+    if (
+      sec === 'SUPPLIER_INFO' ||
+      sec === 'CUSTOMER_INFO' ||
+      sec === 'HEADER' ||
+      sec === 'TOTAL_SUMMARY' ||
+      sec === 'TAX_SUMMARY' ||
+      sec === 'FOOTER'
+    ) {
+      continue;
+    }
+
     const item = parseSingleLineItem(l.text, l.confidence, i);
-    if (item) {
+    if (item && isPlausibleProductName(item.productName)) {
       items.push(item);
     }
   }
 
-  return items;
+  return deduplicateExtractedItems(items);
 }
 
 /**
@@ -912,7 +1054,7 @@ export function parseSingleLineItem(
   lineIndex: number = 0
 ): RawExtractedItem | null {
   const line = rawLine.trim();
-  if (!line || line.length < 3) return null;
+  if (!line || line.length < 3 || isDisallowedItemLine(line)) return null;
 
   // Split merged units (e.g. 25kg -> 25 kg, 5L -> 5 L)
   const normalizedLine = splitMergedUnits(line);
@@ -922,13 +1064,13 @@ export function parseSingleLineItem(
   const multiTotalMatch = normalizedLine.match(multiTotalRegex);
 
   if (multiTotalMatch && multiTotalMatch[1] && multiTotalMatch[2] && multiTotalMatch[3]) {
-    const name = cleanProductName(multiTotalMatch[1]);
-    const qty = Math.max(1, parseFloat(cleanNumericToken(multiTotalMatch[2])) || 1);
+    const { title: name } = extractProductSizeAndTitle(multiTotalMatch[1], rawLine);
+    const qty = parseFloat(cleanNumericToken(multiTotalMatch[2])) || null;
     const rate = parseFloat(cleanNumericToken(multiTotalMatch[3])) || 0;
-    const total = parseFloat(cleanNumericToken(multiTotalMatch[4])) || Math.round(qty * rate * 100) / 100;
+    const total = parseFloat(cleanNumericToken(multiTotalMatch[4])) || (qty && rate ? Math.round(qty * rate * 100) / 100 : 0);
     const unit = extractUnitFromTitle(name);
 
-    if (name.length >= 2 && (rate > 0 || total > 0)) {
+    if (isPlausibleProductName(name) && (rate > 0 || total > 0)) {
       return {
         productName: name,
         quantity: qty,
@@ -960,13 +1102,13 @@ export function parseSingleLineItem(
   const multiRateMatch = normalizedLine.match(multiRateRegex);
 
   if (multiRateMatch && multiRateMatch[1] && multiRateMatch[2] && multiRateMatch[3]) {
-    const name = cleanProductName(multiRateMatch[1]);
-    const qty = Math.max(1, parseFloat(cleanNumericToken(multiRateMatch[2])) || 1);
+    const { title: name } = extractProductSizeAndTitle(multiRateMatch[1], rawLine);
+    const qty = parseFloat(cleanNumericToken(multiRateMatch[2])) || null;
     const rate = parseFloat(cleanNumericToken(multiRateMatch[3])) || 0;
-    const total = Math.round(qty * rate * 100) / 100;
+    const total = qty && rate ? Math.round(qty * rate * 100) / 100 : null;
     const unit = extractUnitFromTitle(name);
 
-    if (name.length >= 2 && (rate > 0 || total > 0)) {
+    if (isPlausibleProductName(name) && (rate > 0 || (total != null && total > 0))) {
       return {
         productName: name,
         quantity: qty,
@@ -994,7 +1136,6 @@ export function parseSingleLineItem(
   }
 
   // Pattern 3: General Token-Based Parser
-  // e.g. "Rice 25kg 1200", "Sugar 10 450", "1 Rice 5kg 2 bags 500 1000", "Basmati Rice 25kg 1006 1 BAG 1400 1400.00"
   const tokens = normalizedLine
     .replace(/^[|#*.\-_=~]+\s*/, '')
     .replace(/[|#*.\-_=~]+$/, '')
@@ -1015,8 +1156,6 @@ export function parseSingleLineItem(
     }
   }
 
-  // The last unit pair right before the pricing candidates is the billing quantity ("2 bags"),
-  // while any earlier one ("5kg") belongs to the product title!
   let explicitQty: number | null = null;
   let explicitUnit: ProductUnit | null = null;
   let unitIdx = -1;
@@ -1045,24 +1184,21 @@ export function parseSingleLineItem(
     const parsed = parseFloat(cleaned);
 
     if (!isNaN(parsed) && parsed > 0 && /^\d+(?:\.\d+)?$/.test(cleaned)) {
-      // HSN codes: 4 to 8 digit integers in non-final positions
       const isHsn = /^\d{4,8}$/.test(cleaned) && i > 0 && i < tokens.length - 2;
       numCandidates.push({ val: parsed, idx: i, isHsn, isPercent });
     }
   }
 
-  // Filter out HSN candidates and explicit unit quantities from price candidates
   const priceCandidates = numCandidates.filter(
     (nc) => !nc.isHsn && !nc.isPercent && (unitIdx === -1 || nc.idx !== unitIdx)
   );
 
-  let finalQty = explicitQty || 1;
+  let finalQty: number | null = explicitQty;
   let finalRate: number | null = null;
   let finalTotal: number | null = null;
   let hsnCode: string | null = numCandidates.find((nc) => nc.isHsn)?.val.toString() || null;
 
   if (priceCandidates.length >= 3) {
-    // Check if any two multiply to the third
     const [c0, c1, c2] = [
       priceCandidates[priceCandidates.length - 3].val,
       priceCandidates[priceCandidates.length - 2].val,
@@ -1074,9 +1210,10 @@ export function parseSingleLineItem(
       finalRate = c1;
       finalTotal = c2;
     } else {
-      finalQty = explicitQty || c0;
-      finalRate = c1;
-      finalTotal = c2;
+      const resolved = resolveItemArithmetic(explicitQty ?? c0, c1, c2);
+      finalQty = resolved.quantity;
+      finalRate = resolved.rate;
+      finalTotal = resolved.lineTotal;
     }
   } else if (priceCandidates.length === 2) {
     const c0 = priceCandidates[0].val;
@@ -1085,7 +1222,8 @@ export function parseSingleLineItem(
     if (explicitQty && explicitQty > 0) {
       finalRate = c0;
       finalTotal = c1;
-    } else {
+      finalQty = explicitQty;
+    } else if (c0 > 0 && c1 > 0) {
       // Format: "Sugar 10 450" (Qty, PurchasePrice/Total)
       finalQty = Math.max(1, c0);
       finalRate = c1;
@@ -1094,9 +1232,10 @@ export function parseSingleLineItem(
   } else if (priceCandidates.length === 1) {
     finalTotal = priceCandidates[0].val;
     finalRate = priceCandidates[0].val;
+    finalQty = explicitQty ?? null;
   }
 
-  // Extract Name tokens: exclude price candidate indexes, explicit unit words, and serials
+  // Extract Name tokens
   const nameTokens: string[] = [];
 
   for (let i = 0; i < tokens.length; i++) {
@@ -1104,7 +1243,7 @@ export function parseSingleLineItem(
     const isExplicitUnitPair = unitIdx !== -1 && (i === unitIdx || i === unitIdx + 1);
     const isHsn = numCandidates.some((nc) => nc.idx === i && nc.isHsn);
 
-    // Skip leading serial number (e.g. "1.", "1)", "1")
+    // Skip leading serial number
     if (i === 0 && /^[0-9]{1,3}[.)\-]?$/.test(tokens[i])) {
       continue;
     }
@@ -1117,18 +1256,17 @@ export function parseSingleLineItem(
     }
   }
 
-  const name = cleanProductName(nameTokens.join(' '));
+  const { title: name } = extractProductSizeAndTitle(nameTokens.join(' '), rawLine);
 
-  if (!name || name.length < 2 || (!finalRate && !finalTotal)) {
+  if (!name || name.length < 2 || !isPlausibleProductName(name) || (!finalRate && !finalTotal)) {
     return null;
   }
 
-  // Detect unit from title if explicit unit was not present
   const finalUnit = explicitUnit || extractUnitFromTitle(name);
 
   return {
     productName: name,
-    quantity: Math.max(1, finalQty),
+    quantity: finalQty,
     unit: finalUnit,
     rate: finalRate,
     purchasePrice: finalRate,
@@ -1177,8 +1315,15 @@ function tryMultiLineSemanticReconstruction(
       continue;
     }
 
-    // Skip supplier/header lines at top of document
-    if (i <= 3 && (classifyDocumentSection(l.text, i, lines.length) === 'SUPPLIER_INFO' || classifyDocumentSection(l.text, i, lines.length) === 'HEADER' || /^(?:inv|bill|date)/i.test(l.text))) {
+    const sec = classifyDocumentSection(l.text, i, lines.length);
+    if (
+      sec === 'SUPPLIER_INFO' ||
+      sec === 'CUSTOMER_INFO' ||
+      sec === 'HEADER' ||
+      sec === 'TOTAL_SUMMARY' ||
+      sec === 'TAX_SUMMARY' ||
+      sec === 'FOOTER'
+    ) {
       i++;
       continue;
     }
@@ -1259,11 +1404,13 @@ function tryMultiLineSemanticReconstruction(
         consumed++;
       }
 
-      if (combinedName.length >= 2 && (rate !== null || total !== null)) {
+      const { title: enrichedCombinedName } = extractProductSizeAndTitle(combinedName, combinedSource);
+
+      if (isPlausibleProductName(enrichedCombinedName) && (rate !== null || total !== null)) {
         items.push({
-          productName: cleanProductName(combinedName),
-          quantity: qty || 1,
-          unit: unit || extractUnitFromTitle(combinedName),
+          productName: enrichedCombinedName,
+          quantity: qty,
+          unit: unit || extractUnitFromTitle(enrichedCombinedName),
           rate: rate,
           purchasePrice: rate,
           sellingPrice: null,
@@ -1291,27 +1438,12 @@ function tryMultiLineSemanticReconstruction(
     i++;
   }
 
-  return items;
+  return deduplicateExtractedItems(items);
 }
 
 // ===========================================================================
 // HELPER UTILITIES
 // ===========================================================================
-
-/**
- * Cleans product name: strips noisy border symbols, leading/trailing punctuation,
- * currency signs, and excess whitespaces.
- */
-export function cleanProductName(rawName: string): string {
-  return rawName
-    .replace(/[₹$€£]/g, '')
-    .replace(/\b(?:rs|inr)\b\.?/gi, '')
-    .replace(/^[#*.\-_=~|0-9)\-:\s]+/, '')
-    .replace(/[#*.\-_=~|:\s]+$/, '')
-    .replace(/[|]/g, ' ')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-}
 
 /**
  * Extracts a normalized product unit from product title keywords.

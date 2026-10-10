@@ -7,6 +7,7 @@
 
 import type { TableRow } from './tableParser';
 import type { InvoiceLineItem } from './invoiceScannerService';
+import { isDisallowedItemLine, isPlausibleProductName } from './sectionClassifier';
 
 export interface ExtractedProductItem extends InvoiceLineItem {
   confidence: number;
@@ -80,7 +81,7 @@ export function inferProductCategory(name: string): string {
  */
 export function parseProductRow(row: TableRow): ExtractedProductItem | null {
   const rawText = row.text.trim();
-  if (!rawText || rawText.length < 3) return null;
+  if (!rawText || rawText.length < 3 || isDisallowedItemLine(rawText)) return null;
 
   let name = '';
   let quantity = 1;
@@ -199,8 +200,8 @@ export function parseProductRow(row: TableRow): ExtractedProductItem | null {
     lineTotal = Math.round(purchasePrice * quantity * 100) / 100;
   }
 
-  // Filter out spurious 1-character names or non-product rows
-  if (!name || name.length < 2 || (purchasePrice <= 0 && lineTotal <= 0)) {
+  // Filter out spurious 1-character names, non-product rows, or invalid names
+  if (!name || name.length < 2 || !isPlausibleProductName(name) || (purchasePrice <= 0 && lineTotal <= 0)) {
     return null;
   }
 

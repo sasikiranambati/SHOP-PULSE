@@ -558,10 +558,35 @@ export function mapWordsToColumns(
         }
       }
 
+      // Size unit guard: 'ml', 'g', 'kg', 'l' must never be the quantity
+      const isSizeUnitWord = /^(?:kg|kgs|g|gm|gms|l|ltr|ltrs|ml|milli)$/i.test(word.text.trim());
+      if (isSizeUnitWord && targetType === 'quantity') {
+        const unitCol = columns.find((c) => c.type === 'unit');
+        if (unitCol) {
+          targetType = 'unit';
+        } else {
+          targetType = 'productName';
+        }
+      }
+
       if (!cellMap[targetType]) {
         cellMap[targetType] = [];
       }
       cellMap[targetType]!.push(word.text);
+    }
+  }
+
+  // Special rule: If quantity has multiple numbers and one is a pack size matching productName
+  if (cellMap['quantity'] && cellMap['quantity']!.length > 1) {
+    const qTokens = cellMap['quantity']!;
+    const nameText = (cellMap['productName'] || []).join(' ');
+    const sizeMatch = nameText.match(/\b(\d+(?:\.\d+)?)\s*(?:ml|g|gm|kg|l|ltr)\b/i);
+    if (sizeMatch) {
+      const sizeVal = sizeMatch[1];
+      const actualQtyTokens = qTokens.filter((t) => t !== sizeVal);
+      if (actualQtyTokens.length > 0) {
+        cellMap['quantity'] = actualQtyTokens;
+      }
     }
   }
 
@@ -645,13 +670,15 @@ export function mapTokensToColumns(
       const hasSerial = columns.length > 0 && columns[0].type === 'serial';
       let startIdx = 0;
       let serialToken = '';
-      if (hasSerial && allWords.length > 0 && /^\d{1,4}$/.test(allWords[0])) {
-        serialToken = allWords[0];
+      if (hasSerial && allWords.length > 0 && /^[#*.\-_=~]*\s*\d{1,4}[.)\-]?$/.test(allWords[0])) {
+        serialToken = allWords[0].replace(/[^\d]/g, '');
         startIdx = 1;
       }
 
       // Scan backwards from end to find where product description ends and data tokens begin
       let dataIdx = allWords.length;
+      const expectedDataCols = Math.max(2, columns.filter((c) => c.type !== 'productName' && c.type !== 'serial').length);
+
       for (let j = allWords.length - 1; j >= startIdx; j--) {
         const w = allWords[j];
         const cl = cleanHeaderToken(w);
@@ -659,12 +686,24 @@ export function mapTokensToColumns(
         const isUnit = knownUnits.test(w);
         const isDash = /^[-—–.]+$/.test(w);
         const isPackUnit = /^(\d+(?:\.\d+)?)\s*(?:kg|kgs|g|gm|gms|l|ltr|ml|pcs|pc|pkt|pkts|box|boxes|bag|bags)\b/i.test(w);
+        const tokensToRight = allWords.length - 1 - j;
+
+        // If we already collected the expected number of data columns from the right, stop absorbing
+        if (tokensToRight >= expectedDataCols) {
+          break;
+        }
+
+        // Liquid / weight pack unit (e.g. 500ml, 400g, 1kg) in product title:
+        // If this token is a pack size and we already have 2+ data tokens to the right and no unit column:
+        const hasUnitCol = columns.some((c) => c.type === 'unit');
+        if (isPackUnit && tokensToRight >= 2 && !hasUnitCol) {
+          break;
+        }
+        if (isUnit && j > startIdx && /^\d+(?:\.\d+)?$/.test(cleanHeaderToken(allWords[j - 1])) && !hasUnitCol && tokensToRight >= 2) {
+          break;
+        }
 
         if (isNum || isUnit || isDash || isPackUnit) {
-          // Only treat as part of title if there are already 2+ data tokens to its right (e.g. "Tata Salt 1kg 24 22 528")
-          if (isPackUnit && allWords.length - 1 - j >= 2) {
-            break;
-          }
           dataIdx = j;
         } else {
           break;
@@ -709,11 +748,12 @@ export function mapTokensToColumns(
 
   // Intelligent alignment when tokens count differs from columns count
   const hasSerial = columns.length > 0 && columns[0].type === 'serial';
-  const isToken0Serial = hasSerial && tokens.length > 0 && /^\d{1,4}$/.test(tokens[0].trim());
+  const isToken0Serial =
+    hasSerial && tokens.length > 0 && /^[#*.\-_=~]*\s*\d{1,4}[.)\-]?$/.test(tokens[0].trim());
 
   let tokenIdx = 0;
   if (hasSerial && isToken0Serial) {
-    result['serial'] = tokens[0];
+    result['serial'] = tokens[0].replace(/[^\d]/g, '');
     tokenIdx = 1;
   }
 
@@ -736,8 +776,10 @@ export function mapTokensToColumns(
     let dataTokens: string[] = [];
 
     if (prodColIdx === 0 && !tok0IsPureData) {
-      nameToken = remainingTokens[0];
-      dataTokens = remainingTokens.slice(1);
+      const expectedDataCount = nonSerialCols.length - 1;
+      const splitIdx = Math.max(1, remainingTokens.length - expectedDataCount);
+      nameToken = remainingTokens.slice(0, splitIdx).join(' ');
+      dataTokens = remainingTokens.slice(splitIdx);
       dataCols = nonSerialCols.slice(1);
     } else if (prodColIdx === nonSerialCols.length - 1 && prodColIdx > 0 && remainingTokens.length >= prodColIdx) {
       // Product Name is the LAST column

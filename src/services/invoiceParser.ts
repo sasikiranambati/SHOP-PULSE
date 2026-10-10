@@ -8,6 +8,7 @@
 
 import type { OCRWord, OCRLine, BoundingBox } from './ocrService';
 import { extractLineItemsFlexible } from './tableLayoutExtractor';
+import { isDisallowedItemLine, isPlausibleProductName } from './sectionClassifier';
 
 export type LineClassification =
   | 'HEADER'
@@ -347,7 +348,7 @@ export function classifyLine(lineText: string, lineIndex: number, totalLines: nu
     /^(?:gstin|gst\s*no|cin)[:.\s-]*[a-z0-9]+$/i.test(clean) ||
     /^(?:phone|tel|mobile|ph)[:.\s-]*\d+$/i.test(clean);
 
-  if (hasLetters && hasDigits && !isPureMetadata && !isGenericDocLabel) {
+  if (hasLetters && hasDigits && !isPureMetadata && !isGenericDocLabel && !isDisallowedItemLine(clean)) {
     return 'PRODUCT';
   }
 
@@ -370,7 +371,7 @@ export function classifyLine(lineText: string, lineIndex: number, totalLines: nu
  */
 export function parseProductLine(rawLine: string, initialConfidence: number = 85): ExtractedProduct | null {
   const line = rawLine.trim();
-  if (!line || line.length < 2) return null;
+  if (!line || line.length < 2 || isDisallowedItemLine(line)) return null;
 
   // Split merged units (e.g. 25kg -> 25 kg, 5L -> 5 L)
   const normalizedLine = splitMergedUnits(line);
@@ -579,8 +580,11 @@ export function parseProductLine(rawLine: string, initialConfidence: number = 85
     .join(' ')
     .trim();
 
-  // If after parsing the name is still empty, fallback to candidate string
-  const finalName = formattedName || 'Product Item';
+  // Strictly reject empty or generic product names
+  if (!formattedName || !isPlausibleProductName(formattedName)) {
+    return null;
+  }
+  const finalName = formattedName;
 
   return {
     id: 'item_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
@@ -711,16 +715,24 @@ export function parseInvoiceDocument(
   } else {
     // Fallback: If 0 items were detected, scan classified lines
     for (const cl of classifiedLines) {
-      if (cl.classification === 'PRODUCT') {
+      if (cl.classification === 'PRODUCT' && !isDisallowedItemLine(cl.text)) {
         const product = parseProductLine(cl.text, cl.confidence);
-        if (product) items.push(product);
+        if (product && isPlausibleProductName(product.name)) items.push(product);
       }
     }
     if (items.length === 0) {
       for (const cl of classifiedLines) {
-        if (cl.classification !== 'HEADER' && cl.classification !== 'TOTAL' && cl.classification !== 'GST' && cl.classification !== 'FOOTER') {
+        if (
+          cl.classification !== 'HEADER' &&
+          cl.classification !== 'TOTAL' &&
+          cl.classification !== 'GST' &&
+          cl.classification !== 'FOOTER' &&
+          cl.classification !== 'SUPPLIER' &&
+          cl.classification !== 'DATE' &&
+          !isDisallowedItemLine(cl.text)
+        ) {
           const product = parseProductLine(cl.text, cl.confidence);
-          if (product && product.purchasePrice > 0) {
+          if (product && isPlausibleProductName(product.name) && product.purchasePrice > 0) {
             items.push(product);
           }
         }

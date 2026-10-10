@@ -18,7 +18,7 @@ import type {
   ExtractionMethod,
 } from './invoiceTypes';
 import type { RawExtractedItem } from './tableLayoutExtractor';
-import type { ExtractedMetadata } from './sectionClassifier';
+import { type ExtractedMetadata, isPlausibleProductName } from './sectionClassifier';
 
 /**
  * Normalizes a raw extracted item into a canonical invoice item with validation.
@@ -29,7 +29,10 @@ export function normalizeCanonicalItem(
 ): CanonicalInvoiceItem {
   const issues: string[] = [];
 
-  const productName = (raw.productName || 'Unlabeled Item').trim();
+  const productName = (raw.productName || '').trim();
+  if (!productName || !isPlausibleProductName(productName)) {
+    issues.push('Invalid or uncertain product name; manual verification required.');
+  }
   // An unreadable quantity stays null instead of being assumed to be 1
   const quantity = typeof raw.quantity === 'number' && raw.quantity > 0 ? raw.quantity : null;
   const unit = raw.unit ? String(raw.unit).trim() : null;
@@ -64,6 +67,7 @@ export function normalizeCanonicalItem(
   const hsnCode = raw.hsnCode ? String(raw.hsnCode).trim() : null;
 
   // Arithmetic Validation
+  let arithmeticStatus: 'VERIFIED' | 'MISMATCH' | 'INSUFFICIENT_DATA' = 'INSUFFICIENT_DATA';
   let numericScoreBonus = 0;
   const priceForCheck = purchasePrice ?? sellingPrice;
 
@@ -85,13 +89,18 @@ export function normalizeCanonicalItem(
 
     if (matchesDirect || matchesDiscount || matchesTax || matchesBoth) {
       numericScoreBonus = 15; // Math checks out!
+      arithmeticStatus = 'VERIFIED';
     } else {
       issues.push(`Arithmetic discrepancy: ${quantity} × ₹${priceForCheck} = ₹${rawExpectedTotal} but Total is ₹${lineTotal}`);
       numericScoreBonus = -20;
+      arithmeticStatus = 'MISMATCH';
     }
-  } else if (purchasePrice === null && sellingPrice === null && lineTotal === null) {
-    issues.push('Missing price and line total.');
-    numericScoreBonus = -30;
+  } else {
+    arithmeticStatus = 'INSUFFICIENT_DATA';
+    if (purchasePrice === null && sellingPrice === null && lineTotal === null) {
+      issues.push('Missing price and line total.');
+      numericScoreBonus = -30;
+    }
   }
 
   // Description length check
@@ -136,6 +145,8 @@ export function normalizeCanonicalItem(
     hsnCode,
     lineTotal,
     lineTotalSource,
+    arithmeticStatus,
+    needsReview: issues.length > 0 || arithmeticStatus === 'MISMATCH' || quantity === null || purchasePrice === null,
     confidence: finalConfidence,
     confidenceLevel,
     sourceText: raw.sourceText || productName,
@@ -167,10 +178,18 @@ export function normalizeCanonicalInvoice(
   const items = rawItems.map((raw, idx) => normalizeCanonicalItem(raw, idx));
 
   // Compute calculated subtotal from items if missing
+  const sumLineTotals = items.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
+  const roundedSum = Math.round(sumLineTotals * 100) / 100;
+
   let totalAmount = metadata.grandTotal;
   if (totalAmount === null || totalAmount <= 0) {
-    const sumLineTotals = items.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
-    totalAmount = Math.round(sumLineTotals * 100) / 100;
+    totalAmount = roundedSum;
+  } else if (items.length > 0 && Math.abs(totalAmount - roundedSum) > Math.max(3, totalAmount * 0.03)) {
+    // Show a review warning rather than silently forcing a match
+    const warning = `Invoice total (₹${totalAmount}) does not match the sum of extracted line items (₹${roundedSum}). Please verify line items.`;
+    if (!sectionLines.totalLines.includes(warning)) {
+      sectionLines.totalLines.push(warning);
+    }
   }
 
   // Overall confidence score based on item average, metadata confidence, and errors

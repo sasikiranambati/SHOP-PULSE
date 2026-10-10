@@ -185,21 +185,110 @@ export const CUSTOMER_KEYWORDS = [
   'recipient',
 ];
 
+export const PAYMENT_TERMS_KEYWORDS = [
+  'payment terms',
+  'terms of payment',
+  'credit terms',
+  'payment mode',
+  'mode of payment',
+  'terms of delivery',
+  'payment due',
+  'due within',
+  'pay within',
+  'credit period',
+  'credit days',
+  'net 30',
+  'net 15',
+  'net 7',
+  'net 45',
+  'net 60',
+  'due date',
+  'payment:',
+];
+
+export const ADDRESS_KEYWORDS = [
+  'street',
+  'road',
+  'rd.',
+  'rd,',
+  'lane',
+  'nagar',
+  'cross',
+  'layout',
+  'colony',
+  'complex',
+  'building',
+  'bldg',
+  'plot no',
+  'plot #',
+  'plot:',
+  'floor',
+  'opp.',
+  'opposite',
+  'near',
+  'behind',
+  'district',
+  'dist.',
+  'pincode',
+  'pin code',
+  'pin:',
+  'post office',
+  'industrial area',
+  'ind. area',
+  'phase 1',
+  'phase 2',
+  'phase 3',
+  'phase-1',
+  'phase-2',
+  'sector',
+  'main road',
+  'ring road',
+  'market',
+  'bengaluru',
+  'bangalore',
+  'chennai',
+  'hyderabad',
+  'mumbai',
+  'delhi',
+  'new delhi',
+  'kolkata',
+  'pune',
+  'ahmedabad',
+  'karnataka',
+  'tamil nadu',
+  'telangana',
+  'maharashtra',
+  'andhra pradesh',
+  'kerala',
+  'gujarat',
+  'address:',
+  'addr:',
+  'regd. office',
+  'corp. office',
+  'head office',
+  'branch office',
+];
+
 /**
- * Returns true if the line text represents a total, tax, header, or footer
- * that must strictly be PREVENTED from becoming an inventory product.
+ * Returns true if the line text represents a total, tax, header, footer,
+ * address, payment terms, date, or metadata that must strictly be PREVENTED
+ * from becoming an inventory product.
  */
 export function isDisallowedItemLine(rawText: string): boolean {
   const clean = rawText.trim().toLowerCase();
   if (!clean || clean.length < 2) return true;
 
+  // If line contains multiple distinct table header column names, it's a table header, not metadata
+  const hasItemCol = /\b(?:item|product|description|particulars)\b/i.test(clean);
+  const hasQtyCol = /\b(?:qty|quantity|units|nos|billed)\b/i.test(clean);
+  const hasPriceCol = /\b(?:rate|price|amount|total|mrp|cost)\b/i.test(clean);
+  if ((hasItemCol && hasQtyCol) || (hasQtyCol && hasPriceCol) || (hasItemCol && hasPriceCol && clean.includes('|'))) {
+    return false;
+  }
+
   // 1. Check Totals & Summaries
   for (const kw of TOTAL_SUMMARY_KEYWORDS) {
     if (clean.includes(kw)) {
-      // Exclude cases where total is in a table header row (e.g. "Rate Total")
-      if (clean.includes('qty') && (clean.includes('rate') || clean.includes('price')) && (clean.includes('item') || clean.includes('product') || clean.includes('desc'))) {
-        return false;
-      }
       return true;
     }
   }
@@ -207,10 +296,6 @@ export function isDisallowedItemLine(rawText: string): boolean {
   // 2. Check Tax Summary breakdown lines
   for (const kw of TAX_SUMMARY_KEYWORDS) {
     if (clean.includes(kw)) {
-      // Exclude table headers containing GST column
-      if (clean.includes('qty') || clean.includes('item') || clean.includes('rate')) {
-        return false;
-      }
       return true;
     }
   }
@@ -220,29 +305,109 @@ export function isDisallowedItemLine(rawText: string): boolean {
     if (clean.includes(kw)) return true;
   }
 
-  // 4. Check Standalone Metadata Labels
+  // 4. Check Payment Terms
+  for (const kw of PAYMENT_TERMS_KEYWORDS) {
+    if (clean.includes(kw)) return true;
+  }
+
+  // 5. Check Addresses (street, nagar, road, pin, indian cities/states, 6-digit pin codes)
+  const hasPinCode = /\b[1-9][0-9]{2}\s?[0-9]{3}\b/.test(clean);
+  const hasAddressWord = ADDRESS_KEYWORDS.some((kw) => clean.includes(kw));
+  if (hasAddressWord && (hasPinCode || clean.includes(',') || clean.includes('-') || clean.includes('near') || clean.includes('opp') || clean.includes('road') || clean.includes('street') || clean.includes('nagar'))) {
+    return true;
+  }
+  if (hasPinCode && (clean.includes('bengaluru') || clean.includes('bangalore') || clean.includes('chennai') || clean.includes('hyderabad') || clean.includes('mumbai') || clean.includes('delhi') || clean.includes('karnataka') || clean.includes('telangana') || clean.includes('maharashtra') || clean.includes('tamil nadu'))) {
+    return true;
+  }
+
+  // 6. Check Dates & Invoice References
+  if (/\b(?:invoice|inv|bill|memo|receipt|challan)\s*(?:date|dt|dated)\b/i.test(clean)) return true;
+  if (/\b(?:date\s*of\s*(?:invoice|supply|issue))\b/i.test(clean)) return true;
+  if (/^(?:date|dt|dated)[\s.:\-]+[0-3]?[0-9][\/\-.][0-1]?[0-9][\/\-.](?:20)?[0-9]{2}/i.test(clean)) return true;
+  if (/\b(?:due\s*date|payment\s*date|delivery\s*date)\b/i.test(clean)) return true;
   if (/^(?:invoice|inv|bill|challan|memo|receipt)\s*(?:no|#|num)?[:.\s-]*[a-z0-9\/-]+$/i.test(clean)) return true;
   if (/^(?:inv|bill|invoice)\s*[:.#\s\-]/i.test(clean)) return true;
-  if (/^(?:gstin|gst\s*no|cin|pan)[:.\s-]*[a-z0-9]+$/i.test(clean)) return true;
-  if (/^(?:phone|tel|mobile|ph|email|web)[:.\s-]*[a-z0-9@.\-]+$/i.test(clean)) return true;
-  if (/^(?:date|dt|dated)[:.\s-]*[0-3]?[0-9][\/\-.][0-1]?[0-9][\/\-.](?:20)?[0-9]{2}$/i.test(clean)) return true;
 
-  // 5. Generic Document Title
-  if (DOCUMENT_HEADER_LABELS.some((lbl) => clean === lbl || clean === `*** ${lbl} ***`)) return true;
+  // 7. Check Statutory numbers & Contact info
+  if (/\b(?:gstin|gst\s*no|fssai|cst|arn)\b[:.\s-]*[a-z0-9]+/i.test(clean)) return true;
+  if (/\b(?:cin|pan|tin)\s*(?:no\.?|#|code)?[:.\s-]+[a-z0-9]{5,}/i.test(clean)) return true;
+  if (/^\b\d{2}[A-Z]{5}\d{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}\b$/i.test(clean.replace(/\s+/g, ''))) return true;
+  if (/\b(?:phone|tel|mobile|ph|contact|call)[:.\s-]*\d+/i.test(clean)) return true;
+  if (/\b(?:email|e-mail|website|web|www\.)[:.\s-]*[a-z0-9@.\-]+/i.test(clean)) return true;
+  if (/^(?:(?:\+91|0)?[6-9]\d{9})$/.test(clean.replace(/[\s\-]/g, ''))) return true;
 
-  // 6. Page numbers, GSTIN, phone, and currency-in-words indicators (Phase 11 & Phase 23)
+  // 8. Generic Document Title or Labels
+  if (DOCUMENT_HEADER_LABELS.some((lbl) => clean === lbl || clean.includes(`*** ${lbl} ***`))) return true;
+  if (/\b(?:tax\s*invoice|retail\s*invoice|cash\s*memo|bill\s*of\s*supply|delivery\s*challan)\b/i.test(clean) && !clean.includes('qty')) return true;
+
+  // 9. Page numbers, currency in words, payment received
   if (/\b(?:page|pg\.?)\s*\d+(?:\s*(?:of|\/|-)\s*\d+)?\b/i.test(clean)) return true;
-  if (/^\b\d{2}[A-Z]{5}\d{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}\b$/i.test(clean)) return true;
-  if (/^(?:(?:\+91|0)?[6-9]\d{9})$/.test(clean.replace(/\s+/g, ''))) return true;
   if (/^(?:rupees|inr|rs\.?)\s+[a-z\s]+only$/i.test(clean)) return true;
-  if (/^(?:cash|upi|card|online|credit|debit)\s+(?:payment|received|paid|tendered)/i.test(clean)) return true;
+  if (/\b(?:amount\s*in\s*words|rupees\s*in\s*words)\b/i.test(clean)) return true;
+  if (/\b(?:cash|upi|card|online|credit|debit|cheque|rtgs|neft)\s+(?:payment|received|paid|tendered|settlement)\b/i.test(clean)) return true;
+  if (/\b(?:authorized|authorised)\s*(?:signatory|signature)\b/i.test(clean)) return true;
+  if (/\b(?:customer|receiver['’]?s?|buyer['’]?s?)\s*signature\b/i.test(clean)) return true;
+  if (/\bterms\s*(?:and|&)\s*conditions\b/i.test(clean)) return true;
+  if (/\be\.?\s*&\s*o\.?\s*e\.?\b/i.test(clean)) return true;
+  if (/\bsubject\s*to\s*[a-z\s]+jurisdiction\b/i.test(clean)) return true;
 
-  // 7. Supplier entity indicators repeated in headers without quantities or rates
-  if (SUPPLIER_KEYWORDS.some((kw) => clean.includes(kw)) && !clean.includes('qty') && !clean.includes('rate') && !clean.includes('price')) {
+  // 10. Supplier entity indicators without product items
+  if (SUPPLIER_KEYWORDS.some((kw) => clean.includes(kw)) && !clean.includes('qty') && !clean.includes('rate') && !clean.includes('price') && !clean.includes('|')) {
+    return true;
+  }
+
+  // 11. Generic placeholder product names that should never be products
+  if (/^(?:product\s*item|unlabeled\s*item|item\s*description|description\s*of\s*goods|particulars)$/i.test(clean)) {
     return true;
   }
 
   return false;
+}
+
+/**
+ * Strips noisy symbols, leading/trailing punctuation, currency signs, and excess whitespaces.
+ */
+export function cleanProductName(rawName: string): string {
+  return rawName
+    .replace(/[₹$€£]/g, '')
+    .replace(/\b(?:rs|inr)\b\.?/gi, '')
+    .replace(/^[#*.\-_=~|0-9)\-:\s]+/, '')
+    .replace(/[#*.\-_=~|:\s]+$/, '')
+    .replace(/[|]/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+/**
+ * Validates whether a candidate string has credible evidence of being a legitimate product name.
+ * Strictly rejects generic placeholders ("Product Item"), pure metadata, addresses, dates, and numbers.
+ */
+export function isPlausibleProductName(name: string | null | undefined): boolean {
+  if (!name) return false;
+  const clean = cleanProductName(name);
+  if (clean.length < 2) return false;
+
+  // Must contain at least 2 letters (supports Unicode regional scripts)
+  const letters = clean.match(/\p{L}/gu);
+  if (!letters || letters.length < 2) return false;
+
+  // Reject if it's purely digits, symbols, or serial numbers
+  if (/^[#*.\-_=~|0-9)\-:\s]+$/.test(clean)) return false;
+
+  // Reject disallowed item lines (addresses, payment terms, phone, dates, gst, totals, footers)
+  if (isDisallowedItemLine(clean)) return false;
+
+  // Reject generic placeholders
+  if (/^(?:product(?:\s*item)?|unlabeled\s*item|item(?:\s*description)?|description(?:\s*of\s*goods)?|particulars?|item\s*name)$/i.test(clean)) {
+    return false;
+  }
+
+  // Reject pure table header keywords
+  if (/^(?:s\.?no|sl\.?no|serial|qty|quantity|rate|price|amount|total|mrp|discount|hsn|sac|unit|uom|cgst|sgst|igst)$/i.test(clean)) {
+    return false;
+  }
+
+  return true;
 }
 
 /**
@@ -295,20 +460,24 @@ export function classifyDocumentSection(
     return 'CUSTOMER_INFO';
   }
 
-  // 6. SUPPLIER_INFO: Vendor name, address, GSTIN (top 30% of document)
-  if (lineIndex <= Math.max(5, totalLines * 0.3)) {
-    const isSupplierKw = SUPPLIER_KEYWORDS.some((kw) => lower.includes(kw));
-    const isGstinOrContact = /^(?:gstin|gst\s*no|phone|mobile|tel|address|email)[:.\s-]/i.test(lower);
-    if ((isSupplierKw || lineIndex === 0 || isGstinOrContact) && !isDocLabel && !tableHeaderFound) {
+  // 6. SUPPLIER_INFO & METADATA (Vendor name, address, GSTIN, payment terms, invoice date)
+  const isAddress = ADDRESS_KEYWORDS.some((kw) => lower.includes(kw));
+  const isPaymentTerms = PAYMENT_TERMS_KEYWORDS.some((kw) => lower.includes(kw));
+  const isGstinOrContact = /^(?:gstin|gst\s*no|phone|mobile|tel|address|email|pan|cin|fssai)[:.\s-]/i.test(lower);
+  const isDateOrInvRef = /^(?:date|dt|dated|invoice|inv|bill|challan|memo)[:.\s-]/i.test(lower) || /\b(?:invoice|inv|bill)\s*(?:no|#|date)\b/i.test(lower);
+
+  if (!tableHeaderFound && (isAddress || isPaymentTerms || isGstinOrContact || isDateOrInvRef || lineIndex <= Math.max(5, totalLines * 0.4))) {
+    if (!isDocLabel && (SUPPLIER_KEYWORDS.some((kw) => lower.includes(kw)) || lineIndex === 0 || isAddress || isGstinOrContact || isPaymentTerms || isDateOrInvRef)) {
       return 'SUPPLIER_INFO';
     }
   }
 
-  // 7. LINE_ITEMS: Content with alphabetic/regional characters and numeric values
+  // 7. LINE_ITEMS: Content with alphabetic/regional characters and numeric values (strictly within item table area)
   const hasLetters = /\p{L}/u.test(clean);
   const hasDigits = /\d/.test(clean);
 
   if (hasLetters && hasDigits && !isDisallowedItemLine(clean)) {
+    // If table header was detected earlier or line has clear tabular/delimiter format or is after header zone
     return 'LINE_ITEMS';
   }
 
