@@ -16,9 +16,134 @@ import type {
   CanonicalInvoiceItem,
   ConfidenceLevel,
   ExtractionMethod,
+  ValidationState,
+  FieldConfidence,
 } from './invoiceTypes';
-import type { RawExtractedItem } from './tableLayoutExtractor';
+import { type RawExtractedItem, extractProductSizeAndTitle, extractUnitFromTitle } from './tableLayoutExtractor';
 import { type ExtractedMetadata, isPlausibleProductName } from './sectionClassifier';
+
+export interface ArithmeticValidationResult {
+  status: 'VERIFIED' | 'MISMATCH' | 'INSUFFICIENT_DATA';
+  state: ValidationState;
+  warning?: string;
+  diff?: number;
+}
+
+/**
+ * Validates line item arithmetic across commercial pricing relationships.
+ */
+export function validateLineArithmetic(
+  quantity: number | null,
+  rate: number | null,
+  lineTotal: number | null,
+  discount?: number | null,
+  gstRate?: number | null,
+  taxAmount?: number | null
+): ArithmeticValidationResult {
+  if (rate === null || lineTotal === null || quantity === null) {
+    const reasons: string[] = [];
+    if (quantity === null) reasons.push('Quantity missing');
+    if (rate === null) reasons.push('Rate missing');
+    if (lineTotal === null) reasons.push('Line total missing');
+    return {
+      status: 'INSUFFICIENT_DATA',
+      state: 'INSUFFICIENT_DATA',
+      warning: reasons.join(', '),
+    };
+  }
+
+  const rawExpectedTotal = quantity * rate;
+  const discountVal = discount || 0;
+  const taxVal = taxAmount || 0;
+  const gstPercent = gstRate || 0;
+
+  // Check relationship across standard commercial invoicing formats
+  const diffStandard = Math.abs(rawExpectedTotal - lineTotal);
+  const diffWithDiscount = Math.abs((rawExpectedTotal - discountVal) - lineTotal);
+  const diffWithDiscountPct = discount ? Math.abs((rawExpectedTotal * (1 - discount / 100)) - lineTotal) : Infinity;
+  const diffWithTax = Math.abs((rawExpectedTotal + taxVal) - lineTotal);
+  const diffWithGst = gstPercent ? Math.abs((rawExpectedTotal * (1 + gstPercent / 100)) - lineTotal) : Infinity;
+  const discountedAmount = rawExpectedTotal * (1 - (discount || 0) / 100);
+  const diffWithBoth = Math.abs((discountedAmount * (1 + gstPercent / 100)) - lineTotal);
+
+  const minDiff = Math.min(
+    diffStandard,
+    diffWithDiscount,
+    diffWithDiscountPct,
+    diffWithTax,
+    diffWithGst,
+    diffWithBoth
+  );
+
+  if (minDiff <= 0.05) {
+    return {
+      status: 'VERIFIED',
+      state: 'EXACT_MATCH',
+      diff: minDiff,
+    };
+  }
+
+  if (minDiff <= Math.max(1.5, lineTotal * 0.015)) {
+    return {
+      status: 'VERIFIED',
+      state: 'MATCH_WITH_ROUNDING',
+      diff: minDiff,
+    };
+  }
+
+  const actualDiff = Math.abs(rawExpectedTotal - lineTotal);
+  return {
+    status: 'MISMATCH',
+    state: 'MISMATCH',
+    diff: actualDiff,
+    warning: `Arithmetic discrepancy: ${quantity} × ₹${rate} = ₹${rawExpectedTotal} but Total is ₹${lineTotal} (Diff: ₹${actualDiff.toFixed(2)})`,
+  };
+}
+
+/**
+ * Computes honest field-level and overall confidence scores.
+ */
+export function computeFieldConfidence(
+  productName: string,
+  quantity: number | null,
+  unit: string | null,
+  rate: number | null,
+  lineTotal: number | null,
+  validationState: ValidationState,
+  isLiquidOrPersonalCare: boolean = false
+): FieldConfidence & { overall: number; level: ConfidenceLevel } {
+  const nameConfidence = !productName || productName.length < 2 ? 0 : isPlausibleProductName(productName) ? 95 : 40;
+  const quantityConfidence = quantity === null || quantity <= 0 ? 0 : 92;
+  const unitConfidence = !unit || (isLiquidOrPersonalCare && unit === 'kg') ? 40 : 90;
+  const rateConfidence = rate === null ? 0 : validationState === 'EXACT_MATCH' ? 95 : validationState === 'MATCH_WITH_ROUNDING' ? 90 : 50;
+  const lineTotalConfidence = lineTotal === null ? 0 : validationState === 'EXACT_MATCH' ? 95 : validationState === 'MATCH_WITH_ROUNDING' ? 90 : 50;
+
+  const weightedConf =
+    nameConfidence * 0.25 +
+    quantityConfidence * 0.20 +
+    unitConfidence * 0.10 +
+    rateConfidence * 0.25 +
+    lineTotalConfidence * 0.20;
+
+  const finalConfidence = Math.min(99, Math.max(15, Math.round(weightedConf)));
+
+  let level: ConfidenceLevel = 'MEDIUM';
+  if (finalConfidence >= 85 && validationState === 'EXACT_MATCH') {
+    level = 'HIGH';
+  } else if (finalConfidence < 65 || validationState === 'MISMATCH' || validationState === 'INSUFFICIENT_DATA') {
+    level = 'LOW';
+  }
+
+  return {
+    name: nameConfidence,
+    quantity: quantityConfidence,
+    unit: unitConfidence,
+    rate: rateConfidence,
+    lineTotal: lineTotalConfidence,
+    overall: finalConfidence,
+    level,
+  };
+}
 
 /**
  * Normalizes a raw extracted item into a canonical invoice item with validation.
@@ -35,7 +160,7 @@ export function normalizeCanonicalItem(
   }
   // An unreadable quantity stays null instead of being assumed to be 1
   const quantity = typeof raw.quantity === 'number' && raw.quantity > 0 ? raw.quantity : null;
-  const unit = raw.unit ? String(raw.unit).trim() : null;
+  const unit = raw.unit ? String(raw.unit).trim() : (extractUnitFromTitle(productName) || null);
 
   const rawRateVal = typeof raw.rawRate === 'number' ? raw.rawRate : (typeof raw.rate === 'number' ? raw.rate : null);
   const rawPurchaseVal = typeof raw.rawPurchasePrice === 'number' ? raw.rawPurchasePrice : (typeof raw.purchasePrice === 'number' ? raw.purchasePrice : null);
@@ -66,64 +191,60 @@ export function normalizeCanonicalItem(
   const gstRate = typeof raw.gstRate === 'number' && raw.gstRate > 0 ? raw.gstRate : null;
   const hsnCode = raw.hsnCode ? String(raw.hsnCode).trim() : null;
 
-  // Arithmetic Validation
-  let arithmeticStatus: 'VERIFIED' | 'MISMATCH' | 'INSUFFICIENT_DATA' = 'INSUFFICIENT_DATA';
-  let numericScoreBonus = 0;
   const priceForCheck = purchasePrice ?? sellingPrice;
+  const arithmetic = validateLineArithmetic(quantity, priceForCheck, lineTotal, discount, gstRate, taxAmount);
+  const arithmeticStatus = arithmetic.status;
+  let validationState: ValidationState = arithmetic.state;
+  if (arithmetic.warning) {
+    issues.push(arithmetic.warning);
+  }
 
-  if (priceForCheck !== null && lineTotal !== null && quantity !== null) {
-    const rawExpectedTotal = quantity * priceForCheck;
-    const discountVal = discount || 0;
-    const taxVal = taxAmount || 0;
+  // Packaging separation & unit ambiguity checks
+  let packSize = raw.packSize ?? null;
+  let packSizeUnit = raw.packSizeUnit ?? null;
+  if (packSize === null && packSizeUnit === null) {
+    const sizeInfo = extractProductSizeAndTitle(productName, raw.sourceText);
+    packSize = sizeInfo.packSize ?? null;
+    packSizeUnit = sizeInfo.packSizeUnit ?? null;
+  }
 
-    // Check relationship with tolerance for rounding (+/- ₹2 or 2%)
-    const diffStandard = Math.abs(rawExpectedTotal - lineTotal);
-    const diffWithDiscount = Math.abs(rawExpectedTotal - discountVal - lineTotal);
-    const diffWithTax = Math.abs(rawExpectedTotal + taxVal - lineTotal);
-    const diffWithBoth = Math.abs(rawExpectedTotal - discountVal + taxVal - lineTotal);
-
-    const matchesDirect = diffStandard < Math.max(2, lineTotal * 0.02);
-    const matchesDiscount = diffWithDiscount < Math.max(2, lineTotal * 0.02);
-    const matchesTax = diffWithTax < Math.max(2, lineTotal * 0.02);
-    const matchesBoth = diffWithBoth < Math.max(2, lineTotal * 0.02);
-
-    if (matchesDirect || matchesDiscount || matchesTax || matchesBoth) {
-      numericScoreBonus = 15; // Math checks out!
-      arithmeticStatus = 'VERIFIED';
-    } else {
-      issues.push(`Arithmetic discrepancy: ${quantity} × ₹${priceForCheck} = ₹${rawExpectedTotal} but Total is ₹${lineTotal}`);
-      numericScoreBonus = -20;
-      arithmeticStatus = 'MISMATCH';
-    }
-  } else {
-    arithmeticStatus = 'INSUFFICIENT_DATA';
-    if (purchasePrice === null && sellingPrice === null && lineTotal === null) {
-      issues.push('Missing price and line total.');
-      numericScoreBonus = -30;
+  const isLiquidOrPersonalCare = /soap|shampoo|paste|colgate|brush|cream|lotion|dettol|face|hair|surf|detergent|rin|vim|dish/i.test(productName);
+  if (isLiquidOrPersonalCare && unit === 'kg') {
+    issues.push('Packaging unit (kg) assigned to personal care/liquid product; please verify unit and count.');
+    if (validationState === 'EXACT_MATCH') {
+      validationState = 'NEEDS_REVIEW';
     }
   }
 
-  // Description length check
-  if (productName.length < 3) {
-    issues.push('Very short or uncertain product name.');
-    numericScoreBonus -= 15;
+  const purchasedQuantity = raw.purchasedQuantity ?? quantity;
+  const purchaseUnit = raw.purchaseUnit ?? unit;
+
+  // Field-level honest confidence scoring
+  const confResult = computeFieldConfidence(
+    productName,
+    quantity,
+    unit,
+    priceForCheck,
+    lineTotal,
+    validationState,
+    isLiquidOrPersonalCare
+  );
+
+  const fieldConfidence: FieldConfidence = {
+    name: confResult.name,
+    quantity: confResult.quantity,
+    unit: confResult.unit,
+    rate: confResult.rate,
+    lineTotal: confResult.lineTotal,
+  };
+
+  const finalConfidence = confResult.overall;
+  let confidenceLevel: ConfidenceLevel = confResult.level;
+  if (issues.length > 0 && confidenceLevel === 'HIGH') {
+    confidenceLevel = 'MEDIUM';
   }
 
-  // Base confidence from extraction method
-  let baseConfidence = raw.confidence || 75;
-  if (raw.extractionMethod === 'TABLE_STRUCTURED') baseConfidence = Math.max(baseConfidence, 88);
-  else if (raw.extractionMethod === 'LAYOUT_SPATIAL') baseConfidence = Math.max(baseConfidence, 80);
-  else if (raw.extractionMethod === 'TEXT_LINE_ITEM') baseConfidence = Math.max(baseConfidence, 78);
-  else if (raw.extractionMethod === 'SEMANTIC_RECONSTRUCTION') baseConfidence = Math.max(baseConfidence, 72);
-
-  const finalConfidence = Math.min(99, Math.max(20, Math.round(baseConfidence + numericScoreBonus)));
-
-  let confidenceLevel: ConfidenceLevel = 'MEDIUM';
-  if (finalConfidence >= 85 && issues.length === 0) {
-    confidenceLevel = 'HIGH';
-  } else if (finalConfidence < 65 || issues.length > 0) {
-    confidenceLevel = 'LOW';
-  }
+  const combinedReviewReasons = Array.from(new Set([...(raw.reviewReasons || []), ...issues]));
 
   return {
     id: `canon_item_${Date.now().toString(36)}_${index}`,
@@ -146,12 +267,20 @@ export function normalizeCanonicalItem(
     lineTotal,
     lineTotalSource,
     arithmeticStatus,
-    needsReview: issues.length > 0 || arithmeticStatus === 'MISMATCH' || quantity === null || purchasePrice === null,
+    validationState,
+    fieldConfidence,
+    purchasedQuantity,
+    purchaseUnit,
+    packSize,
+    packSizeUnit,
+    suggestedRate: raw.suggestedRate ?? null,
+    reviewReasons: combinedReviewReasons.length > 0 ? combinedReviewReasons : undefined,
+    needsReview: combinedReviewReasons.length > 0 || validationState !== 'EXACT_MATCH',
     confidence: finalConfidence,
     confidenceLevel,
     sourceText: raw.sourceText || productName,
     extractionMethod: raw.extractionMethod,
-    validationIssues: issues.length > 0 ? issues : undefined,
+    validationIssues: combinedReviewReasons.length > 0 ? combinedReviewReasons : undefined,
     rawLineIndex: raw.lineIndex,
   };
 }

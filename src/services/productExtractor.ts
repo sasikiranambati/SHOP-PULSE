@@ -127,7 +127,9 @@ export function parseProductRow(row: TableRow): ExtractedProductItem | null {
       unit = countUnitMatch[2].toLowerCase();
     } else if (weightUnitMatch) {
       // Check if weight is the primary billing quantity (e.g. "Basmati Rice 5 kg 70 350")
-      const isWeightBilled = /\b\d+\s*(kg|g|l|ltr)\s+(?:@\s*)?\d+/i.test(rawText);
+      // Packaged items (shampoo, soap, detergent, toothpaste) must not treat pack size as billing quantity
+      const isPackaged = /soap|shampoo|paste|colgate|brush|cream|lotion|dettol|face|hair|surf|detergent|rin|vim|dish/i.test(rawText);
+      const isWeightBilled = !isPackaged && /\b\d+\s*(kg|g|l|ltr)\s+(?:@\s*)?\d+/i.test(rawText);
       if (isWeightBilled) {
         quantity = parseFloat(weightUnitMatch[1]);
         unit = weightUnitMatch[2].toLowerCase();

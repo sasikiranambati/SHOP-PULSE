@@ -31,33 +31,53 @@ import { cleanNumericToken, normalizeUnit, splitMergedUnits } from './invoicePar
 export { cleanProductName, isPlausibleProductName };
 
 /**
+/**
  * Distinguishes product pack size (e.g. 500 ml, 400 g, 1 kg) and attaches it cleanly
  * to the product title so it is never confused with purchased quantity.
  */
 export function extractProductSizeAndTitle(
   rawName: string,
   rawLineText?: string
-): { title: string; unitSize?: string } {
+): {
+  title: string;
+  unitSize?: string;
+  packSize?: number | null;
+  packSizeUnit?: string | null;
+} {
   let title = cleanProductName(rawName);
   const sizeRegex = /\b(\d+(?:\.\d+)?)\s*(ml|g|gm|gms|kg|kgs|l|ltr|ltrs|liter|litres)\b/i;
 
   const existingMatch = title.match(sizeRegex);
   if (existingMatch) {
-    return { title, unitSize: `${existingMatch[1]} ${existingMatch[2]}` };
+    const val = parseFloat(existingMatch[1]);
+    const u = existingMatch[2].toLowerCase();
+    return {
+      title,
+      unitSize: `${existingMatch[1]} ${existingMatch[2]}`,
+      packSize: isNaN(val) ? null : val,
+      packSizeUnit: u,
+    };
   }
 
   if (rawLineText) {
     const lineMatch = rawLineText.match(sizeRegex);
     if (lineMatch) {
       const sizeStr = `${lineMatch[1]} ${lineMatch[2]}`;
+      const val = parseFloat(lineMatch[1]);
+      const u = lineMatch[2].toLowerCase();
       if (!title.toLowerCase().includes(sizeStr.toLowerCase())) {
         title = `${title} ${sizeStr}`.trim();
       }
-      return { title, unitSize: sizeStr };
+      return {
+        title,
+        unitSize: sizeStr,
+        packSize: isNaN(val) ? null : val,
+        packSizeUnit: u,
+      };
     }
   }
 
-  return { title };
+  return { title, packSize: null, packSizeUnit: null };
 }
 
 /**
@@ -132,6 +152,12 @@ export interface RawExtractedItem {
   productName: string;
   quantity?: number | null;
   unit?: string | null;
+  purchasedQuantity?: number | null;
+  purchaseUnit?: string | null;
+  packSize?: number | null;
+  packSizeUnit?: string | null;
+  suggestedRate?: number | null;
+  reviewReasons?: string[];
   rate?: number | null;
   purchasePrice?: number | null;
   sellingPrice?: number | null;
@@ -415,38 +441,14 @@ export function resolveItemArithmetic(
   rate: number | null,
   total: number | null,
   tax: number | null = null
-): { quantity: number | null; rate: number | null; purchasePrice: number | null; lineTotal: number | null } {
+): {
+  quantity: number | null;
+  rate: number | null;
+  purchasePrice: number | null;
+  lineTotal: number | null;
+  suggestedRate?: number | null;
+} {
   const tVal = tax || 0;
-
-  // Specific numeric artifact normalizations from low-resolution scans:
-  // 1. Qty = 100 (read from 10.0) and rate = 10.0, total = 1000 (read from 100.0)
-  if (qty === 100 && rate === 10 && total === 1000) {
-    return { quantity: 10, rate: 10, purchasePrice: 10, lineTotal: 100 };
-  }
-  // 2. Qty = 50, Rate = 5, Total missing or noise (e.g. 'sah')
-  if (qty === 50 && rate === 5 && (total === null || total < 100)) {
-    return { quantity: 50, rate: 5, purchasePrice: 5, lineTotal: 250 };
-  }
-  // 3. Qty = 10, Total = 3008 (read from 300.0), Rate missing
-  if (qty === 10 && (total === 3008 || total === 300)) {
-    return { quantity: 10, rate: 30, purchasePrice: 30, lineTotal: 300 };
-  }
-  // 4. Qty = 360, Rate = 19750, Total = 711000 (All 3 dropped .0: 36.0 * 1975.0 = 71100.0)
-  if (qty === 360 && rate === 19750 && total === 711000) {
-    return { quantity: 36, rate: 1975, purchasePrice: 1975, lineTotal: 71100 };
-  }
-  // 5. Rate dropped decimal (e.g. 48250 -> 4825.0)
-  if ((qty === 10 || qty === 1) && rate !== null && rate >= 40000) {
-    return { quantity: 1, rate: 4825, purchasePrice: 4825, lineTotal: 4825 };
-  }
-  // 6. Qty = 50, Rate = 20, Total = 1600 (5 * 32 = 160)
-  if (qty === 50 && total === 1600) {
-    return { quantity: 5, rate: 32, purchasePrice: 32, lineTotal: 160 };
-  }
-  // 7. Rate dropped decimal (27600 -> 2760.0)
-  if ((qty === 10 || qty === 1 || qty === 1.0) && rate === 27600) {
-    return { quantity: 1, rate: 2760, purchasePrice: 2760, lineTotal: 2760 };
-  }
 
   // Generalized arithmetic reconciliation and OCR decimal-point / trailing-zero dropout correction.
   // Invoices frequently print quantities or rates with decimal places (e.g. 20.00, 1975.00),
@@ -467,7 +469,7 @@ export function resolveItemArithmetic(
       return { quantity: qty, rate: rate, purchasePrice: rate, lineTotal: total };
     }
 
-    // 4. Quantity dropped .0 (e.g. 20.0 read as 200, 20.0 read as 20 where total was for qty=2)
+    // 4. Quantity dropped .0 (e.g. 20.0 read as 200)
     if (qty >= 10 && Math.abs((qty / 10) * rate + tVal - total) <= Math.max(2, total * 0.03)) {
       return { quantity: qty / 10, rate: rate, purchasePrice: rate, lineTotal: total };
     }
@@ -514,13 +516,13 @@ export function resolveItemArithmetic(
     }
   }
 
-  // Derive missing values
+  // Derive missing values without fabricating rate
   if (qty !== null && rate !== null && total === null) {
     return { quantity: qty, rate: rate, purchasePrice: rate, lineTotal: Math.round((qty * rate + tVal) * 100) / 100 };
   }
   if (qty !== null && total !== null && rate === null && qty > 0) {
     const derivedRate = Math.round(((total - tVal) / qty) * 100) / 100;
-    return { quantity: qty, rate: derivedRate, purchasePrice: derivedRate, lineTotal: total };
+    return { quantity: qty, rate: null, purchasePrice: null, lineTotal: total, suggestedRate: derivedRate };
   }
   if (rate !== null && total !== null && qty === null && rate > 0) {
     const derivedQty = Math.round(((total - tVal) / rate) * 100) / 100;
@@ -793,23 +795,50 @@ function tryStructuredTableExtraction(
         finalLineTotal = parsedTotal ?? null;
       }
 
-      // Detect pack unit in rawQty or rawName
+      // Extract packaging size and separate from purchased quantity
+      const { title: cleanTitle, packSize, packSizeUnit } = extractProductSizeAndTitle(rawName, l.text);
+      const isPackagedFmcg = /soap|shampoo|paste|colgate|brush|cream|lotion|dettol|face|hair|perfume|deo|powder|talc|oil\s*hair|surf|detergent|rin|vim|dish|cleaner|phenyl|harpic|biscuit|cookie|chips|maggi|noodle|pasta|kurkure|lays|chocolate|candy|wafer|snack|tea|coffee|juice|cola|bottle|btl|can|tin|pack|pouch/i.test(cleanTitle);
+
+      // Detect pack unit in rawQty or rawUnit or title
       let detectedUnit = rawUnit.trim() ? normalizeUnit(rawUnit) : null;
       if (!detectedUnit && rawQty) {
-        const uMatch = rawQty.match(/(pcs|pc|pkt|box|bag|bor|pet|kg|g|gm|l|ltr|can|tin)/i);
+        const uMatch = rawQty.match(/(pcs|pc|pkt|box|bag|bor|pet|kg|g|gm|l|ltr|can|tin|btl|bottle)/i);
         if (uMatch) detectedUnit = normalizeUnit(uMatch[1]);
       }
       if (!detectedUnit) {
-        const unitMatch = (rawName || '').match(/(\d+(?:\.\d+)?)\s*(kg|g|gm|l|ltr|ml|pcs|pkt|box|bag|bor|pet|tin|ctn)\b/i);
-        if (unitMatch) detectedUnit = normalizeUnit(unitMatch[2]);
+        if (isPackagedFmcg) {
+          detectedUnit = finalQty !== null ? 'pcs' : null;
+        } else {
+          const unitMatch = (cleanTitle || '').match(/(\d+(?:\.\d+)?)\s*(kg|g|gm|l|ltr|ml|pcs|pkt|box|bag|bor|pet|tin|ctn)\b/i);
+          if (unitMatch) detectedUnit = normalizeUnit(unitMatch[2]);
+        }
+      }
+
+      const rowReviewReasons: string[] = [];
+      if (isPackagedFmcg && (detectedUnit === 'kg' || detectedUnit === 'g')) {
+        rowReviewReasons.push('Packaged personal care/liquid unit detected as mass; verify unit and count.');
+      }
+      if (finalRate === null && finalPurchasePrice === null) {
+        rowReviewReasons.push('Rate missing from invoice.');
+      }
+      if (finalQty === null) {
+        rowReviewReasons.push('Quantity missing from invoice.');
       }
 
       if (currentPendingItem && currentPendingItem.purchasePrice === null && currentPendingItem.sellingPrice === null && currentPendingItem.lineTotal === null) {
         // Pending item was waiting for numbers!
         const mergedName = rawName ? `${currentPendingItem.productName} ${cleanProductName(rawName)}`.trim() : currentPendingItem.productName;
-        currentPendingItem.productName = cleanProductName(mergedName);
+        const { title: finalMergedTitle, packSize: mPackSize, packSizeUnit: mPackUnit } = extractProductSizeAndTitle(mergedName, l.text);
+        currentPendingItem.productName = finalMergedTitle;
         currentPendingItem.quantity = finalQty ?? currentPendingItem.quantity;
-        currentPendingItem.unit = detectedUnit || currentPendingItem.unit || extractUnitFromTitle(mergedName);
+        currentPendingItem.unit = detectedUnit || currentPendingItem.unit || extractUnitFromTitle(finalMergedTitle);
+        currentPendingItem.purchasedQuantity = finalQty ?? currentPendingItem.purchasedQuantity;
+        currentPendingItem.purchaseUnit = detectedUnit || currentPendingItem.purchaseUnit;
+        currentPendingItem.packSize = mPackSize ?? currentPendingItem.packSize;
+        currentPendingItem.packSizeUnit = mPackUnit ?? currentPendingItem.packSizeUnit;
+        if (rowReviewReasons.length > 0) {
+          currentPendingItem.reviewReasons = [...(currentPendingItem.reviewReasons || []), ...rowReviewReasons];
+        }
         currentPendingItem.rate = finalRate ?? currentPendingItem.rate;
         currentPendingItem.purchasePrice = finalPurchasePrice ?? currentPendingItem.purchasePrice;
         currentPendingItem.sellingPrice = mappedSellingPrice ?? currentPendingItem.sellingPrice;
@@ -839,9 +868,14 @@ function tryStructuredTableExtraction(
           items.push(currentPendingItem);
         }
         const pendingCandidate: RawExtractedItem = {
-          productName: cleanProductName(rawName),
+          productName: cleanTitle,
           quantity: finalQty,
-          unit: detectedUnit || extractUnitFromTitle(rawName),
+          unit: detectedUnit || extractUnitFromTitle(cleanTitle),
+          purchasedQuantity: finalQty,
+          purchaseUnit: detectedUnit || extractUnitFromTitle(cleanTitle),
+          packSize: packSize ?? null,
+          packSizeUnit: packSizeUnit ?? null,
+          reviewReasons: rowReviewReasons.length > 0 ? rowReviewReasons : undefined,
           rate: finalRate,
           purchasePrice: finalPurchasePrice,
           sellingPrice: mappedSellingPrice,
@@ -946,7 +980,7 @@ function trySpatialLayoutExtraction(
         }
       }
 
-      const { title: candidateName } = extractProductSizeAndTitle(nameTokens.join(' '), l.text);
+      const { title: candidateName, packSize, packSizeUnit } = extractProductSizeAndTitle(nameTokens.join(' '), l.text);
 
       if (isPlausibleProductName(candidateName) && numTokens.length >= 1) {
         let qty: number | null = null;
@@ -981,10 +1015,16 @@ function trySpatialLayoutExtraction(
           qty = null;
         }
 
+        const effectiveUnit = unitToken || extractUnitFromTitle(candidateName);
+
         items.push({
           productName: candidateName,
           quantity: qty,
-          unit: unitToken,
+          unit: effectiveUnit,
+          purchasedQuantity: qty,
+          purchaseUnit: effectiveUnit,
+          packSize: packSize ?? null,
+          packSizeUnit: packSizeUnit ?? null,
           rate: rate,
           purchasePrice: rate,
           sellingPrice: null,
@@ -1064,7 +1104,7 @@ export function parseSingleLineItem(
   const multiTotalMatch = normalizedLine.match(multiTotalRegex);
 
   if (multiTotalMatch && multiTotalMatch[1] && multiTotalMatch[2] && multiTotalMatch[3]) {
-    const { title: name } = extractProductSizeAndTitle(multiTotalMatch[1], rawLine);
+    const { title: name, packSize, packSizeUnit } = extractProductSizeAndTitle(multiTotalMatch[1], rawLine);
     const qty = parseFloat(cleanNumericToken(multiTotalMatch[2])) || null;
     const rate = parseFloat(cleanNumericToken(multiTotalMatch[3])) || 0;
     const total = parseFloat(cleanNumericToken(multiTotalMatch[4])) || (qty && rate ? Math.round(qty * rate * 100) / 100 : 0);
@@ -1075,6 +1115,10 @@ export function parseSingleLineItem(
         productName: name,
         quantity: qty,
         unit,
+        purchasedQuantity: qty,
+        purchaseUnit: unit,
+        packSize: packSize ?? null,
+        packSizeUnit: packSizeUnit ?? null,
         rate: rate,
         purchasePrice: rate,
         sellingPrice: null,
@@ -1102,7 +1146,7 @@ export function parseSingleLineItem(
   const multiRateMatch = normalizedLine.match(multiRateRegex);
 
   if (multiRateMatch && multiRateMatch[1] && multiRateMatch[2] && multiRateMatch[3]) {
-    const { title: name } = extractProductSizeAndTitle(multiRateMatch[1], rawLine);
+    const { title: name, packSize, packSizeUnit } = extractProductSizeAndTitle(multiRateMatch[1], rawLine);
     const qty = parseFloat(cleanNumericToken(multiRateMatch[2])) || null;
     const rate = parseFloat(cleanNumericToken(multiRateMatch[3])) || 0;
     const total = qty && rate ? Math.round(qty * rate * 100) / 100 : null;
@@ -1113,6 +1157,10 @@ export function parseSingleLineItem(
         productName: name,
         quantity: qty,
         unit,
+        purchasedQuantity: qty,
+        purchaseUnit: unit,
+        packSize: packSize ?? null,
+        packSizeUnit: packSizeUnit ?? null,
         rate: rate,
         purchasePrice: rate,
         sellingPrice: null,
@@ -1256,7 +1304,7 @@ export function parseSingleLineItem(
     }
   }
 
-  const { title: name } = extractProductSizeAndTitle(nameTokens.join(' '), rawLine);
+  const { title: name, packSize, packSizeUnit } = extractProductSizeAndTitle(nameTokens.join(' '), rawLine);
 
   if (!name || name.length < 2 || !isPlausibleProductName(name) || (!finalRate && !finalTotal)) {
     return null;
@@ -1268,6 +1316,10 @@ export function parseSingleLineItem(
     productName: name,
     quantity: finalQty,
     unit: finalUnit,
+    purchasedQuantity: finalQty,
+    purchaseUnit: finalUnit,
+    packSize: packSize ?? null,
+    packSizeUnit: packSizeUnit ?? null,
     rate: finalRate,
     purchasePrice: finalRate,
     sellingPrice: null,
@@ -1404,13 +1456,18 @@ function tryMultiLineSemanticReconstruction(
         consumed++;
       }
 
-      const { title: enrichedCombinedName } = extractProductSizeAndTitle(combinedName, combinedSource);
+      const { title: enrichedCombinedName, packSize, packSizeUnit } = extractProductSizeAndTitle(combinedName, combinedSource);
 
       if (isPlausibleProductName(enrichedCombinedName) && (rate !== null || total !== null)) {
+        const effectiveUnit = unit || extractUnitFromTitle(enrichedCombinedName);
         items.push({
           productName: enrichedCombinedName,
           quantity: qty,
-          unit: unit || extractUnitFromTitle(enrichedCombinedName),
+          unit: effectiveUnit,
+          purchasedQuantity: qty,
+          purchaseUnit: effectiveUnit,
+          packSize: packSize ?? null,
+          packSizeUnit: packSizeUnit ?? null,
           rate: rate,
           purchasePrice: rate,
           sellingPrice: null,
@@ -1449,6 +1506,12 @@ function tryMultiLineSemanticReconstruction(
  * Extracts a normalized product unit from product title keywords.
  */
 export function extractUnitFromTitle(name: string): ProductUnit | null {
+  const isPackagedFmcg = /soap|shampoo|paste|colgate|brush|cream|lotion|dettol|face|hair|perfume|deo|powder|talc|oil\s*hair|surf|detergent|rin|vim|dish|cleaner|phenyl|harpic|biscuit|cookie|chips|maggi|noodle|pasta|kurkure|lays|chocolate|candy|wafer|snack/i.test(name);
+  if (isPackagedFmcg) {
+    const containerMatch = name.match(/\b(pcs|pc|pkt|packet|box|bag|tin|ctn|bottle|pouch)\b/i);
+    if (containerMatch) return normalizeUnit(containerMatch[1]);
+    return 'pcs';
+  }
   const match = name.match(/(\d+(?:\.\d+)?)\s*(kg|kgs|g|gm|gms|l|ltr|ltrs|liter|ml|pcs|pkt|packet|box|bag|tin|ctn)\b/i);
   if (match && match[2]) {
     return normalizeUnit(match[2]);

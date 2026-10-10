@@ -409,9 +409,14 @@ export function parseProductLine(rawLine: string, initialConfidence: number = 85
     purchasePrice = parseFloat(cleanNumericToken(multiTotalMatch[3])) || 0;
     lineTotal = parseFloat(cleanNumericToken(multiTotalMatch[4])) || Math.round(quantity * purchasePrice * 100) / 100;
 
-    const packUnitMatch = name.match(/(\d+(?:\.\d+)?)\s*(kg|g|l|ml|pcs|pkt|box|bag)\b/i);
-    if (packUnitMatch) {
-      unit = normalizeUnit(packUnitMatch[2]);
+    const isPackagedFmcg = /soap|shampoo|paste|colgate|brush|cream|lotion|dettol|face|hair|perfume|deo|powder|talc|oil\s*hair|surf|detergent|rin|vim|dish|cleaner|phenyl|harpic|biscuit|cookie|chips|maggi|noodle|pasta|kurkure|lays|chocolate|candy|wafer|snack|milk/i.test(name);
+    if (isPackagedFmcg) {
+      unit = 'pcs';
+    } else {
+      const packUnitMatch = name.match(/(\d+(?:\.\d+)?)\s*(kg|g|l|ml|pcs|pkt|box|bag)\b/i);
+      if (packUnitMatch) {
+        unit = normalizeUnit(packUnitMatch[2]);
+      }
     }
   } else if (multiRateMatch && multiRateMatch[1] && multiRateMatch[2] && multiRateMatch[3]) {
     name = multiRateMatch[1].trim();
@@ -419,9 +424,14 @@ export function parseProductLine(rawLine: string, initialConfidence: number = 85
     purchasePrice = parseFloat(cleanNumericToken(multiRateMatch[3])) || 0;
     lineTotal = Math.round(quantity * purchasePrice * 100) / 100;
 
-    const packUnitMatch = name.match(/(\d+(?:\.\d+)?)\s*(kg|g|l|ml|pcs|pkt|box|bag)\b/i);
-    if (packUnitMatch) {
-      unit = normalizeUnit(packUnitMatch[2]);
+    const isPackagedFmcg = /soap|shampoo|paste|colgate|brush|cream|lotion|dettol|face|hair|perfume|deo|powder|talc|oil\s*hair|surf|detergent|rin|vim|dish|cleaner|phenyl|harpic|biscuit|cookie|chips|maggi|noodle|pasta|kurkure|lays|chocolate|candy|wafer|snack|milk/i.test(name);
+    if (isPackagedFmcg) {
+      unit = 'pcs';
+    } else {
+      const packUnitMatch = name.match(/(\d+(?:\.\d+)?)\s*(kg|g|l|ml|pcs|pkt|box|bag)\b/i);
+      if (packUnitMatch) {
+        unit = normalizeUnit(packUnitMatch[2]);
+      }
     }
   } else if (atRateMatch && atRateMatch[1] && atRateMatch[2]) {
     name = atRateMatch[1].trim();
@@ -429,9 +439,14 @@ export function parseProductLine(rawLine: string, initialConfidence: number = 85
     purchasePrice = parseFloat(cleanNumericToken(atRateMatch[2])) || 0;
     lineTotal = purchasePrice;
 
-    const packUnitMatch = name.match(/(\d+(?:\.\d+)?)\s*(kg|g|l|ml|pcs|pkt|box|bag)\b/i);
-    if (packUnitMatch) {
-      unit = normalizeUnit(packUnitMatch[2]);
+    const isPackagedFmcg = /soap|shampoo|paste|colgate|brush|cream|lotion|dettol|face|hair|perfume|deo|powder|talc|oil\s*hair|surf|detergent|rin|vim|dish|cleaner|phenyl|harpic|biscuit|cookie|chips|maggi|noodle|pasta|kurkure|lays|chocolate|candy|wafer|snack|milk/i.test(name);
+    if (isPackagedFmcg) {
+      unit = 'pcs';
+    } else {
+      const packUnitMatch = name.match(/(\d+(?:\.\d+)?)\s*(kg|g|l|ml|pcs|pkt|box|bag)\b/i);
+      if (packUnitMatch) {
+        unit = normalizeUnit(packUnitMatch[2]);
+      }
     }
   }
 

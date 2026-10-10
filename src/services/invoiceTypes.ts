@@ -116,6 +116,23 @@ export interface MrpLookupInfo {
   lookedUpAt?: string | null;
 }
 
+/** Validation state according to arithmetic check and data completeness */
+export type ValidationState =
+  | 'EXACT_MATCH'
+  | 'MATCH_WITH_ROUNDING'
+  | 'MISMATCH'
+  | 'INSUFFICIENT_DATA'
+  | 'NEEDS_REVIEW';
+
+/** Field-level confidence scores (0-100) */
+export interface FieldConfidence {
+  name: number;
+  quantity: number;
+  unit: number;
+  rate: number;
+  lineTotal: number;
+}
+
 /** Extraction evidence shared by canonical and UI line items. */
 export interface LineEvidence {
   mrpSource?: MrpSource | null;
@@ -124,6 +141,13 @@ export interface LineEvidence {
   mrpLookup?: MrpLookupInfo | null;
   lineTotalSource?: LineTotalSource | null;
   arithmeticStatus?: 'VERIFIED' | 'MISMATCH' | 'INSUFFICIENT_DATA';
+  validationState?: ValidationState;
+  fieldConfidence?: FieldConfidence;
+  purchasedQuantity?: number | null;
+  purchaseUnit?: string | null;
+  packSize?: number | null;
+  packSizeUnit?: string | null;
+  reviewReasons?: string[];
   needsReview?: boolean;
   suggestions?: string[];
   suggestedRate?: number | null;

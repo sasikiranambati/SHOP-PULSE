@@ -203,13 +203,18 @@ export async function performOCR(
       await worker.setParameters({ tessedit_pageseg_mode: targetPsm });
       const { data } = await worker.recognize(imageSource, {}, { blocks: true });
       const { lines, words } = extractLinesAndWordsFromPage(data);
+      const avgWordConf = words.length > 0
+        ? Math.round(words.reduce((sum, w) => sum + (typeof w.confidence === 'number' ? w.confidence : 80), 0) / words.length)
+        : (typeof data.confidence === 'number' ? Math.round(data.confidence) : 75);
 
       return {
         text: data.text || '',
-        confidence: typeof data.confidence === 'number' ? data.confidence : 75,
+        confidence: avgWordConf,
         lines,
         words,
         psmModeUsed: `PSM ${psmMode}`,
+        imageWidth: typeof (data as any)?.image_width === 'number' ? (data as any).image_width : (typeof (imageSource as any)?.width === 'number' ? (imageSource as any).width : undefined),
+        imageHeight: typeof (data as any)?.image_height === 'number' ? (data as any).image_height : (typeof (imageSource as any)?.height === 'number' ? (imageSource as any).height : undefined),
       };
     }
 
@@ -217,13 +222,18 @@ export async function performOCR(
     await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
     const resAuto = await worker.recognize(imageSource, {}, { blocks: true });
     const { lines: linesAuto, words: wordsAuto } = extractLinesAndWordsFromPage(resAuto.data);
+    const avgConfAuto = wordsAuto.length > 0
+      ? Math.round(wordsAuto.reduce((sum, w) => sum + (typeof w.confidence === 'number' ? w.confidence : 80), 0) / wordsAuto.length)
+      : (typeof resAuto.data.confidence === 'number' ? Math.round(resAuto.data.confidence) : 75);
 
     const resultAuto: OCRResult = {
       text: resAuto.data.text || '',
-      confidence: typeof resAuto.data.confidence === 'number' ? resAuto.data.confidence : 75,
+      confidence: avgConfAuto,
       lines: linesAuto,
       words: wordsAuto,
       psmModeUsed: 'PSM AUTO (3)',
+      imageWidth: typeof (resAuto.data as any)?.image_width === 'number' ? (resAuto.data as any).image_width : (typeof (imageSource as any)?.width === 'number' ? (imageSource as any).width : undefined),
+      imageHeight: typeof (resAuto.data as any)?.image_height === 'number' ? (resAuto.data as any).image_height : (typeof (imageSource as any)?.height === 'number' ? (imageSource as any).height : undefined),
     };
 
     const scoreAuto = scoreOCRResult(resultAuto);
@@ -243,13 +253,18 @@ export async function performOCR(
     await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
     const res6 = await worker.recognize(imageSource, {}, { blocks: true });
     const { lines: lines6, words: words6 } = extractLinesAndWordsFromPage(res6.data);
+    const avgConf6 = words6.length > 0
+      ? Math.round(words6.reduce((sum, w) => sum + (typeof w.confidence === 'number' ? w.confidence : 80), 0) / words6.length)
+      : (typeof res6.data.confidence === 'number' ? Math.round(res6.data.confidence) : 75);
 
     const result6: OCRResult = {
       text: res6.data.text || '',
-      confidence: typeof res6.data.confidence === 'number' ? res6.data.confidence : 75,
+      confidence: avgConf6,
       lines: lines6,
       words: words6,
       psmModeUsed: 'PSM 6',
+      imageWidth: typeof (res6.data as any)?.image_width === 'number' ? (res6.data as any).image_width : (typeof (imageSource as any)?.width === 'number' ? (imageSource as any).width : undefined),
+      imageHeight: typeof (res6.data as any)?.image_height === 'number' ? (res6.data as any).image_height : (typeof (imageSource as any)?.height === 'number' ? (imageSource as any).height : undefined),
     };
 
     const score6 = scoreOCRResult(result6);
@@ -264,13 +279,18 @@ export async function performOCR(
       await worker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT });
       const res11 = await worker.recognize(imageSource, {}, { blocks: true });
       const { lines: lines11, words: words11 } = extractLinesAndWordsFromPage(res11.data);
+      const avgConf11 = words11.length > 0
+        ? Math.round(words11.reduce((sum, w) => sum + (typeof w.confidence === 'number' ? w.confidence : 80), 0) / words11.length)
+        : (typeof res11.data.confidence === 'number' ? Math.round(res11.data.confidence) : 75);
 
       const result11: OCRResult = {
         text: res11.data.text || '',
-        confidence: typeof res11.data.confidence === 'number' ? res11.data.confidence : 75,
+        confidence: avgConf11,
         lines: lines11,
         words: words11,
         psmModeUsed: 'PSM 11',
+        imageWidth: typeof (res11.data as any)?.image_width === 'number' ? (res11.data as any).image_width : (typeof (imageSource as any)?.width === 'number' ? (imageSource as any).width : undefined),
+        imageHeight: typeof (res11.data as any)?.image_height === 'number' ? (res11.data as any).image_height : (typeof (imageSource as any)?.height === 'number' ? (imageSource as any).height : undefined),
       };
 
       const score11 = scoreOCRResult(result11);

@@ -275,17 +275,36 @@ export function sharpenAndPreserveTables(
   return result;
 }
 
+export interface PreprocessOptions {
+  deskew?: boolean;
+  contrastEnhance?: boolean;
+  denoise?: boolean;
+  adaptiveThreshold?: boolean;
+  preserveTables?: boolean;
+}
+
 /**
  * Main Image Preprocessing Pipeline for Invoice OCR.
  * Steps:
- * 1. Rescale large phone images
+ * 1. Rescale low/high resolution images to normalized OCR resolution
  * 2. Convert to Grayscale
- * 3. Median Denoise
- * 4. Detect Skew & Rotate Canvas
- * 5. Adaptive Threshold (Otsu/Bradley shadow removal)
- * 6. Sharpen Text & Preserve Table Borders
+ * 3. Median Denoise (optional)
+ * 4. Detect Skew & Rotate Canvas (optional)
+ * 5. Dynamic range contrast enhancement / Adaptive thresholding
+ * 6. Preserves thin table borders, decimal points, and small currency symbols
  */
-export async function preprocessInvoiceImage(file: File): Promise<PreprocessedImageResult> {
+export async function preprocessInvoiceImage(
+  file: File,
+  options: PreprocessOptions = {}
+): Promise<PreprocessedImageResult> {
+  const {
+    deskew = true,
+    contrastEnhance = true,
+    denoise = true,
+    adaptiveThreshold: useAdaptive = false,
+    preserveTables = true,
+  } = options;
+
   const img = await loadImageFromFile(file);
   const { width: initW, height: initH } = getScaledDimensions(img.naturalWidth, img.naturalHeight);
 
@@ -306,10 +325,12 @@ export async function preprocessInvoiceImage(file: File): Promise<PreprocessedIm
   let gray = toGrayscale(imgData.data, initW, initH);
 
   // 2. Denoise
-  gray = denoiseGrayscale(gray, initW, initH);
+  if (denoise) {
+    gray = denoiseGrayscale(gray, initW, initH);
+  }
 
   // 3. Deskew angle detection
-  const skewAngle = detectSkewAngle(gray, initW, initH);
+  const skewAngle = deskew ? detectSkewAngle(gray, initW, initH) : 0;
 
   let finalCanvas = initialCanvas;
   let finalCtx = initialCtx;
@@ -317,7 +338,7 @@ export async function preprocessInvoiceImage(file: File): Promise<PreprocessedIm
   let curH = initH;
 
   // Apply deskew rotation if skew is significant (> 0.6 degrees and < 15 degrees)
-  if (Math.abs(skewAngle) > 0.6 && Math.abs(skewAngle) < 15) {
+  if (deskew && Math.abs(skewAngle) > 0.6 && Math.abs(skewAngle) < 15) {
     const rad = (-skewAngle * Math.PI) / 180;
     const rotatedCanvas = document.createElement('canvas');
     rotatedCanvas.width = initW;
@@ -342,25 +363,34 @@ export async function preprocessInvoiceImage(file: File): Promise<PreprocessedIm
     }
   }
 
-  // 4. Non-destructive contrast enhancement (stretch intensity dynamic range for crisp OCR without tearing fonts)
-  let minVal = 255;
-  let maxVal = 0;
-  for (let i = 0; i < gray.length; i += 2) {
-    if (gray[i] < minVal) minVal = gray[i];
-    if (gray[i] > maxVal) maxVal = gray[i];
-  }
-  const range = Math.max(30, maxVal - minVal);
-  const enhanced = new Uint8Array(curW * curH);
-  for (let i = 0; i < gray.length; i++) {
-    const norm = (gray[i] - minVal) / range;
-    enhanced[i] = Math.max(0, Math.min(255, Math.round(norm * 255)));
+  let finalBuffer: Uint8Array = gray;
+
+  if (useAdaptive) {
+    // Adaptive binarization with table line preservation
+    const binary = adaptiveThreshold(gray, curW, curH, 0.08, 10);
+    finalBuffer = preserveTables ? sharpenAndPreserveTables(binary, gray, curW, curH) : binary;
+  } else if (contrastEnhance) {
+    // 4. Non-destructive contrast enhancement (stretch dynamic range for crisp OCR without eroding decimal dots or commas)
+    let minVal = 255;
+    let maxVal = 0;
+    for (let i = 0; i < gray.length; i += 2) {
+      if (gray[i] < minVal) minVal = gray[i];
+      if (gray[i] > maxVal) maxVal = gray[i];
+    }
+    const range = Math.max(30, maxVal - minVal);
+    const enhanced = new Uint8Array(curW * curH);
+    for (let i = 0; i < gray.length; i++) {
+      const norm = (gray[i] - minVal) / range;
+      enhanced[i] = Math.max(0, Math.min(255, Math.round(norm * 255)));
+    }
+    finalBuffer = enhanced;
   }
 
   // 5. Write enhanced image back into final canvas
   const outputImgData = finalCtx.createImageData(curW, curH);
   const outData = outputImgData.data;
   for (let i = 0, p = 0; i < outData.length; i += 4, p++) {
-    const v = enhanced[p];
+    const v = finalBuffer[p];
     outData[i] = v;
     outData[i + 1] = v;
     outData[i + 2] = v;
@@ -379,4 +409,18 @@ export async function preprocessInvoiceImage(file: File): Promise<PreprocessedIm
     height: curH,
     skewAngle,
   };
+}
+
+/**
+ * Generates both standard and adaptive preprocessing variants for quality comparison.
+ */
+export async function generatePreprocessingVariants(file: File): Promise<{
+  standard: PreprocessedImageResult;
+  adaptive: PreprocessedImageResult;
+}> {
+  const [standard, adaptive] = await Promise.all([
+    preprocessInvoiceImage(file, { adaptiveThreshold: false, contrastEnhance: true }),
+    preprocessInvoiceImage(file, { adaptiveThreshold: true, preserveTables: true }),
+  ]);
+  return { standard, adaptive };
 }

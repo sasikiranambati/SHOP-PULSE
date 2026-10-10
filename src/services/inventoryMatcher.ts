@@ -204,6 +204,8 @@ export function matchCanonicalItemsWithInventory(
     const lowConfidence =
       item.confidenceLevel === 'LOW' ||
       item.confidence < 70 ||
+      item.validationState === 'MISMATCH' ||
+      item.validationState === 'INSUFFICIENT_DATA' ||
       matchLevel === 'MEDIUM' ||
       (item.validationIssues && item.validationIssues.length > 0);
 
@@ -227,6 +229,13 @@ export function matchCanonicalItemsWithInventory(
       storeMrp: item.storeMrp ?? (bestProduct && matchLevel === 'HIGH' ? bestProduct.mrp ?? null : null),
       mrpLookup: item.mrpLookup ?? null,
       arithmeticStatus: item.arithmeticStatus,
+      validationState: item.validationState,
+      fieldConfidence: item.fieldConfidence,
+      purchasedQuantity: item.purchasedQuantity ?? quantity,
+      purchaseUnit: item.purchaseUnit ?? unit,
+      packSize: item.packSize ?? null,
+      packSizeUnit: item.packSizeUnit ?? null,
+      reviewReasons: item.reviewReasons,
       needsReview: item.needsReview ?? !!lowConfidence,
       suggestions: item.suggestions,
       suggestedRate: item.suggestedRate ?? null,

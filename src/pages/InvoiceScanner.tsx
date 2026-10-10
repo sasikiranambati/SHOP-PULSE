@@ -2648,26 +2648,65 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                       </thead>
                       <tbody className="divide-y divide-slate-700/50">
                         {invoiceData.items.map((it) => {
-                          const expectedTotal = (it.quantity !== null && it.purchasePrice !== null) ? Math.round(it.quantity * it.purchasePrice * 100) / 100 : null;
-                          const hasMathIssue = Boolean(it.validationWarning);
+                          const expectedTotal = (it.quantity !== null && (it.purchasePrice !== null || it.rate !== null))
+                            ? Math.round((it.quantity * (it.purchasePrice ?? it.rate ?? 0)) * 100) / 100
+                            : null;
+                          const state = it.validationState || (
+                            (it.quantity === null || (it.purchasePrice === null && (it.rate === null || it.rate === undefined)) || it.lineTotal === null)
+                              ? 'INSUFFICIENT_DATA'
+                              : (it.validationWarning ? 'MISMATCH' : 'EXACT_MATCH')
+                          );
+                          const confColor = it.confidence >= 80 ? 'text-emerald-300' : it.confidence >= 60 ? 'text-amber-300' : 'text-rose-300';
                           return (
                             <tr key={it.id} className="hover:bg-slate-700/30">
-                              <td className="p-2 font-bold text-white">{it.name}</td>
-                              <td className="p-2 text-center">{it.quantity} {it.unit}</td>
-                              <td className="p-2 text-right">{it.purchasePrice !== null ? `₹${it.purchasePrice}` : '—'}</td>
+                              <td className="p-2 font-bold text-white">
+                                <div>{it.name}</div>
+                                {it.reviewReasons && it.reviewReasons.length > 0 && (
+                                  <span className="text-[10px] text-amber-400 font-normal block leading-tight mt-0.5">
+                                    {it.reviewReasons[0]}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-2 text-center">
+                                <div>{it.quantity !== null ? it.quantity : '—'} {it.unit || ''}</div>
+                                {it.packSize ? (
+                                  <span className="text-[10px] text-slate-400 font-normal block">
+                                    Pack: {it.packSize} {it.packSizeUnit || ''}
+                                  </span>
+                                ) : null}
+                              </td>
+                              <td className="p-2 text-right">
+                                {it.purchasePrice !== null ? `₹${it.purchasePrice}` : (it.rate !== null && it.rate !== undefined ? `₹${it.rate}` : '—')}
+                              </td>
                               <td className="p-2 text-right">{it.lineTotal !== null ? `₹${it.lineTotal}` : '—'}</td>
                               <td className="p-2 text-center">
-                                {hasMathIssue ? (
-                                  <span className="text-[10px] text-rose-300 font-bold bg-rose-900/60 px-1.5 py-0.5 rounded">
-                                    Diff (calc ₹{expectedTotal})
-                                  </span>
-                                ) : (
+                                {state === 'EXACT_MATCH' && (
                                   <span className="text-[10px] text-emerald-300 font-bold bg-emerald-900/60 px-1.5 py-0.5 rounded">
                                     ✓ Exact Match
                                   </span>
                                 )}
+                                {state === 'MATCH_WITH_ROUNDING' && (
+                                  <span className="text-[10px] text-teal-300 font-bold bg-teal-900/60 px-1.5 py-0.5 rounded">
+                                    ≈ Rounded Match
+                                  </span>
+                                )}
+                                {state === 'MISMATCH' && (
+                                  <span className="text-[10px] text-rose-300 font-bold bg-rose-900/60 px-1.5 py-0.5 rounded">
+                                    ⚠ Diff (calc ₹{expectedTotal ?? '—'})
+                                  </span>
+                                )}
+                                {state === 'INSUFFICIENT_DATA' && (
+                                  <span className="text-[10px] text-amber-300 font-bold bg-amber-900/60 px-1.5 py-0.5 rounded">
+                                    — Missing Data
+                                  </span>
+                                )}
+                                {state === 'NEEDS_REVIEW' && (
+                                  <span className="text-[10px] text-amber-300 font-bold bg-amber-900/60 px-1.5 py-0.5 rounded">
+                                    🔍 Review Required
+                                  </span>
+                                )}
                               </td>
-                              <td className="p-2 text-center text-amber-300">{it.confidence}%</td>
+                              <td className={`p-2 text-center font-bold ${confColor}`}>{it.confidence}%</td>
                             </tr>
                           );
                         })}
