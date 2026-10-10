@@ -5,7 +5,6 @@ import {
   CheckCircle2, 
   Info, 
   Check, 
-  Sparkles, 
   RefreshCw, 
   Trash2, 
   Plus, 
@@ -48,6 +47,19 @@ import { db } from '../services/firebase';
 import { collection, addDoc } from 'firebase/firestore';
 import { invoiceApi, mapBackendResponseToParsedInvoice } from '../api/invoice';
 import { getAccessToken } from '../api/client';
+import { recalculateLineTotal } from '../services/invoiceReview';
+import { MrpStatus, LineAmount, LineReviewNotes } from '../components/InvoiceLineCells';
+
+const ENGINE_LABELS: Record<string, string> = {
+  backend_ocr_pipeline: 'Server OCR',
+  backend_pdf_direct: 'Server PDF text',
+  backend_pdf_ocr_scanned: 'Server OCR (scanned PDF)',
+  backend_text_direct: 'Server text',
+  gemini: 'In-browser Gemini',
+  tesseract: 'In-browser OCR',
+  pdf_direct: 'In-browser PDF text',
+  sample: 'Sample bill',
+};
 
 export const COMMON_UNITS = [
   'pcs',
@@ -83,7 +95,13 @@ export interface StockSuccessStats {
   invoiceNumber?: string;
 }
 
-export const validateInvoiceItems = (items: InvoiceLineItem[]): ValidationError[] => {
+const isBlank = (v: unknown) => v === null || v === undefined || (typeof v === 'number' && isNaN(v));
+
+/**
+ * Checks every line before stock is changed. Prices that could not be read are never
+ * assumed: the purchase price must be entered, and a new product needs a selling price.
+ */
+export const validateInvoiceItems = (items: InvoiceLineItem[], products: Product[] = []): ValidationError[] => {
   const errors: ValidationError[] = [];
   for (const item of items) {
     const issues: string[] = [];
@@ -92,17 +110,27 @@ export const validateInvoiceItems = (items: InvoiceLineItem[]): ValidationError[
       issues.push('Product name is required (min 2 characters)');
     }
     const qty = Number(item.quantity);
-    if (isNaN(qty) || qty <= 0) {
+    if (isBlank(item.quantity) || isNaN(qty) || qty <= 0) {
       issues.push('Quantity must be greater than 0');
+    } else if (!Number.isInteger(qty)) {
+      issues.push('Quantity must be a whole number of stock units');
     }
     if (!item.unit || item.unit.trim() === '') {
       issues.push('Unit is required');
     }
-    if (item.purchasePrice !== null && item.purchasePrice !== undefined) {
+    if (isBlank(item.purchasePrice) && isBlank(item.rate)) {
+      issues.push('Purchase price is required (it could not be read from the invoice)');
+    } else if (!isBlank(item.purchasePrice)) {
       const pur = Number(item.purchasePrice);
       if (isNaN(pur) || pur < 0) {
         issues.push('Purchase price cannot be negative');
       }
+    }
+    const existsInStore =
+      Boolean(item.matchedProductId) ||
+      products.some((p) => p.name.toLowerCase().trim() === trimmedName.toLowerCase());
+    if (!existsInStore && isBlank(item.sellingPrice)) {
+      issues.push('Selling price is required for a new product');
     }
     if (item.sellingPrice !== null && item.sellingPrice !== undefined) {
       const sell = Number(item.sellingPrice);
@@ -261,32 +289,44 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
     setScanWarning(null);
 
     try {
+      // The server pipeline is the primary path: it reads word positions, validates
+      // qty × rate and performs the MRP lookup. Its failures are shown, not hidden.
+      let serverNotice: string | null = null;
       if (getAccessToken()) {
         try {
           setScanProgress(25);
-          setScanStatusText('Connecting to ShopPulse backend extraction service...');
+          setScanStatusText('Reading the invoice on the ShopPulse server...');
           const backendResp = await invoiceApi.extractInvoice(file);
           if (backendResp && backendResp.items && backendResp.items.length > 0) {
             setScanProgress(90);
-            setScanStatusText('Mapping extracted invoice items & matching inventory...');
+            setScanStatusText('Matching items with your inventory...');
             const parsed = mapBackendResponseToParsedInvoice(backendResp, products);
             setInvoiceData(parsed);
             setIsScanning(false);
             return;
           }
-        } catch (apiErr) {
-          console.warn('Backend invoice extraction failed or unavailable, falling back to local OCR engine:', apiErr);
+          serverNotice = `The server found no product rows (${backendResp?.reason || 'no table detected'}).`;
+        } catch (apiErr: any) {
+          console.warn('Backend invoice extraction failed:', apiErr);
+          serverNotice = `Server extraction failed: ${apiErr?.message || 'unknown error'}.`;
         }
+      } else {
+        serverNotice = 'Not signed in to the ShopPulse server.';
       }
 
       const parsed = await parseInvoiceFile(file, products, (progress, statusText) => {
         setScanProgress(progress);
         setScanStatusText(statusText);
       });
+      parsed.notices = [
+        `${serverNotice} This invoice was read with in-browser OCR instead; no MRP lookup was performed. Check every value.`,
+        ...(parsed.notices || []),
+      ];
+      parsed.diagnostics = { ...(parsed.diagnostics || {}), backendError: serverNotice };
       setInvoiceData(parsed);
       if (parsed.items.length === 0) {
         setScanWarning(
-          'No tabular product rows could be detected automatically from this bill photo. You can add items using the "+ Add Item" button below or check the extracted text.'
+          'No product rows could be detected in this bill. Add items with "+ Add Item" or check the extracted text below.'
         );
       }
     } catch (err: any) {
@@ -366,20 +406,14 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
             updated.inventoryData = undefined;
           }
         }
-        // Auto-recalculate dependent line total on quantity or purchase price change
         if (field === 'purchasePrice') {
           updated.rate = value;
         }
+        if (field === 'mrp') {
+          updated.mrpSource = value === null ? null : 'MANUAL';
+        }
         if (field === 'quantity' || field === 'purchasePrice') {
-          const effP = updated.purchasePrice ?? updated.rate;
-          if (
-            effP !== null &&
-            effP !== undefined &&
-            updated.quantity !== null &&
-            updated.quantity !== undefined
-          ) {
-            updated.lineTotal = Math.round(Number(updated.quantity) * Number(effP) * 100) / 100;
-          }
+          recalculateLineTotal(updated);
         }
         return updated;
       }),
@@ -391,18 +425,21 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
 
   const handleSaveEditingItem = (savedItem: InvoiceLineItem) => {
     if (!invoiceData) return;
+    const original = invoiceData.items.find((it) => it.id === savedItem.id);
     const finalItem = { ...savedItem };
     if (finalItem.purchasePrice !== null && finalItem.purchasePrice !== undefined) {
       finalItem.rate = finalItem.purchasePrice;
     }
-    const effP = finalItem.purchasePrice ?? finalItem.rate;
-    if (
-      effP !== null &&
-      effP !== undefined &&
-      finalItem.quantity !== null &&
-      finalItem.quantity !== undefined
+    if (original && finalItem.mrp !== original.mrp) {
+      finalItem.mrpSource = finalItem.mrp === null || finalItem.mrp === undefined ? null : 'MANUAL';
+    }
+    if (original && finalItem.lineTotal !== original.lineTotal) {
+      finalItem.lineTotalSource = finalItem.lineTotal === null ? null : 'MANUAL';
+    } else if (
+      original &&
+      (finalItem.quantity !== original.quantity || finalItem.purchasePrice !== original.purchasePrice)
     ) {
-      finalItem.lineTotal = Math.round(Number(finalItem.quantity) * Number(effP) * 100) / 100;
+      recalculateLineTotal(finalItem);
     }
     setInvoiceData({
       ...invoiceData,
@@ -412,6 +449,36 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
     if (validationErrors.length > 0) {
       setValidationErrors((prev) => prev.filter((e) => e.itemId !== finalItem.id));
     }
+  };
+
+  /** Copies the stored product's prices into the line; a copied MRP is marked STORE. */
+  const applyStorePrices = (item: InvoiceLineItem) => {
+    if (!invoiceData || !item.inventoryData) return;
+    const inv = item.inventoryData;
+    setInvoiceData({
+      ...invoiceData,
+      items: invoiceData.items.map((it) => {
+        if (it.id !== item.id) return it;
+        const updated: InvoiceLineItem = { ...it };
+        if (inv.storePurchasePrice != null) {
+          updated.purchasePrice = inv.storePurchasePrice;
+          updated.rate = inv.storePurchasePrice;
+          recalculateLineTotal(updated);
+        }
+        if (inv.storeSellingPrice != null) updated.sellingPrice = inv.storeSellingPrice;
+        if (inv.storeMrp != null) {
+          updated.mrp = inv.storeMrp;
+          updated.mrpSource = 'STORE';
+        }
+        return updated;
+      }),
+    });
+  };
+
+  /** Applies amount ÷ quantity as the purchase price, only when the user asks for it. */
+  const applySuggestedRate = (item: InvoiceLineItem) => {
+    if (item.suggestedRate == null) return;
+    handleItemChange(item.id, 'purchasePrice', item.suggestedRate);
   };
 
   const handleSelectMatchProduct = (itemId: string, selectedProduct: Product | null) => {
@@ -432,6 +499,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
           ...it,
           matchedProductId: selectedProduct.id,
           isMatchConfirmed: true,
+          unit: it.unit || selectedProduct.unit || '',
           inventoryData: {
             id: selectedProduct.id,
             name: selectedProduct.name,
@@ -459,16 +527,19 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
 
   const handleAddItem = () => {
     if (!invoiceData) return;
+    // A manually added line starts empty: every value is typed in by the user
     const newItem: InvoiceLineItem = {
       id: 'item_' + Date.now().toString(36),
-      name: 'New Product Item',
+      name: '',
       category: 'Groceries',
-      quantity: 10,
-      unit: 'pcs',
-      purchasePrice: 50,
-      sellingPrice: 65,
-      mrp: 70,
-      lineTotal: 500,
+      quantity: null,
+      unit: '',
+      purchasePrice: null,
+      sellingPrice: null,
+      mrp: null,
+      mrpSource: null,
+      lineTotal: null,
+      lineTotalSource: null,
       confidence: 100,
       confidenceLevel: 'HIGH',
       lowConfidence: false,
@@ -487,7 +558,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
   const handleInitiateAddToStock = () => {
     if (!invoiceData || invoiceData.items.length === 0) return;
     setStockUpdateError(null);
-    const errors = validateInvoiceItems(invoiceData.items);
+    const errors = validateInvoiceItems(invoiceData.items, products);
     if (errors.length > 0) {
       setValidationErrors(errors);
       return;
@@ -501,7 +572,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
     if (isSubmittingRef.current || !invoiceData || invoiceData.items.length === 0) return;
     
     // Strict re-validation safeguard
-    const errors = validateInvoiceItems(invoiceData.items);
+    const errors = validateInvoiceItems(invoiceData.items, products);
     if (errors.length > 0) {
       setValidationErrors(errors);
       setIsConfirmModalOpen(false);
@@ -514,66 +585,75 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
 
     let addedCount = 0;
     let restockedCount = 0;
+    const priceOf = (it: InvoiceLineItem) => Number(it.purchasePrice ?? it.rate);
+    const optional = (v: number | null | undefined) => (v === null || v === undefined ? undefined : Number(v));
 
     try {
-      // Deduplicate items within the invoice batch to prevent redundant inventory rows
-      const mergedBatch: InvoiceLineItem[] = [];
-      for (const item of invoiceData.items) {
-        const trimmedName = item.name.toLowerCase().trim();
-        const existing = mergedBatch.find(
-          (m) =>
-            (m.matchedProductId && m.matchedProductId === item.matchedProductId) ||
-            m.name.toLowerCase().trim() === trimmedName
-        );
-        if (existing) {
-          existing.quantity = (Number(existing.quantity) || 0) + (Number(item.quantity) || 0);
-          existing.lineTotal = (Number(existing.lineTotal) || 0) + (Number(item.lineTotal) || 0);
-          if ((existing.purchasePrice === null || existing.purchasePrice === undefined) && item.purchasePrice !== null && item.purchasePrice !== undefined) {
-            existing.purchasePrice = item.purchasePrice;
-          }
-          if ((existing.sellingPrice === null || existing.sellingPrice === undefined) && item.sellingPrice !== null && item.sellingPrice !== undefined) {
-            existing.sellingPrice = item.sellingPrice;
-          }
-          if ((existing.mrp === null || existing.mrp === undefined) && item.mrp !== null && item.mrp !== undefined) {
-            existing.mrp = item.mrp;
-          }
-        } else {
-          mergedBatch.push({ ...item });
-        }
-      }
-
-      for (const item of mergedBatch) {
-        const purPrice = item.purchasePrice !== null && item.purchasePrice !== undefined
-          ? Number(item.purchasePrice)
-          : (item.rate !== null && item.rate !== undefined ? Number(item.rate) : undefined);
-        const sellPrice = item.sellingPrice !== null && item.sellingPrice !== undefined ? Number(item.sellingPrice) : undefined;
-        const mrpPrice = item.mrp !== null && item.mrp !== undefined ? Number(item.mrp) : undefined;
-
-        if (item.matchedProductId && onRestock) {
-          // Increase stock for existing product and save edited purchase, selling, and mrp prices
-          await onRestock(item.matchedProductId, Number(item.quantity), purPrice, sellPrice, mrpPrice);
-          restockedCount++;
-        } else if (onAddProduct) {
-          // Check if product already exists in current store inventory by exact name
-          const existingInStore = products.find(
-            (p) => p.name.toLowerCase().trim() === item.name.toLowerCase().trim()
+      if (getAccessToken()) {
+        // One server transaction does everything: restock or create products, store MRPs
+        // with their source and record the purchase. It rejects an invoice confirmed twice.
+        const backendResp = await invoiceApi.confirmInvoice({
+          supplier_name: invoiceData.supplierName || undefined,
+          invoice_number: invoiceData.invoiceNumber || undefined,
+          invoice_date: invoiceData.invoiceDate || undefined,
+          items: invoiceData.items.map((it) => ({
+            name: it.name.trim(),
+            category: it.category,
+            quantity: Number(it.quantity),
+            unit: it.unit,
+            purchase_price: priceOf(it),
+            selling_price: optional(it.sellingPrice),
+            mrp: optional(it.mrp),
+            mrp_source: it.mrp !== null && it.mrp !== undefined ? it.mrpSource || 'MANUAL' : undefined,
+            line_amount: optional(it.lineTotal),
+            matched_product_id: it.matchedProductId,
+          })),
+        });
+        addedCount = backendResp.items_created;
+        restockedCount = backendResp.items_restocked;
+        window.dispatchEvent(new CustomEvent('shoppulse_inventory_changed'));
+      } else {
+        // No server session: apply through the inventory callbacks, merging duplicate lines first
+        const mergedBatch: InvoiceLineItem[] = [];
+        for (const item of invoiceData.items) {
+          const trimmedName = item.name.toLowerCase().trim();
+          const existing = mergedBatch.find(
+            (m) =>
+              (m.matchedProductId && m.matchedProductId === item.matchedProductId) ||
+              m.name.toLowerCase().trim() === trimmedName
           );
+          if (existing) {
+            existing.quantity = Number(existing.quantity) + Number(item.quantity);
+            existing.lineTotal =
+              existing.lineTotal !== null && item.lineTotal !== null ? existing.lineTotal + item.lineTotal : null;
+            existing.sellingPrice = existing.sellingPrice ?? item.sellingPrice;
+            existing.mrp = existing.mrp ?? item.mrp;
+          } else {
+            mergedBatch.push({ ...item });
+          }
+        }
+
+        for (const item of mergedBatch) {
+          const purPrice = priceOf(item);
+          const sellPrice = optional(item.sellingPrice);
+          const mrpPrice = optional(item.mrp);
+          const existingInStore =
+            item.matchedProductId ||
+            products.find((p) => p.name.toLowerCase().trim() === item.name.toLowerCase().trim())?.id;
 
           if (existingInStore && onRestock) {
-            await onRestock(existingInStore.id, Number(item.quantity), purPrice, sellPrice, mrpPrice);
+            await onRestock(existingInStore, Number(item.quantity), purPrice, sellPrice, mrpPrice);
             restockedCount++;
-          } else {
-            // Create new product in inventory with edited prices
+          } else if (onAddProduct && sellPrice !== undefined) {
             const now = new Date().toISOString();
-            const fallbackPur = purPrice ?? 0;
             await onAddProduct({
               name: item.name.trim(),
               category: item.category || 'Groceries',
               stock: Number(item.quantity),
-              unit: item.unit || 'pcs',
-              purchasePrice: fallbackPur,
-              sellingPrice: sellPrice ?? (fallbackPur > 0 ? fallbackPur * 1.2 : 0),
-              price: sellPrice ?? (fallbackPur > 0 ? fallbackPur * 1.2 : 0),
+              unit: item.unit,
+              purchasePrice: purPrice,
+              sellingPrice: sellPrice,
+              price: sellPrice,
               mrp: mrpPrice,
               reorderLevel: 10,
               minStock: 10,
@@ -584,64 +664,33 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
             addedCount++;
           }
         }
-      }
 
-      // Synchronize with FastAPI backend database if authenticated
-      if (getAccessToken()) {
-        try {
-          const backendResp = await invoiceApi.confirmInvoice({
-            supplier_name: invoiceData.supplierName,
-            invoice_number: invoiceData.invoiceNumber,
-            invoice_date: invoiceData.invoiceDate,
-            items: mergedBatch.map((it) => ({
-              name: it.name.trim(),
-              category: it.category,
-              quantity: Number(it.quantity),
-              unit: it.unit || 'pcs',
-              purchase_price: it.purchasePrice !== null && it.purchasePrice !== undefined
-                ? Number(it.purchasePrice)
-                : (it.rate !== null && it.rate !== undefined ? Number(it.rate) : undefined),
-              selling_price: it.sellingPrice !== null && it.sellingPrice !== undefined ? Number(it.sellingPrice) : undefined,
-              mrp: it.mrp !== null && it.mrp !== undefined ? Number(it.mrp) : undefined,
-              matched_product_id: it.matchedProductId,
-            })),
-          });
-          if (backendResp) {
-            if (backendResp.items_created !== undefined) addedCount = backendResp.items_created;
-            if (backendResp.items_restocked !== undefined) restockedCount = backendResp.items_restocked;
+        const currentUid = getActiveUserId();
+        if (currentUid) {
+          try {
+            await addDoc(collection(db, 'users', currentUid, 'purchases'), {
+              supplierName: invoiceData.supplierName,
+              invoiceNumber: invoiceData.invoiceNumber,
+              invoiceDate: invoiceData.invoiceDate,
+              totalAmount: calculatedTotal,
+              totalUnits,
+              totalItems: mergedBatch.length,
+              items: mergedBatch.map((it) => ({
+                name: it.name.trim(),
+                category: it.category,
+                quantity: Number(it.quantity),
+                unit: it.unit,
+                purchasePrice: priceOf(it),
+                sellingPrice: it.sellingPrice ?? null,
+                mrp: it.mrp ?? null,
+                mrpSource: it.mrp != null ? it.mrpSource || 'MANUAL' : null,
+                lineTotal: it.lineTotal,
+              })),
+              createdAt: new Date().toISOString(),
+            });
+          } catch (pErr) {
+            console.warn('Could not record purchase record in Firestore workspace:', pErr);
           }
-        } catch (beErr) {
-          console.warn('Backend invoice confirm notice (persisted in workspace):', beErr);
-        }
-      }
-
-      // Record purchase transaction in the authenticated user's Firestore workspace
-      const currentUid = getActiveUserId();
-      if (currentUid) {
-        try {
-          await addDoc(collection(db, 'users', currentUid, 'purchases'), {
-            supplierName: invoiceData.supplierName,
-            invoiceNumber: invoiceData.invoiceNumber,
-            invoiceDate: invoiceData.invoiceDate,
-            totalAmount: calculatedTotal,
-            totalUnits,
-            totalItems: mergedBatch.length,
-            items: mergedBatch.map((it) => ({
-              name: it.name.trim(),
-              category: it.category,
-              quantity: Number(it.quantity),
-              unit: it.unit,
-              purchasePrice: it.purchasePrice !== null && it.purchasePrice !== undefined
-                ? Number(it.purchasePrice)
-                : (it.rate !== null && it.rate !== undefined ? Number(it.rate) : null),
-              sellingPrice: it.sellingPrice !== null && it.sellingPrice !== undefined ? Number(it.sellingPrice) : null,
-              mrp: it.mrp !== null && it.mrp !== undefined ? Number(it.mrp) : null,
-              lineTotal: Number(it.lineTotal),
-            })),
-            createdAt: new Date().toISOString(),
-          });
-        } catch (pErr) {
-          console.warn('Could not record purchase record in Firestore workspace:', pErr);
         }
       }
 
@@ -654,7 +703,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
           type: 'system',
           priority: 'low',
           productName: invoiceData.supplierName || 'Supplier Invoice',
-          message: `📦 Restocked ${totalUnits} units across ${mergedBatch.length} items (Total: ₹${calculatedTotal.toLocaleString('en-IN')}) from Bill #${invoiceData.invoiceNumber || 'N/A'}.`,
+          message: `📦 Restocked ${totalUnits} units across ${restockedCount + addedCount} items (Total: ₹${calculatedTotal.toLocaleString('en-IN')}) from Bill #${invoiceData.invoiceNumber || 'N/A'}.`,
         });
       } catch (alertErr) {
         console.warn('Could not post restock alert:', alertErr);
@@ -663,7 +712,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
       // Success notification only after atomic database success
       setIsConfirmModalOpen(false);
       setStockSuccessData({
-        processedCount: mergedBatch.length,
+        processedCount: restockedCount + addedCount,
         restockedCount,
         newCount: addedCount,
         unitsAdded: totalUnits,
@@ -676,7 +725,8 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
     } catch (err: any) {
       console.error('Error adding invoice items to stock:', err);
       setIsConfirmModalOpen(false);
-      setStockUpdateError('⚠️ Stock Update Failed: ' + (err?.message || 'Your inventory was not updated. Please try again.'));
+      // The server applies everything or nothing, so on failure stock is unchanged
+      setStockUpdateError('Stock was not updated: ' + (err?.message || 'please try again.'));
       // Keep invoiceData intact so user doesn't lose their edits!
     } finally {
       setIsSaving(false);
@@ -710,25 +760,22 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
         description={t('scanner.description')}
       />
 
-      {/* Top Banner: Real AI Engine Active */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-linear-to-r from-emerald-500/10 via-teal-500/10 to-emerald-500/10 rounded-2xl border border-emerald-300 text-xs sm:text-sm font-bold text-emerald-950">
+      {/* Engine status bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white rounded-xl border border-slate-200 text-xs sm:text-sm">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-            <Sparkles className="w-4 h-4 animate-pulse" />
-          </div>
+          <ScanLine className="w-5 h-5 text-slate-600 shrink-0" />
           <div>
-            <div className="flex items-center gap-2">
-              <p className="font-extrabold text-slate-900">
-                {apiKeyInput && selectedEngine !== 'tesseract' ? '⚡ Multimodal AI Vision Active' : '⚡ In-Browser OCR Active (Tesseract.js)'}
-              </p>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black border border-emerald-300">
-                {apiKeyInput && selectedEngine !== 'tesseract' ? 'Gemini AI Vision' : '100% In-Browser'}
-              </span>
-            </div>
-            <p className="text-xs text-slate-600 font-medium">
-              {apiKeyInput && selectedEngine !== 'tesseract' 
-                ? 'Extracts items, quantities, wholesale rates & retail prices with multimodal AI accuracy' 
-                : 'Scans and parses invoice text locally in your browser. Connect optional free Gemini API for 99%+ accuracy.'}
+            <p className="font-bold text-slate-900">
+              {getAccessToken()
+                ? 'Server OCR with price checks and MRP lookup'
+                : apiKeyInput && selectedEngine !== 'tesseract'
+                ? 'In-browser scanning (Gemini)'
+                : 'In-browser scanning (Tesseract)'}
+            </p>
+            <p className="text-xs text-slate-500">
+              {getAccessToken()
+                ? 'Falls back to in-browser OCR if the server is unavailable. Every value can be reviewed before stock is updated.'
+                : 'Sign in with your ShopPulse account for server-side extraction and MRP lookup.'}
             </p>
           </div>
         </div>
@@ -739,10 +786,10 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
               variant="outline"
               size="sm"
               onClick={() => setIsDebugOpen(true)}
-              icon={<Cpu className="w-4 h-4 text-purple-600" />}
-              className="text-xs font-bold py-1 px-3 bg-white hover:border-purple-300"
+              icon={<Cpu className="w-4 h-4" />}
+              className="text-xs font-bold py-1 px-3 bg-white"
             >
-              OCR Debug View
+              OCR Details
             </Button>
           )}
           <Button
@@ -771,7 +818,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
       {/* Stock Update Success Modal / Card (Section 21) */}
       {stockSuccessData && (
         <Card className="border-2 border-emerald-500 bg-white shadow-xl p-6 sm:p-8 rounded-3xl text-center space-y-4 animate-in fade-in zoom-in-95">
-          <div className="w-16 h-16 rounded-2xl bg-emerald-600 text-white mx-auto flex items-center justify-center shadow-lg shadow-emerald-600/30">
+          <div className="w-16 h-16 rounded-2xl bg-emerald-600 text-white mx-auto flex items-center justify-center">
             <CheckCircle2 className="w-10 h-10" />
           </div>
           <div className="space-y-2">
@@ -803,7 +850,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                   setActivePage('inventory');
                 }}
                 icon={<ArrowRight className="w-5 h-5" />}
-                className="font-black px-6 shadow-md shadow-emerald-600/20"
+                className="font-black px-6"
               >
                 View Inventory
               </Button>
@@ -878,10 +925,10 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
           <div className="max-w-md mx-auto space-y-6">
             
             {/* Big Scanner Icon Area */}
-            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-emerald-600 text-white mx-auto flex items-center justify-center shadow-lg shadow-emerald-600/20 relative group">
+            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-emerald-600 text-white mx-auto flex items-center justify-center relative group">
               <Camera className="w-10 h-10 sm:w-12 sm:h-12 group-hover:scale-110 transition-transform" />
               <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-teal-500 border-2 border-white flex items-center justify-center text-white">
-                <ScanLine className="w-3.5 h-3.5 animate-pulse" />
+                <ScanLine className="w-3.5 h-3.5" />
               </div>
             </div>
 
@@ -1029,11 +1076,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                     Inventory Match: {invoiceData.items.filter((i) => i.matchedProductId).length}/{invoiceData.items.length}
                   </span>
                   <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-black border border-slate-300">
-                    {invoiceData.engineUsed === 'gemini' 
-                      ? '🤖 Gemini AI Vision' 
-                      : invoiceData.engineUsed === 'tesseract' 
-                      ? '⚡ Tesseract Local OCR' 
-                      : 'Demo Bill'}
+                    {ENGINE_LABELS[invoiceData.engineUsed || 'sample'] || invoiceData.engineUsed}
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 font-semibold mt-0.5">
@@ -1101,6 +1144,17 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
 
           {/* Extracted Items: Mobile Cards & Desktop Table */}
           <div className="space-y-4">
+
+            {invoiceData.notices && invoiceData.notices.length > 0 && (
+              <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs space-y-1">
+                {invoiceData.notices.map((n, i) => (
+                  <p key={i} className="flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <span>{n}</span>
+                  </p>
+                ))}
+              </div>
+            )}
             
             {/* Validation Errors Alert Banner */}
             {validationErrors.length > 0 && (
@@ -1215,17 +1269,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                             )}
                             <button
                               type="button"
-                              onClick={() => {
-                                if (item.inventoryData?.storePurchasePrice != null) {
-                                  handleItemChange(item.id, 'purchasePrice', item.inventoryData.storePurchasePrice);
-                                }
-                                if (item.inventoryData?.storeSellingPrice != null) {
-                                  handleItemChange(item.id, 'sellingPrice', item.inventoryData.storeSellingPrice);
-                                }
-                                if (item.inventoryData?.storeMrp != null) {
-                                  handleItemChange(item.id, 'mrp', item.inventoryData.storeMrp);
-                                }
-                              }}
+                              onClick={() => applyStorePrices(item)}
                               className="ml-auto text-[10px] text-emerald-700 hover:text-emerald-800 font-bold hover:underline cursor-pointer"
                               title="Click to copy existing inventory prices to this item"
                             >
@@ -1271,18 +1315,20 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                         <input
                           type="number"
                           min="1"
-                          value={item.quantity}
-                          onChange={(e) => handleItemChange(item.id, 'quantity', Math.max(1, Number(e.target.value)))}
+                          value={item.quantity ?? ''}
+                          placeholder="—"
+                          onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value.trim() === '' ? null : Number(e.target.value))}
                           className="w-full text-center font-extrabold text-slate-900 bg-white px-2 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-sm"
                         />
                       </div>
                       <div>
                         <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Unit</label>
                         <select
-                          value={item.unit || 'pcs'}
+                          value={item.unit || ''}
                           onChange={(e) => handleItemChange(item.id, 'unit', e.target.value)}
                           className="w-full text-xs font-bold text-slate-800 bg-white px-1.5 py-1.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none capitalize"
                         >
+                          <option value="" disabled>Select</option>
                           {COMMON_UNITS.map((u) => (
                             <option key={u} value={u}>{u}</option>
                           ))}
@@ -1296,7 +1342,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-right">
                       <div>
                         <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5 text-left">
-                          Purchase (₹)
+                          Purchase Price (₹)
                         </label>
                         <input
                           type="number"
@@ -1313,7 +1359,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                       </div>
                       <div>
                         <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5 text-left">
-                          Selling (₹)
+                          Selling Price (₹)
                         </label>
                         <input
                           type="number"
@@ -1344,18 +1390,17 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                           }}
                           className="w-full text-right font-bold text-slate-700 bg-white px-2 py-1.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-base sm:text-sm placeholder:text-slate-400 placeholder:font-normal"
                         />
+                        <MrpStatus item={item} />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5 text-right">Line Total</label>
-                        <div className="h-[38px] flex items-center justify-end px-2 font-black text-slate-900 text-sm">
-                          {item.lineTotal !== null && item.lineTotal !== undefined ? (
-                            `₹${item.lineTotal.toLocaleString('en-IN')}`
-                          ) : (
-                            <span className="text-slate-400 font-normal" title="Line total not provided or could not be confidently extracted">—</span>
-                          )}
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5 text-right">Line Amount</label>
+                        <div className="min-h-[38px] flex items-center justify-end px-2 text-sm">
+                          <LineAmount item={item} />
                         </div>
                       </div>
                     </div>
+
+                    <LineReviewNotes item={item} onApplyRate={() => applySuggestedRate(item)} />
 
                     <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-xs">
                       <span className="text-[11px] text-slate-500 font-medium">Store Match:</span>
@@ -1391,10 +1436,10 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                     <th className="py-3 px-2">Category</th>
                     <th className="py-3 px-2 text-center">Qty</th>
                     <th className="py-3 px-2 text-center">Unit</th>
-                    <th className="py-3 px-2 text-right">Purchase (₹)</th>
-                    <th className="py-3 px-2 text-right">Selling (₹)</th>
+                    <th className="py-3 px-2 text-right">Purchase Price (₹)</th>
+                    <th className="py-3 px-2 text-right">Selling Price (₹)</th>
                     <th className="py-3 px-2 text-right">MRP (₹)</th>
-                    <th className="py-3 px-2 text-right">Line Total</th>
+                    <th className="py-3 px-2 text-right">Line Amount (₹)</th>
                     <th className="py-3 px-2 text-center">Store Status</th>
                     <th className="py-3 px-2 text-center">Actions</th>
                   </tr>
@@ -1414,40 +1459,42 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                           : 'hover:bg-slate-50/80'
                       }`}
                     >
-                      <td className="py-2.5 px-3 sm:px-4">
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            type="text"
-                            value={item.name}
-                            onChange={(e) => handleItemChange(item.id, 'name', e.target.value)}
-                            placeholder="e.g. Tata Salt 1 kg"
-                            className="w-full font-bold text-slate-900 bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none"
-                          />
-                          {itemError && (
-                            <span 
-                              className="px-1.5 py-0.5 rounded bg-rose-200 text-rose-900 text-[10px] font-black shrink-0 select-none"
-                              title={itemError.issues.join(' • ')}
-                            >
-                              ⚠️ Fix Required
-                            </span>
-                          )}
-                          {isUncertain && !itemError && (
-                            <span 
-                              className="px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 text-[10px] font-black shrink-0 select-none"
-                              title="Low OCR certainty - please verify"
-                            >
-                              ⚠️ Review
-                            </span>
-                          )}
-                          {item.validationWarning && !itemError && (
-                            <span 
-                              className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 text-[10px] font-black shrink-0 select-none border border-rose-200"
-                              title={item.validationWarning}
-                            >
-                              ⚠️ Math Mismatch
-                            </span>
-                          )}
-                        </div>
+                      <td className="py-2.5 px-3 sm:px-4 min-w-[15rem]">
+                        <input
+                          type="text"
+                          value={item.name}
+                          onChange={(e) => handleItemChange(item.id, 'name', e.target.value)}
+                          placeholder="e.g. Tata Salt 1 kg"
+                          className="w-full min-w-0 font-bold text-slate-900 bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none"
+                        />
+                        {(itemError || isUncertain || item.arithmeticStatus === 'MISMATCH') && (
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            {itemError && (
+                              <span
+                                className="px-1.5 py-0.5 rounded bg-rose-200 text-rose-900 text-[10px] font-black select-none"
+                                title={itemError.issues.join(' • ')}
+                              >
+                                Fix required
+                              </span>
+                            )}
+                            {isUncertain && !itemError && (
+                              <span
+                                className="px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 text-[10px] font-black select-none"
+                                title="Some values need checking"
+                              >
+                                Review
+                              </span>
+                            )}
+                            {item.arithmeticStatus === 'MISMATCH' && !itemError && (
+                              <span
+                                className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 text-[10px] font-black select-none border border-rose-200"
+                                title={item.validationWarning}
+                              >
+                                Qty × rate ≠ amount
+                              </span>
+                            )}
+                          </div>
+                        )}
                         {item.inventoryData && (
                           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 bg-slate-50 border border-slate-200/80 px-2 py-0.5 rounded-md">
                             <span className="font-semibold text-slate-600">Store:</span>
@@ -1462,17 +1509,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                             )}
                             <button
                               type="button"
-                              onClick={() => {
-                                if (item.inventoryData?.storePurchasePrice != null) {
-                                  handleItemChange(item.id, 'purchasePrice', item.inventoryData.storePurchasePrice);
-                                }
-                                if (item.inventoryData?.storeSellingPrice != null) {
-                                  handleItemChange(item.id, 'sellingPrice', item.inventoryData.storeSellingPrice);
-                                }
-                                if (item.inventoryData?.storeMrp != null) {
-                                  handleItemChange(item.id, 'mrp', item.inventoryData.storeMrp);
-                                }
-                              }}
+                              onClick={() => applyStorePrices(item)}
                               className="ml-auto text-[10px] text-emerald-700 hover:text-emerald-800 font-bold hover:underline cursor-pointer"
                               title="Click to copy existing inventory prices to this item"
                             >
@@ -1480,6 +1517,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                             </button>
                           </div>
                         )}
+                        <LineReviewNotes item={item} onApplyRate={() => applySuggestedRate(item)} />
                       </td>
                       <td className="py-2.5 px-2 text-slate-600">
                         <input
@@ -1493,17 +1531,19 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                         <input
                           type="number"
                           min="1"
-                          value={item.quantity}
-                          onChange={(e) => handleItemChange(item.id, 'quantity', Math.max(1, Number(e.target.value)))}
+                          value={item.quantity ?? ''}
+                          placeholder="—"
+                          onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value.trim() === '' ? null : Number(e.target.value))}
                           className="w-12 text-center font-extrabold text-slate-900 bg-slate-100 rounded-lg py-1 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                         />
                       </td>
                       <td className="py-2.5 px-2 text-center">
                         <select
-                          value={item.unit || 'pcs'}
+                          value={item.unit || ''}
                           onChange={(e) => handleItemChange(item.id, 'unit', e.target.value)}
                           className="text-xs font-bold text-slate-800 bg-slate-100 rounded-lg py-1 px-1 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 capitalize"
                         >
+                          <option value="" disabled>Select</option>
                           {COMMON_UNITS.map((u) => (
                             <option key={u} value={u}>{u}</option>
                           ))}
@@ -1553,13 +1593,12 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                           }}
                           className="w-16 sm:w-20 text-right font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-400"
                         />
+                        <div className="max-w-[9rem] ml-auto">
+                          <MrpStatus item={item} />
+                        </div>
                       </td>
-                      <td className="py-2.5 px-2 text-right font-black text-slate-900">
-                        {item.lineTotal !== null && item.lineTotal !== undefined ? (
-                          `₹${item.lineTotal.toLocaleString('en-IN')}`
-                        ) : (
-                          <span className="text-slate-400 font-normal" title="Line total not provided or could not be confidently extracted">—</span>
-                        )}
+                      <td className="py-2.5 px-2 text-right">
+                        <LineAmount item={item} />
                       </td>
                       <td className="py-2.5 px-2 text-center">
                         <button
@@ -1697,7 +1736,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                 disabled={isSaving || invoiceData.items.length === 0}
                 onClick={handleInitiateAddToStock}
                 icon={isSaving ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
-                className="w-2/3 sm:w-auto font-black px-6 shadow-md shadow-emerald-600/20"
+                className="w-2/3 sm:w-auto font-black px-6"
               >
                 {isSaving ? 'Adding to Stock...' : `Add to Stock (${totalUnits} Units)`}
               </Button>
@@ -1710,7 +1749,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
       {/* Confirmation Before Stock Update Modal (Section 8 & 15) */}
       {isConfirmModalOpen && invoiceData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl border border-slate-200 max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95">
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-lg w-full p-6 shadow-xl space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
@@ -1761,18 +1800,21 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                     <div className="min-w-0 flex-1 pr-2">
                       <p className="font-bold text-slate-900 truncate">{it.name}</p>
                       <p className="text-[10px] text-slate-500">
-                        {it.quantity} {it.unit} @ {it.purchasePrice != null ? `₹${it.purchasePrice}` : 'Rate —'}
+                        {it.quantity ?? '—'} {it.unit} @ {it.purchasePrice != null ? `₹${it.purchasePrice}` : 'Rate —'}
+                        {it.mrp != null ? ` • MRP ₹${it.mrp}` : ''}
                         {it.matchedProductId ? ' • Restocking' : ' • New Item'}
                       </p>
                     </div>
-                    <span className="font-black text-slate-900 shrink-0">₹{(it.lineTotal ?? 0).toLocaleString('en-IN')}</span>
+                    <span className="font-black text-slate-900 shrink-0">
+                      {it.lineTotal != null ? `₹${it.lineTotal.toLocaleString('en-IN')}` : '—'}
+                    </span>
                   </div>
                 ))}
               </div>
             </div>
 
             <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl text-[11px] text-emerald-950 font-medium">
-              ℹ️ Atomic Update: Stock levels will increment immediately and wholesale costs will be recorded.
+              Stock, prices, MRPs and the purchase record are saved together; if anything fails, nothing is changed.
             </div>
 
             <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-3">
@@ -1789,7 +1831,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                 disabled={isSaving}
                 onClick={handleConfirmAddToStock}
                 icon={isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                className="font-black px-5 shadow-md shadow-emerald-600/20"
+                className="font-black px-5"
               >
                 {isSaving ? 'Adding to Stock...' : 'Confirm & Add to Stock'}
               </Button>
@@ -1862,15 +1904,11 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                   <input
                     type="number"
                     min="1"
-                    value={editingItem.quantity}
+                    value={editingItem.quantity ?? ''}
+                    placeholder="—"
                     onChange={(e) => {
-                      const q = Math.max(1, Number(e.target.value));
-                      const pur = editingItem.purchasePrice != null ? Number(editingItem.purchasePrice) : 0;
-                      setEditingItem({
-                        ...editingItem,
-                        quantity: q,
-                        lineTotal: Math.round(q * pur * 100) / 100,
-                      });
+                      const val = e.target.value.trim();
+                      setEditingItem({ ...editingItem, quantity: val === '' ? null : Number(val) });
                     }}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-extrabold text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white"
                   />
@@ -1880,10 +1918,11 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                     Unit *
                   </label>
                   <select
-                    value={editingItem.unit || 'pcs'}
+                    value={editingItem.unit || ''}
                     onChange={(e) => setEditingItem({ ...editingItem, unit: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white capitalize"
                   >
+                    <option value="" disabled>Select</option>
                     {COMMON_UNITS.map((u) => (
                       <option key={u} value={u}>{u}</option>
                     ))}
@@ -1908,13 +1947,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                     onChange={(e) => {
                       const val = e.target.value.trim();
                       const num = val === '' ? null : Number(val);
-                      const q = Number(editingItem.quantity) || 1;
-                      setEditingItem({
-                        ...editingItem,
-                        purchasePrice: num,
-                        rate: num,
-                        lineTotal: num !== null ? Math.round(q * num * 100) / 100 : editingItem.lineTotal,
-                      });
+                      setEditingItem({ ...editingItem, purchasePrice: num, rate: num });
                     }}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white placeholder:text-slate-400 placeholder:font-normal"
                   />
@@ -2022,26 +2055,32 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
               {/* Line Total */}
               <div>
                 <label className="font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
-                  Line Total (₹)
+                  Line Amount (₹)
+                  {editingItem.lineTotalSource === 'INVOICE' && (
+                    <span className="ml-2 normal-case font-semibold text-slate-500">printed on invoice</span>
+                  )}
                 </label>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
                     step="0.5"
                     value={editingItem.lineTotal ?? ''}
+                    placeholder="—"
                     onChange={(e) => {
+                      const val = e.target.value.trim();
                       setEditingItem({
                         ...editingItem,
-                        lineTotal: Number(e.target.value) || 0,
+                        lineTotal: val === '' ? null : Number(val),
                       });
                     }}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-slate-900 text-sm focus:outline-none focus:border-emerald-600 focus:bg-white"
                   />
                   <button
                     type="button"
+                    disabled={editingItem.quantity == null || (editingItem.purchasePrice ?? editingItem.rate) == null}
                     onClick={() => {
-                      const pur = (editingItem.purchasePrice != null ? Number(editingItem.purchasePrice) : null) ?? (editingItem.rate != null ? Number(editingItem.rate) : 0);
-                      const q = Number(editingItem.quantity) || 0;
+                      const pur = Number(editingItem.purchasePrice ?? editingItem.rate);
+                      const q = Number(editingItem.quantity);
                       setEditingItem({
                         ...editingItem,
                         lineTotal: Math.round(q * pur * 100) / 100,
@@ -2054,7 +2093,10 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1">
-                  Calculated as: {editingItem.quantity} {editingItem.unit} × ₹{editingItem.purchasePrice ?? editingItem.rate ?? 0} = ₹{Math.round((Number(editingItem.quantity) || 0) * (Number(editingItem.purchasePrice ?? editingItem.rate) || 0) * 100) / 100}
+                  Quantity × purchase price = {editingItem.quantity ?? '—'} × ₹{editingItem.purchasePrice ?? editingItem.rate ?? '—'}
+                  {editingItem.quantity != null && (editingItem.purchasePrice ?? editingItem.rate) != null
+                    ? ` = ₹${Math.round(Number(editingItem.quantity) * Number(editingItem.purchasePrice ?? editingItem.rate) * 100) / 100}`
+                    : ''}
                 </p>
               </div>
 
@@ -2271,7 +2313,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                 size="lg"
                 onClick={capturePhotoFromCamera}
                 icon={<Camera className="w-5 h-5" />}
-                className="font-black px-6 shadow-md shadow-emerald-500/20 min-h-[44px]"
+                className="font-black px-6 min-h-[44px]"
               >
                 Capture Bill
               </Button>

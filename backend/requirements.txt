@@ -8,3 +8,6 @@ bcrypt
 pyjwt
 python-multipart
 email-validator
+httpx
+pillow
+pdfplumber

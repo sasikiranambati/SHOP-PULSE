@@ -5,8 +5,30 @@
 
 import { apiClient } from './client';
 import type { Product } from '../types/product';
-import type { CanonicalInvoiceItem, ParsedInvoice } from '../services/invoiceTypes';
+import type {
+  CanonicalInvoiceItem,
+  ConfidenceLevel,
+  ExtractionMethod,
+  LineTotalSource,
+  MrpLookupInfo,
+  MrpSource,
+  ParsedInvoice,
+} from '../services/invoiceTypes';
 import { matchCanonicalItemsWithInventory } from '../services/inventoryMatcher';
+
+export interface BackendMrpLookup {
+  status: string;
+  provider: string;
+  message: string;
+  mrp?: number | null;
+  matched_name?: string | null;
+  brand?: string | null;
+  barcode?: string | null;
+  match_method?: string | null;
+  match_confidence?: number | null;
+  http_status?: number | null;
+  looked_up_at?: string | null;
+}
 
 export interface BackendCanonicalInvoiceItem {
   id: string;
@@ -17,22 +39,44 @@ export interface BackendCanonicalInvoiceItem {
   purchase_price?: number | null;
   selling_price?: number | null;
   mrp?: number | null;
+  mrp_source?: MrpSource | null;
+  invoice_mrp?: number | null;
+  store_mrp?: number | null;
+  mrp_lookup?: BackendMrpLookup | null;
   discount?: number | null;
+  discount_pct?: number | null;
   taxable_amount?: number | null;
   tax_amount?: number | null;
   gst_rate?: number | null;
   hsn_code?: string | null;
+  barcode?: string | null;
   line_total?: number | null;
   amount?: number | null;
-  purchasePrice?: number | null;
+  line_total_source?: LineTotalSource | null;
+  arithmetic_status?: 'VERIFIED' | 'MISMATCH' | 'INSUFFICIENT_DATA';
   confidence?: number;
   confidence_level?: string;
+  needs_review?: boolean;
   source_text?: string;
+  raw_cells?: Record<string, string>;
   extraction_method?: string;
   validation_issues?: string[];
-  matched_product_id?: string;
-  matched_product_name?: string;
-  match_score?: number;
+  suggestions?: string[];
+  suggested_rate?: number | null;
+  matched_product_id?: string | null;
+  matched_product_name?: string | null;
+  match_score?: number | null;
+}
+
+export interface BackendDiagnostics {
+  document_type?: string;
+  engine_used?: string;
+  header_text?: string | null;
+  detected_columns?: string[];
+  columns?: Array<{ role: string; header_text: string; x_start?: number | null; x_end?: number | null }>;
+  rows?: Array<{ row_index: number; text: string; cells: Record<string, string>; is_item: boolean }>;
+  warnings?: string[];
+  mrp_provider?: string | null;
 }
 
 export interface BackendInvoiceExtractResponse {
@@ -43,6 +87,8 @@ export interface BackendInvoiceExtractResponse {
   invoice_no_confidence?: number;
   invoice_date?: string | null;
   date_confidence?: number;
+  gstin?: string | null;
+  invoice_total?: number | null;
   total_amount?: number;
   total_units?: number;
   total_items?: number;
@@ -53,6 +99,7 @@ export interface BackendInvoiceExtractResponse {
   items: BackendCanonicalInvoiceItem[];
   status?: string;
   reason?: string | null;
+  diagnostics?: BackendDiagnostics | null;
 }
 
 export interface BackendInvoiceConfirmRequest {
@@ -64,9 +111,11 @@ export interface BackendInvoiceConfirmRequest {
     category?: string;
     quantity: number;
     unit?: string;
-    purchase_price?: number | null;
+    purchase_price: number;
     selling_price?: number | null;
     mrp?: number | null;
+    mrp_source?: MrpSource | null;
+    line_amount?: number | null;
     matched_product_id?: string;
   }>;
 }
@@ -75,6 +124,7 @@ export interface BackendInvoiceConfirmResponse {
   purchase_id: string;
   shop_id: string;
   supplier_name?: string;
+  invoice_number?: string | null;
   total_amount: number;
   total_units: number;
   items_restocked: number;
@@ -82,84 +132,75 @@ export interface BackendInvoiceConfirmResponse {
   created_at: string;
 }
 
-/**
- * Explicit mapping between Backend API response schema and Frontend Canonical Schema.
- * Rules:
- * 1. backend 'rate' / 'purchase_price' -> frontend 'purchasePrice'
- * 2. backend 'rate' -> frontend 'rate'
- * 3. backend 'selling_price' -> frontend 'sellingPrice' (null if not in invoice, NEVER 0)
- * 4. backend 'mrp' -> frontend 'mrp' (null if not in invoice, NEVER 0)
- * 5. backend 'line_total' / 'amount' -> frontend 'lineTotal' (derived from quantity * purchasePrice only if missing)
- * 6. backend 'product_name' -> frontend 'productName'
- */
-export function mapBackendItemToCanonical(item: BackendCanonicalInvoiceItem | any): CanonicalInvoiceItem {
-  const toNum = (val: any): number | null => {
-    if (typeof val === 'number') return isNaN(val) ? null : val;
-    if (typeof val === 'string' && val.trim() !== '') {
-      const cleaned = val.replace(/[₹$€£,]/g, '').trim();
-      const n = Number(cleaned);
-      return isNaN(n) ? null : n;
-    }
-    return null;
-  };
-
-  const rawPurchasePrice = toNum(item.raw_purchase_price ?? item.rawPurchasePrice);
-  const rawSellingPrice = toNum(item.raw_selling_price ?? item.rawSellingPrice);
-  const rawMrp = toNum(item.raw_mrp ?? item.rawMrp);
-  const rawRate = toNum(item.raw_rate ?? item.rawRate);
-
-  const itemRate = toNum(item.rate);
-  const itemPurchasePrice = toNum(item.purchase_price) ?? toNum(item.purchasePrice);
-  const itemSellingPrice = toNum(item.selling_price) ?? toNum(item.sellingPrice);
-  const itemMrp = toNum(item.mrp);
-
-  // Rate: preserve original extracted rate from Rate column
-  const rate = itemRate !== null ? itemRate : itemPurchasePrice;
-
-  // Purchase Price: in stock-intake rules, extracted Rate is used as Purchase Price
-  const purchasePrice = itemPurchasePrice !== null
-    ? itemPurchasePrice
-    : (itemRate !== null ? itemRate : null);
-
-  // Selling Price and MRP must remain null unless explicitly provided in invoice
-  const sellingPrice = itemSellingPrice !== null ? itemSellingPrice : null;
-  const mrp = itemMrp !== null ? itemMrp : null;
-
-  const rawQty = toNum(item.quantity);
-  const quantity = rawQty !== null && rawQty > 0 ? rawQty : 1;
-
-  // Line Total: check line_total, lineTotal, amount
-  let lineTotal = toNum(item.line_total) ?? toNum(item.lineTotal) ?? toNum(item.amount);
-
-  // If Amount (lineTotal) is missing: lineTotal = quantity * purchasePrice ONLY when both quantity and purchasePrice are valid
-  if (lineTotal === null && quantity > 0 && purchasePrice !== null) {
-    lineTotal = Math.round(quantity * purchasePrice * 100) / 100;
+const toNum = (val: unknown): number | null => {
+  if (typeof val === 'number') return Number.isFinite(val) ? val : null;
+  if (typeof val === 'string' && val.trim() !== '') {
+    const n = Number(val.replace(/[₹$€£,]/g, '').trim());
+    return Number.isFinite(n) ? n : null;
   }
+  return null;
+};
+
+function mapMrpLookup(l: BackendMrpLookup | null | undefined): MrpLookupInfo | null {
+  if (!l) return null;
+  return {
+    status: l.status,
+    provider: l.provider,
+    message: l.message,
+    mrp: l.mrp ?? null,
+    matchedName: l.matched_name ?? null,
+    matchConfidence: l.match_confidence ?? null,
+    lookedUpAt: l.looked_up_at ?? null,
+  };
+}
+
+/**
+ * Explicit mapping between the backend response and the frontend canonical item.
+ * Values the backend could not read stay null here too: no default quantity,
+ * no default prices, no default confidence.
+ */
+export function mapBackendItemToCanonical(item: BackendCanonicalInvoiceItem): CanonicalInvoiceItem {
+  const rate = toNum(item.rate);
+  const purchasePrice = toNum(item.purchase_price) ?? rate;
+  const rawQty = toNum(item.quantity);
+  const quantity = rawQty !== null && rawQty > 0 ? rawQty : null;
+  const lineTotal = toNum(item.line_total) ?? toNum(item.amount);
+  const level = (item.confidence_level || 'LOW').toUpperCase();
 
   return {
-    id: item.id || `item_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 5)}`,
-    productName: item.product_name || item.productName || item.name || 'Unlabeled Item',
+    id: item.id || `item_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+    productName: item.product_name || 'Unlabeled Item',
     quantity,
     unit: item.unit ?? null,
     rate,
     purchasePrice,
-    sellingPrice,
-    mrp,
-    rawRate: rawRate ?? rate,
-    rawPurchasePrice: rawPurchasePrice ?? purchasePrice,
-    rawSellingPrice: rawSellingPrice ?? sellingPrice,
-    rawMrp: rawMrp ?? mrp,
-    discount: item.discount ?? null,
-    taxableAmount: item.taxable_amount ?? item.taxableAmount ?? null,
-    taxAmount: item.tax_amount ?? item.taxAmount ?? null,
-    gstRate: item.gst_rate ?? item.gstRate ?? null,
-    hsnCode: item.hsn_code ?? item.hsnCode ?? null,
+    sellingPrice: toNum(item.selling_price),
+    mrp: toNum(item.mrp),
+    mrpSource: item.mrp_source ?? null,
+    invoiceMrp: toNum(item.invoice_mrp),
+    storeMrp: toNum(item.store_mrp),
+    mrpLookup: mapMrpLookup(item.mrp_lookup),
+    rawRate: rate,
+    rawPurchasePrice: purchasePrice,
+    rawSellingPrice: toNum(item.selling_price),
+    rawMrp: toNum(item.invoice_mrp),
+    discount: toNum(item.discount),
+    taxableAmount: toNum(item.taxable_amount),
+    taxAmount: toNum(item.tax_amount),
+    gstRate: toNum(item.gst_rate),
+    hsnCode: item.hsn_code ?? null,
     lineTotal,
-    confidence: item.confidence ?? 85,
-    confidenceLevel: (item.confidence_level || item.confidenceLevel || 'HIGH') as any,
-    sourceText: item.source_text || item.sourceText || '',
-    extractionMethod: (item.extraction_method || item.extractionMethod || 'TABLE_STRUCTURED') as any,
-    validationIssues: item.validation_issues || item.validationIssues || [],
+    lineTotalSource: item.line_total_source ?? (lineTotal !== null ? 'INVOICE' : null),
+    arithmeticStatus: item.arithmetic_status,
+    needsReview: item.needs_review ?? true,
+    suggestions: item.suggestions || [],
+    suggestedRate: toNum(item.suggested_rate),
+    rawCells: item.raw_cells || {},
+    confidence: typeof item.confidence === 'number' ? item.confidence : 0,
+    confidenceLevel: (['HIGH', 'MEDIUM', 'LOW'].includes(level) ? level : 'LOW') as ConfidenceLevel,
+    sourceText: item.source_text || '',
+    extractionMethod: (item.extraction_method || 'TABLE_STRUCTURED') as ExtractionMethod,
+    validationIssues: item.validation_issues || [],
   };
 }
 
@@ -171,56 +212,97 @@ export function mapBackendResponseToParsedInvoice(
   existingProducts: Product[] = []
 ): ParsedInvoice {
   const canonicalItems = (res.items || []).map((it) => mapBackendItemToCanonical(it));
-  const matchedItems = matchCanonicalItemsWithInventory(canonicalItems, existingProducts);
+  const matchedItems = matchCanonicalItemsWithInventory(canonicalItems, existingProducts).map((it, idx) => {
+    // The backend matched by barcode/SKU or an unambiguous name; prefer it when the product is loaded
+    const backendId = res.items[idx]?.matched_product_id;
+    const prod = backendId ? existingProducts.find((p) => p.id === backendId) : undefined;
+    if (!prod) return it;
+    return {
+      ...it,
+      matchedProductId: prod.id,
+      isMatchConfirmed: true,
+      currentStock: prod.stock,
+      unit: it.unit || prod.unit || '',
+      inventoryData: {
+        id: prod.id,
+        name: prod.name,
+        currentStock: prod.stock,
+        storePurchasePrice: prod.purchasePrice,
+        storeSellingPrice: prod.sellingPrice ?? prod.price,
+        storeMrp: prod.mrp,
+      },
+    };
+  });
 
   const totalUnits = matchedItems.reduce((acc, it) => acc + (it.quantity || 0), 0);
-  const totalAmount = res.total_amount || matchedItems.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
+  const lineSum = matchedItems.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
+  const diag = res.diagnostics || undefined;
 
   return {
     id: res.id || `inv_${Date.now().toString(36)}`,
     supplierName: res.supplier_name || '',
     invoiceNumber: res.invoice_number || '',
     invoiceDate: res.invoice_date || '',
+    gstin: res.gstin || undefined,
     items: matchedItems,
-    totalAmount,
+    totalAmount: res.invoice_total ?? lineSum,
     totalUnits,
     totalItems: matchedItems.length,
-    confidenceScore: res.confidence_score || 85,
+    confidenceScore: Math.round(res.confidence_score ?? 0),
     rawOcrText: res.raw_ocr_text || '',
-    engineUsed: (res.engine_used as any) || 'backend_engine',
-    extractionMethod: (res.extraction_method as any) || 'TABLE_STRUCTURED',
-    supplierConfidence: res.supplier_confidence || 80,
-    invoiceNoConfidence: res.invoice_no_confidence || 80,
-    dateConfidence: res.date_confidence || 80,
-    status: matchedItems.length > 0 ? 'success' : 'needs_review',
+    engineUsed: (res.engine_used as ParsedInvoice['engineUsed']) || 'backend_ocr_pipeline',
+    extractionMethod: (res.extraction_method as ExtractionMethod) || 'TABLE_STRUCTURED',
+    supplierConfidence: res.supplier_confidence ?? 0,
+    invoiceNoConfidence: res.invoice_no_confidence ?? 0,
+    dateConfidence: res.date_confidence ?? 0,
+    documentType: diag?.document_type === 'pdf' ? 'pdf' : 'image',
+    status: matchedItems.length > 0 ? (res.status === 'success' ? 'success' : 'needs_review') : 'needs_review',
     reason: res.reason || null,
     diagnostics: {
       totalRawLines: (res.raw_ocr_text || '').split('\n').filter(Boolean).length,
       totalRawWords: (res.raw_ocr_text || '').split(/\s+/).filter(Boolean).length,
-      headerDetected: Boolean(res.supplier_name || res.invoice_number),
-      detectedColumns: [],
+      headerDetected: Boolean(diag?.header_text),
+      detectedColumns: diag?.detected_columns || [],
       detectedSections: [],
-      warnings: res.reason ? [res.reason] : [],
+      warnings: diag?.warnings || [],
+      detectedColumnsList: (diag?.columns || []).map((c) => ({
+        type: c.role as any,
+        headerText: c.header_text,
+        minX: c.x_start ?? 0,
+        maxX: c.x_end ?? 0,
+        confidence: 100,
+      })),
+      detectedRows: (diag?.rows || [])
+        .filter((r) => r.is_item)
+        .map((r) => ({
+          productName: r.cells.product || '',
+          quantity: r.cells.qty || '',
+          unit: r.cells.unit || '',
+          rate: r.cells.purchase_price || r.cells.rate || '',
+          discount: r.cells.discount || r.cells.discount_pct || '',
+          tax: r.cells.tax_amount || r.cells.gst_rate || '',
+          amount: r.cells.total || r.cells.taxable || '',
+        })),
       rawApiResponse: res,
+      mrpProvider: diag?.mrp_provider ?? null,
     },
+    notices: diag?.warnings || [],
   };
 }
 
 export const invoiceApi = {
   /**
-   * Upload an invoice file to the backend extraction endpoint.
+   * Upload an invoice file to the backend extraction endpoint (multipart; the browser sets the boundary).
    */
   extractInvoice: async (file: File): Promise<BackendInvoiceExtractResponse> => {
     const formData = new FormData();
     formData.append('file', file);
-    return apiClient.post<BackendInvoiceExtractResponse>('/api/v1/invoices/extract', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    return apiClient.post<BackendInvoiceExtractResponse>('/api/v1/invoices/extract', formData);
   },
 
   /**
-   * Confirm invoice line items on the backend, updating database stock
-   * and logging a comprehensive purchase transaction.
+   * Confirm invoice line items on the backend. One transaction updates stock,
+   * creates new products, stores MRPs with their source and records the purchase.
    */
   confirmInvoice: async (
     payload: BackendInvoiceConfirmRequest

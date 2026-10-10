@@ -1,6 +1,7 @@
 """
 Product and MRP Lookup Service for ShopPulse.
-Coordinates local inventory lookup and optional external OpenMRP catalog synchronization.
+Looks up the shop's own inventory first, then the configured external MRP provider
+(services/mrp_lookup.py), which reports an explicit lookup status.
 
 Core Safety Rules:
 1. Purchase Price, Selling Price, and MRP must remain separate fields.
@@ -8,7 +9,7 @@ Core Safety Rules:
 3. Never automatically set Selling Price equal to MRP.
 4. Never fabricate missing values.
 5. Reject ambiguous matches instead of selecting an arbitrary product.
-6. Display the source of retrieved data ('SHOP_INVENTORY', 'OPENMRP_CATALOG', 'NONE').
+6. Display the source of retrieved data ('SHOP_INVENTORY', provider name, 'NONE').
 """
 
 import difflib
@@ -18,7 +19,8 @@ from sqlalchemy.orm import Session
 
 from db.models.product import Product
 from schemas.product import ProductLookupResponse
-from services.openmrp_client import openmrp_client
+from services import mrp_lookup
+from services.product_matching import normalize_gtin
 
 
 def lookup_product(
@@ -58,6 +60,7 @@ def lookup_product(
                 purchase_price=local_by_barcode.purchase_price,
                 selling_price=local_by_barcode.selling_price,
                 mrp=local_by_barcode.mrp,
+                mrp_source=local_by_barcode.mrp_source,
                 source="SHOP_INVENTORY",
                 confidence=1.0,
                 matched_product_id=local_by_barcode.id,
@@ -81,6 +84,7 @@ def lookup_product(
                 purchase_price=local_by_name.purchase_price,
                 selling_price=local_by_name.selling_price,
                 mrp=local_by_name.mrp,
+                mrp_source=local_by_name.mrp_source,
                 source="SHOP_INVENTORY",
                 confidence=0.98,
                 matched_product_id=local_by_name.id,
@@ -116,46 +120,34 @@ def lookup_product(
                     purchase_price=top_prod.purchase_price,
                     selling_price=top_prod.selling_price,
                     mrp=top_prod.mrp,
+                    mrp_source=top_prod.mrp_source,
                     source="SHOP_INVENTORY",
                     confidence=round(top_score, 2),
                     matched_product_id=top_prod.id,
                     notes=f"Fuzzy match ({int(top_score * 100)}% match) from shop inventory."
                 )
 
-    # 3. External OpenMRP Catalog Lookup (when configured)
-    query_term = clean_name or clean_barcode
-    if query_term and openmrp_client.is_configured:
-        ext_result = openmrp_client.search_products(query_term, limit=5)
-        if ext_result.get("success") and ext_result.get("items"):
-            items = ext_result["items"]
-            # Check for ambiguity
-            if len(items) == 1:
-                item = items[0]
-                return ProductLookupResponse(
-                    found=True,
-                    name=item.get("name"),
-                    barcode=item.get("sku"),
-                    unit="pcs",
-                    purchase_price=item.get("unit_cost"),
-                    selling_price=item.get("unit_value"),
-                    mrp=None,  # OpenMRP is manufacturing ERP; does NOT supply retail MRP
-                    source="OPENMRP_CATALOG",
-                    confidence=0.85,
-                    notes="Retrieved from OpenMRP tenant catalog. Note: OpenMRP is a manufacturing ERP and does not supply retail MRP."
-                )
-            elif len(items) > 1:
-                # Multiple matches: reject ambiguity
-                return ProductLookupResponse(
-                    found=False,
-                    source="OPENMRP_CATALOG",
-                    confidence=0.0,
-                    notes=f"Ambiguous match: {len(items)} items matched in OpenMRP catalog. Manual review required."
-                )
+    # 3. External MRP provider. Only a FOUND result (matched product + valid MRP field)
+    #    counts as found; purchase and selling prices are never taken from the provider.
+    ext = mrp_lookup.lookup_mrp(mrp_lookup.LookupQuery(product_name=clean_name, gtin=normalize_gtin(clean_barcode)))
+    if ext.status == mrp_lookup.FOUND:
+        return ProductLookupResponse(
+            found=True,
+            name=ext.matched_name,
+            barcode=ext.barcode,
+            mrp=ext.mrp,
+            mrp_source="API",
+            mrp_lookup_status=ext.status,
+            source=ext.provider,
+            confidence=ext.match_confidence or 0.0,
+            notes=ext.message,
+        )
 
     # 4. Not Found
     return ProductLookupResponse(
         found=False,
         source="NONE",
         confidence=0.0,
-        notes="Product not found in local inventory or external catalogs. Enter prices and MRP manually."
+        mrp_lookup_status=ext.status,
+        notes=f"Product not found in shop inventory. External MRP lookup: {ext.message}",
     )

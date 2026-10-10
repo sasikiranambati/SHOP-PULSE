@@ -78,10 +78,15 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   }
 
   const token = getAccessToken();
+  // File uploads: the browser must set multipart/form-data itself (it adds the boundary)
+  const isFormData = typeof FormData !== 'undefined' && restOptions.body instanceof FormData;
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(customHeaders as Record<string, string>),
   };
+  if (isFormData) {
+    delete headers['Content-Type'];
+  }
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -192,7 +197,7 @@ export const apiClient = {
     request<T>(endpoint, {
       ...options,
       method: 'POST',
-      body: body ? JSON.stringify(body) : undefined,
+      body: typeof FormData !== 'undefined' && body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
     }),
 
   put: <T>(endpoint: string, body?: any, options?: RequestOptions) =>

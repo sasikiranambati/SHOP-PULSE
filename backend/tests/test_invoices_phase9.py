@@ -120,15 +120,20 @@ def test_arithmetic_reconciliation_and_missing_values():
     res2 = resolve_item_arithmetic_py(10.0, 250.0, None)
     assert res2["line_total"] == 2500.0
 
-    # 3. Derive missing rate from Qty and Total
+    # 3. Missing rate is NOT silently derived: amount ÷ qty is only a suggestion for review
     res3 = resolve_item_arithmetic_py(10.0, None, 2500.0)
-    assert res3["purchase_price"] == 250.0
+    assert res3["purchase_price"] is None
+    assert res3["suggested_rate"] == 250.0
+    assert res3["line_total"] == 2500.0
+    assert any("Rate could not be read" in i for i in res3["issues"])
 
-    # 4. Decimal dropout: Qty=200 read from 20.0, Rate=70, Total=1400
+    # 4. Decimal dropout (Qty=200 read from 20.0): printed values are kept, a correction is suggested
     res4 = resolve_item_arithmetic_py(200.0, 70.0, 1400.0)
-    assert res4["quantity"] == 20.0
+    assert res4["quantity"] == 200.0
     assert res4["purchase_price"] == 70.0
     assert res4["line_total"] == 1400.0
+    assert res4["status"] == "MISMATCH"
+    assert any("Quantity may be 20" in s for s in res4["suggestions"])
 
     # 5. Direct match with tax
     res5 = resolve_item_arithmetic_py(10.0, 250.0, 2625.0, tax=125.0)

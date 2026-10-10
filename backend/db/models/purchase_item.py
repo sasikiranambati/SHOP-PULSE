@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -14,6 +14,10 @@ class PurchaseItem(Base):
     product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False, index=True)
     quantity = Column(Integer, nullable=False)
     purchase_price = Column(Float, nullable=False)
+    # Amount printed on the invoice line (after discount/tax as invoiced); NULL if not provided
+    line_amount = Column(Float, nullable=True)
+    mrp = Column(Float, nullable=True)
+    mrp_source = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

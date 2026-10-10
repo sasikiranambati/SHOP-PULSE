@@ -14,9 +14,31 @@ class Settings(BaseSettings):
     VOICE_MODE: str = "mock"  # "mock" or "sarvam"
     SARVAM_API_KEY: Optional[str] = None
 
-    # OpenMRP Settings (Material Requirements Planning platform)
+    # OpenMRP Settings (Material Requirements Planning platform — not Maximum Retail Price)
     OPENMRP_API_KEY: Optional[str] = None
     OPENMRP_ACCOUNT_ID: Optional[str] = None
+    OPENMRP_API_VERSION: str = "1.0.forge-preview.3"
+
+    # External Maximum Retail Price (MRP) lookup used by the invoice scanner.
+    # MRP_PROVIDER: "openmrp" (default; OpenMRP publishes no MRP, so lookups report
+    # MRP_UNAVAILABLE), "custom_http" (any JSON API whose documented MRP field is set
+    # in MRP_API_MRP_FIELD), or "none".
+    MRP_PROVIDER: str = "openmrp"
+    MRP_LOOKUP_ENABLED: bool = True
+    MRP_LOOKUP_TIME_BUDGET_SECONDS: float = 12.0
+    MRP_API_BASE_URL: Optional[str] = None
+    MRP_API_KEY: Optional[str] = None
+    MRP_API_AUTH_HEADER: str = "Authorization"
+    MRP_API_AUTH_SCHEME: str = "Bearer"
+    MRP_API_BARCODE_PATH: Optional[str] = None
+    MRP_API_SEARCH_PATH: Optional[str] = None
+    MRP_API_SEARCH_PARAM: str = "q"
+    MRP_API_RESULTS_FIELD: Optional[str] = None
+    MRP_API_MRP_FIELD: Optional[str] = None
+    MRP_API_NAME_FIELD: str = "name"
+    MRP_API_BRAND_FIELD: str = "brand"
+    MRP_API_BARCODE_FIELD: str = "barcode"
+    MRP_API_TIMEOUT_SECONDS: float = 5.0
 
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_USER: str = "postgres"

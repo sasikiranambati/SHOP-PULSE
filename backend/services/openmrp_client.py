@@ -2,6 +2,13 @@
 OpenMRP API Client Module.
 Securely interfaces with the OpenMRP manufacturing REST API (https://api.openmrp.ai).
 
+What OpenMRP is (from the open-mrp/api project README): "An open source manufacturing
+platform" covering items, BOMs, production planning, inventory and purchasing. "MRP" here
+means Material Requirements Planning. It publishes no Maximum Retail Price field, no
+Indian retail catalogue and no GTIN lookup, so it is never used as an MRP source
+(see services/mrp_lookup.py). The README documents `GET /v1/catalog/items` with
+`Authorization: Bearer`, `OpenMRP-Account` and `OpenMRP-Version` headers.
+
 CRITICAL SECURITY RULES:
 - Never log or expose raw Bearer tokens or API keys.
 - Never return API keys in API responses or frontend payloads.
@@ -71,12 +78,16 @@ class OpenMRPClient:
         }
         if self._account_id:
             headers["OpenMRP-Account"] = self._account_id.strip()
+        if settings.OPENMRP_API_VERSION:
+            headers["OpenMRP-Version"] = settings.OPENMRP_API_VERSION
         return headers
 
     def search_products(self, query: str, limit: int = 10) -> Dict[str, Any]:
         """
-        Searches products in the OpenMRP account catalog using the official endpoint:
-        GET /v1/catalog/products?q={query}&limit={limit}
+        Searches items in the OpenMRP account catalog:
+        GET /v1/catalog/items?q={query}&limit={limit}
+        (the path is the one documented in the project README; the `q`/`limit`
+        parameters and the item fields parsed below are not confirmed by public docs)
         
         Note: OpenMRP is a Material Requirements Planning platform.
         Products in OpenMRP belong to the account's manufacturing catalog and include
@@ -98,7 +109,7 @@ class OpenMRPClient:
             if now - cached_time < CACHE_TTL_SECONDS:
                 return cached_data
 
-        url = f"{self._base_url}/v1/catalog/products"
+        url = f"{self._base_url}/v1/catalog/items"
         params = {"q": query.strip(), "limit": min(limit, 50)}
 
         try:
@@ -133,8 +144,8 @@ class OpenMRPClient:
                     self._cache[cache_key] = (now, result)
                     return result
 
-                elif response.status_code == 401:
-                    logger.warning("OpenMRP authentication failed (HTTP 401). Check OPENMRP_API_KEY.")
+                elif response.status_code in (401, 403):
+                    logger.warning("OpenMRP authentication failed (HTTP %s). Check OPENMRP_API_KEY.", response.status_code)
                     return {
                         "success": False,
                         "error": "AUTHENTICATION_FAILED",

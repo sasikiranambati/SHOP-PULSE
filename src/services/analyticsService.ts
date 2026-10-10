@@ -383,20 +383,21 @@ export async function getSlowMovingProducts(
 // ---------------------------------------------------------------------------
 
 /**
- * Estimate daily, weekly, monthly, and overall gross profit using (sellingPrice - purchasePrice).
- * Safely handles missing purchase prices using standard 25% gross margin estimation.
+ * Gross profit from recorded sales: sale revenue minus cost (units sold × product purchase price).
+ * Lines whose product has no purchase price are excluded and counted in itemsWithMissingCost —
+ * no margin is assumed — and losses are reported as negative profit, not clamped to zero.
+ * Cost uses the product's current purchase price (sale lines do not store historical cost).
  */
 export async function getEstimatedProfit(shopId: string = 'default'): Promise<ProfitSummary> {
   const { products, sales } = await getRawStoreData(shopId);
 
   // Map product cost prices
-  const productCostMap = new Map<string, { selling: number; cost: number; hasValidCost: boolean }>();
+  const productCostMap = new Map<string, { selling: number; cost: number | null }>();
 
   products.forEach(p => {
     const selling = p.sellingPrice || p.price || 0;
     const hasValidCost = typeof p.purchasePrice === 'number' && p.purchasePrice > 0;
-    const cost = hasValidCost ? p.purchasePrice : Math.round(selling * 0.75 * 100) / 100; // 25% default margin
-    productCostMap.set(p.id, { selling, cost, hasValidCost });
+    productCostMap.set(p.id, { selling, cost: hasValidCost ? p.purchasePrice : null });
   });
 
   const now = new Date();
@@ -426,16 +427,17 @@ export async function getEstimatedProfit(shopId: string = 'default'): Promise<Pr
     (sale.items || []).forEach(item => {
       const prodInfo = productCostMap.get(item.productId);
       const selling = item.unitPrice || item.price || prodInfo?.selling || 0;
-      const cost = prodInfo?.cost || Math.round(selling * 0.75 * 100) / 100;
+      const cost = prodInfo?.cost ?? null;
 
-      if (!prodInfo?.hasValidCost) {
+      if (cost === null) {
         itemsWithMissingCost++;
+        return;
       }
 
       const qty = item.quantity || 1;
       const itemRevenue = (item.total ?? item.totalPrice ?? (selling * qty));
       const itemCost = cost * qty;
-      const profit = Math.max(0, itemRevenue - itemCost);
+      const profit = itemRevenue - itemCost;
 
       totalRevenue += itemRevenue;
       totalProfit += profit;
@@ -743,7 +745,7 @@ export async function getTopProducts(limitCount: number = 5): Promise<TopProduct
       unit: t.unit,
       price: Math.round(t.revenue / Math.max(1, t.quantitySold)),
       sellingPrice: Math.round(t.revenue / Math.max(1, t.quantitySold)),
-      purchasePrice: Math.round(t.revenue / Math.max(1, t.quantitySold) * 0.75),
+      purchasePrice: 0, // unknown: product no longer in inventory; no cost is assumed
       reorderLevel: 5,
       minStock: 5,
       status: 'In Stock',

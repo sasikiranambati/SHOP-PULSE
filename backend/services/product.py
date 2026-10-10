@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Optional, List, Tuple
 from uuid import UUID
 from sqlalchemy.orm import Session
@@ -13,6 +14,8 @@ def create_product(db: Session, product_in: ProductCreate, shop_id: UUID) -> Pro
         selling_price=product_in.selling_price,
         purchase_price=product_in.purchase_price,
         mrp=product_in.mrp,
+        mrp_source=(product_in.mrp_source or "MANUAL") if product_in.mrp is not None else None,
+        mrp_updated_at=datetime.now(timezone.utc) if product_in.mrp is not None else None,
         current_stock=product_in.current_stock,
         reorder_level=product_in.reorder_level,
         unit=product_in.unit,
@@ -51,6 +54,11 @@ def get_products_by_shop(
 
 def update_product(db: Session, db_product: Product, product_in: ProductUpdate) -> Product:
     update_data = product_in.model_dump(exclude_unset=True)
+    mrp_source = update_data.pop("mrp_source", None)
+    if "mrp" in update_data and update_data["mrp"] != db_product.mrp:
+        # Track where the MRP came from whenever it changes
+        db_product.mrp_source = (mrp_source or "MANUAL") if update_data["mrp"] is not None else None
+        db_product.mrp_updated_at = datetime.now(timezone.utc)
     for field, value in update_data.items():
         setattr(db_product, field, value)
         

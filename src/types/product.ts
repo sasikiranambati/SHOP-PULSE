@@ -31,6 +31,8 @@ export interface Product {
   price: number; // Backward compatibility alias for sellingPrice
   purchasePrice: number;
   mrp?: number;
+  /** Where the stored MRP came from (INVOICE, API, MANUAL, STORE) */
+  mrpSource?: string;
   reorderLevel: number;
   minStock: number; // Backward compatibility alias for reorderLevel
   imageUrl?: string;
