@@ -231,10 +231,14 @@ export const SAMPLE_INVOICES: Array<{ label: string; supplier: string; invoice: 
 const GEMINI_KEY_STORAGE = 'shoppulse_gemini_api_key';
 const OCR_ENGINE_STORAGE = 'shoppulse_ocr_engine';
 
+/**
+ * The optional Gemini key is the user's own key, typed into Engine Settings and kept in
+ * this browser only. It is deliberately not read from a VITE_* variable, because Vite
+ * inlines those into the public JavaScript bundle.
+ */
 export function getGeminiApiKey(): string {
-  const envKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) || '';
   const localKey = (typeof localStorage !== 'undefined' && localStorage.getItem(GEMINI_KEY_STORAGE)) || '';
-  return localKey.trim() || envKey.trim();
+  return localKey.trim();
 }
 
 export function setGeminiApiKey(key: string): void {
@@ -305,7 +309,8 @@ Important Rules:
 4. Do NOT include taxes (CGST/SGST), subtotals, round-off, or discounts as items.
 5. Output raw JSON only. Do not enclose in backticks or markdown codeblocks.`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  // Key goes in a header, not the URL, so it does not end up in logs or proxies
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
   const requestBody = {
     contents: [
@@ -329,7 +334,7 @@ Important Rules:
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify(requestBody),
   });
 
@@ -349,7 +354,7 @@ Important Rules:
 
   const rawItems = (parsedData.items || []).map((it: any, idx: number) => ({
     productName: String(it.name || 'Product ' + (idx + 1)).trim(),
-    quantity: Math.max(1, Number(it.quantity) || 1),
+    quantity: Number(it.quantity) > 0 ? Number(it.quantity) : null,
     unit: String(it.unit || 'pcs').toLowerCase(),
     purchasePrice: Number(it.purchasePrice) > 0 ? Number(it.purchasePrice) : null,
     sellingPrice: Number(it.sellingPrice) > 0 ? Number(it.sellingPrice) : null,
@@ -408,7 +413,7 @@ Important Rules:
     gstin: canonical.gstin || undefined,
     items: matchedItems,
     totalAmount: canonical.totalAmount || matchedItems.reduce((acc, i) => acc + (i.lineTotal ?? 0), 0),
-    totalUnits: matchedItems.reduce((acc, i) => acc + i.quantity, 0),
+    totalUnits: matchedItems.reduce((acc, i) => acc + (i.quantity ?? 0), 0),
     totalItems: matchedItems.length,
     subtotal: canonical.subtotal || undefined,
     taxAmount: canonical.taxAmount || undefined,

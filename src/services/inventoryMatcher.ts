@@ -173,14 +173,17 @@ export function matchCanonicalItemsWithInventory(
     const purchasePrice = item.purchasePrice ?? item.rate ?? null;
     const sellingPrice = item.sellingPrice ?? null;
     const mrp = item.mrp ?? null;
-    const quantity = item.quantity ?? 1;
+    // A quantity that could not be read stays null; the review screen asks for it
+    const quantity = item.quantity ?? null;
 
     // Line total comes from the invoice Amount column when available.
-    // If Amount is missing: lineTotal = quantity * purchasePrice ONLY when both are valid.
-    // NEVER write 0 for a missing line total — null means "not available".
+    // If Amount is missing: lineTotal = quantity * purchasePrice ONLY when both are valid,
+    // and it is labelled CALCULATED. NEVER write 0 for a missing line total.
     let lineTotal: number | null = item.lineTotal ?? null;
+    let lineTotalSource = item.lineTotalSource ?? (lineTotal !== null ? 'INVOICE' : null);
     if (lineTotal === null && quantity !== null && purchasePrice !== null && purchasePrice > 0) {
       lineTotal = Math.round(quantity * purchasePrice * 100) / 100;
+      lineTotalSource = 'CALCULATED';
     }
 
     const inventoryData =
@@ -204,17 +207,30 @@ export function matchCanonicalItemsWithInventory(
       matchLevel === 'MEDIUM' ||
       (item.validationIssues && item.validationIssues.length > 0);
 
+    // Unit: the invoice's own unit, else the confirmed store product's stock unit; never a guess
+    const unit = item.unit || (matchLevel === 'HIGH' && bestProduct?.unit ? bestProduct.unit : '');
+
     return {
       id: item.id,
       name: item.productName,
       category,
       quantity,
-      unit: item.unit || 'pcs',
+      unit,
       rate,
       purchasePrice,
       sellingPrice,
       mrp,
       lineTotal,
+      lineTotalSource,
+      mrpSource: item.mrpSource ?? (mrp !== null ? 'INVOICE' : null),
+      invoiceMrp: item.invoiceMrp ?? item.rawMrp ?? null,
+      storeMrp: item.storeMrp ?? (bestProduct && matchLevel === 'HIGH' ? bestProduct.mrp ?? null : null),
+      mrpLookup: item.mrpLookup ?? null,
+      arithmeticStatus: item.arithmeticStatus,
+      needsReview: item.needsReview ?? !!lowConfidence,
+      suggestions: item.suggestions,
+      suggestedRate: item.suggestedRate ?? null,
+      rawCells: item.rawCells,
       rawRate: item.rawRate ?? item.rate ?? null,
       rawPurchasePrice: item.rawPurchasePrice ?? item.purchasePrice ?? null,
       rawSellingPrice: item.rawSellingPrice ?? item.sellingPrice ?? null,

@@ -13,6 +13,9 @@ export interface ProductBackend {
   category?: string | null;
   selling_price: number;
   purchase_price?: number | null;
+  mrp?: number | null;
+  mrp_source?: 'INVOICE' | 'API' | 'MANUAL' | 'STORE' | null;
+  mrp_updated_at?: string | null;
   current_stock: number;
   reorder_level?: number | null;
   unit?: string | null;
@@ -35,6 +38,8 @@ export interface ProductCreateInput {
   category?: string | null;
   selling_price: number;
   purchase_price?: number | null;
+  mrp?: number | null;
+  mrp_source?: 'INVOICE' | 'API' | 'MANUAL' | 'STORE' | null;
   current_stock: number;
   reorder_level?: number | null;
   unit?: string | null;
@@ -47,6 +52,8 @@ export interface ProductUpdateInput {
   category?: string | null;
   selling_price?: number;
   purchase_price?: number | null;
+  mrp?: number | null;
+  mrp_source?: 'INVOICE' | 'API' | 'MANUAL' | 'STORE' | null;
   current_stock?: number;
   reorder_level?: number | null;
   unit?: string | null;
@@ -138,6 +145,8 @@ export interface ProductLookupResult {
   purchase_price?: number | null;
   selling_price?: number | null;
   mrp?: number | null;
+  mrp_source?: string | null;
+  mrp_lookup_status?: string | null;
   source: string;
   confidence: number;
   matched_product_id?: string | null;

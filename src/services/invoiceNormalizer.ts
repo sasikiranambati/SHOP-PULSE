@@ -30,7 +30,8 @@ export function normalizeCanonicalItem(
   const issues: string[] = [];
 
   const productName = (raw.productName || 'Unlabeled Item').trim();
-  const quantity = typeof raw.quantity === 'number' && raw.quantity > 0 ? raw.quantity : 1;
+  // An unreadable quantity stays null instead of being assumed to be 1
+  const quantity = typeof raw.quantity === 'number' && raw.quantity > 0 ? raw.quantity : null;
   const unit = raw.unit ? String(raw.unit).trim() : null;
 
   const rawRateVal = typeof raw.rawRate === 'number' ? raw.rawRate : (typeof raw.rate === 'number' ? raw.rate : null);
@@ -44,10 +45,15 @@ export function normalizeCanonicalItem(
   const mrp = typeof raw.mrp === 'number' ? raw.mrp : null;
 
   let lineTotal = typeof raw.lineTotal === 'number' ? raw.lineTotal : null;
+  let lineTotalSource: 'INVOICE' | 'CALCULATED' | null = lineTotal !== null ? 'INVOICE' : null;
 
   // If Amount (lineTotal) is missing: lineTotal = quantity * purchasePrice ONLY when both quantity and purchasePrice are valid
-  if (lineTotal === null && quantity > 0 && purchasePrice !== null) {
+  if (lineTotal === null && quantity !== null && purchasePrice !== null) {
     lineTotal = Math.round(quantity * purchasePrice * 100) / 100;
+    lineTotalSource = 'CALCULATED';
+  }
+  if (quantity === null) {
+    issues.push('Quantity could not be read; enter it manually.');
   }
   // Missing prices stay null: NEVER compute purchasePrice = lineTotal / quantity when no purchase column existed
 
@@ -61,7 +67,7 @@ export function normalizeCanonicalItem(
   let numericScoreBonus = 0;
   const priceForCheck = purchasePrice ?? sellingPrice;
 
-  if (priceForCheck !== null && lineTotal !== null) {
+  if (priceForCheck !== null && lineTotal !== null && quantity !== null) {
     const rawExpectedTotal = quantity * priceForCheck;
     const discountVal = discount || 0;
     const taxVal = taxAmount || 0;
@@ -129,6 +135,7 @@ export function normalizeCanonicalItem(
     gstRate,
     hsnCode,
     lineTotal,
+    lineTotalSource,
     confidence: finalConfidence,
     confidenceLevel,
     sourceText: raw.sourceText || productName,

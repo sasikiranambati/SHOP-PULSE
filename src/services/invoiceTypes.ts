@@ -27,6 +27,7 @@ export type ExtractionMethod =
   | 'TEXT_LINE_ITEM'
   | 'SEMANTIC_RECONSTRUCTION'
   | 'DIGITAL_PDF'
+  | 'OCR_TABLE'
   | 'MANUAL_FALLBACK';
 
 /**
@@ -87,14 +88,56 @@ export interface DocumentLine {
   bbox?: BoundingBox;
 }
 
+/** Where a line's MRP came from. */
+export type MrpSource = 'INVOICE' | 'API' | 'MANUAL' | 'STORE';
+
+/** Where a line's amount came from: printed on the invoice, calculated (qty × rate) or typed in. */
+export type LineTotalSource = 'INVOICE' | 'CALCULATED' | 'MANUAL';
+
+/** Result of the backend's external MRP lookup for one line. */
+export interface MrpLookupInfo {
+  status:
+    | 'FOUND'
+    | 'PRODUCT_NOT_FOUND'
+    | 'MRP_UNAVAILABLE'
+    | 'MANUAL_REVIEW_REQUIRED'
+    | 'API_AUTHENTICATION_ERROR'
+    | 'API_RATE_LIMITED'
+    | 'API_TIMEOUT'
+    | 'API_CONFIGURATION_ERROR'
+    | 'API_ERROR'
+    | 'SKIPPED'
+    | string;
+  provider: string;
+  message: string;
+  mrp?: number | null;
+  matchedName?: string | null;
+  matchConfidence?: number | null;
+  lookedUpAt?: string | null;
+}
+
+/** Extraction evidence shared by canonical and UI line items. */
+export interface LineEvidence {
+  mrpSource?: MrpSource | null;
+  invoiceMrp?: number | null;
+  storeMrp?: number | null;
+  mrpLookup?: MrpLookupInfo | null;
+  lineTotalSource?: LineTotalSource | null;
+  arithmeticStatus?: 'VERIFIED' | 'MISMATCH' | 'INSUFFICIENT_DATA';
+  needsReview?: boolean;
+  suggestions?: string[];
+  suggestedRate?: number | null;
+  rawCells?: Record<string, string>;
+}
+
 /**
  * Canonical Invoice Line Item schema.
  * Missing fields remain null. No fabricated values.
  */
-export interface CanonicalInvoiceItem {
+export interface CanonicalInvoiceItem extends LineEvidence {
   id: string;
   productName: string;
-  quantity: number;
+  quantity: number | null;
   unit: string | null;
   rate: number | null;
   purchasePrice: number | null;
@@ -134,11 +177,11 @@ export interface InventoryMatchResult {
 /**
  * UI-ready line item extending the canonical item with store stock info.
  */
-export interface InvoiceLineItem {
+export interface InvoiceLineItem extends LineEvidence {
   id: string;
   name: string;
   category: string;
-  quantity: number;
+  quantity: number | null;
   unit: string;
   rate?: number | null;
   purchasePrice: number | null;
@@ -237,7 +280,15 @@ export interface ParsedInvoice {
   confidenceScore: number;
   imagePreviewUrl?: string;
   rawOcrText?: string;
-  engineUsed?: 'gemini' | 'tesseract' | 'pdf_direct' | 'sample';
+  engineUsed?:
+    | 'gemini'
+    | 'tesseract'
+    | 'pdf_direct'
+    | 'sample'
+    | 'backend_ocr_pipeline'
+    | 'backend_pdf_direct'
+    | 'backend_pdf_ocr_scanned'
+    | 'backend_text_direct';
   extractionMethod?: ExtractionMethod;
   supplierConfidence?: number;
   invoiceNoConfidence?: number;
@@ -269,5 +320,9 @@ export interface ParsedInvoice {
     detectedColumnsList?: DetectedColumn[];
     detectedRows?: Array<{ productName: string; quantity: string; unit: string; rate: string; discount: string; tax: string; amount: string }>;
     rawApiResponse?: any;
+    mrpProvider?: string | null;
+    backendError?: string | null;
   };
+  /** Shown above the review table, e.g. when the server could not be used */
+  notices?: string[];
 }
