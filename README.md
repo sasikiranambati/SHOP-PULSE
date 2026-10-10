@@ -124,7 +124,24 @@ npm run dev
 ```
 Open [http://localhost:5173/](http://localhost:5173/) in your browser.
 
-### 5. Seeding Realistic Demo Data
+### 5. Backend & Invoice Scanner Setup
+```bash
+# Python backend (FastAPI + SQLite); npm run dev starts it automatically if it is not running
+python3 -m venv backend/.venv
+backend/.venv/bin/pip install -r backend/requirements.txt
+cp backend/.env.example backend/.env
+```
+* **OCR** runs on the backend with tesseract.js (Node). English language data is installed by
+  `npm install` (`@tesseract.js-data/eng`), so no download is needed at scan time. Air-gapped servers can
+  point `OCR_LANG_PATH` at a folder containing `eng.traineddata`.
+* **PDFs** are read with pdfplumber (word positions); scanned PDF pages are rendered and OCR'd.
+* **MRP lookup** is configured only in `backend/.env` (`MRP_PROVIDER`, see `backend/.env.example`).
+  The default provider, OpenMRP, is a manufacturing (Material Requirements Planning) platform and does not
+  publish Maximum Retail Price, so lookups report `MRP_UNAVAILABLE`/`API_CONFIGURATION_ERROR` and MRP
+  comes from the invoice's MRP column or manual entry. Never put API keys in `VITE_*` variables.
+* Backend tests: `cd backend && .venv/bin/python -m pytest -q`
+
+### 6. Seeding Realistic Demo Data
 To instantly populate realistic Kirana staples (Milk, Bread, Rice, Sugar, Oil, Biscuits) and 7 days of sales:
 ```bash
 npx tsx src/scripts/seedDemoData.ts

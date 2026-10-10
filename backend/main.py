@@ -13,20 +13,52 @@ from api.main import api_router
 from db.session import Base, engine
 import db.models  # noqa
 
+import logging
 from sqlalchemy import inspect, text
 
-def init_db_schema():
-    Base.metadata.create_all(bind=engine)
-    try:
-        with engine.connect() as conn:
-            inspector = inspect(conn)
-            if "products" in inspector.get_table_names():
-                columns = [c["name"] for c in inspector.get_columns("products")]
-                if "mrp" not in columns:
-                    conn.execute(text("ALTER TABLE products ADD COLUMN mrp FLOAT"))
+logger = logging.getLogger(__name__)
+
+# Additive, nullable columns applied in place to existing databases. Existing rows are
+# preserved (new columns start as NULL); nothing is dropped or recreated.
+INCREMENTAL_COLUMNS = {
+    "products": {
+        "mrp": "FLOAT",
+        "mrp_source": "VARCHAR",
+        "mrp_updated_at": "DATETIME",
+    },
+    "purchases": {
+        "invoice_number": "VARCHAR",
+        "invoice_date": "VARCHAR",
+    },
+    "purchase_items": {
+        "line_amount": "FLOAT",
+        "mrp": "FLOAT",
+        "mrp_source": "VARCHAR",
+    },
+}
+
+
+def init_db_schema(bind=None):
+    bind = bind or engine
+    Base.metadata.create_all(bind=bind)
+    with bind.connect() as conn:
+        inspector = inspect(conn)
+        tables = set(inspector.get_table_names())
+        for table, columns in INCREMENTAL_COLUMNS.items():
+            if table not in tables:
+                continue
+            existing = {c["name"] for c in inspector.get_columns(table)}
+            for name, ddl in columns.items():
+                if name in existing:
+                    continue
+                try:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
                     conn.commit()
-    except Exception:
-        pass
+                    logger.info("Schema migration: added %s.%s", table, name)
+                except Exception as exc:
+                    conn.rollback()
+                    logger.error("Schema migration failed for %s.%s: %s", table, name, exc)
+                    raise
 
 init_db_schema()
 

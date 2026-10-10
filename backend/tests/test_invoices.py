@@ -124,8 +124,13 @@ def test_extract_invoice_arithmetic_validation_flag():
     data = res.json()
     assert len(data["items"]) == 1
     item = data["items"][0]
-    assert len(item["validation_issues"]) > 0
-    assert "Arithmetic variance" in item["validation_issues"][0]
+    assert item["arithmetic_status"] == "MISMATCH"
+    assert item["needs_review"] is True
+    assert any("does not match quantity × rate" in i for i in item["validation_issues"])
+    # Printed values are never overwritten by a calculation
+    assert item["purchase_price"] == 100.0
+    assert item["line_total"] == 900.0
+    assert item["line_total_source"] == "INVOICE"
 
 def test_confirm_invoice_restocks_and_creates_products():
     headers, shop_id, prod_id = get_auth_setup("confirm_user@example.com")
@@ -370,24 +375,32 @@ def test_extract_various_price_formats():
     assert item_d["selling_price"] == 110.0
     assert item_d["line_total"] == 1100.0
 
-def test_extract_invoice_from_image_ocr():
-    headers, shop_id, prod_id = get_auth_setup("image_ocr_user@example.com")
-    
-    # Generate a synthetic image representing a printed invoice
-    img = Image.new("RGB", (900, 320), color="white")
+def _render_invoice_png(rows, font_size=24, size=(1100, 360)):
+    from PIL import ImageFont
+    font = ImageFont.load_default(size=font_size)
+    img = Image.new("RGB", size, color="white")
     draw = ImageDraw.Draw(img)
-    draw.text((30, 30), "Sri Balaji Wholesale Traders", fill="black")
-    draw.text((30, 80), "Item Description    Qty    Rate    Total", fill="black")
-    draw.text((30, 130), "Aashirvaad Atta 5kg  10    250.00  2500.00", fill="black")
-    draw.text((30, 180), "Subtotal: 2500.00", fill="black")
-    
+    for y, cells in rows:
+        for x, text in cells:
+            draw.text((x, y), text, fill="black", font=font)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    buf.seek(0)
+    return buf.getvalue()
+
+def test_extract_invoice_from_image_ocr():
+    """Real OCR (tesseract.js with bundled language data) on a rendered invoice image."""
+    headers, shop_id, prod_id = get_auth_setup("image_ocr_user@example.com")
+    cols = [30, 520, 640, 800]
+    png = _render_invoice_png([
+        (30, [(30, "Sri Balaji Wholesale Traders")]),
+        (100, list(zip(cols, ["Item Description", "Qty", "Rate", "Total"]))),
+        (160, list(zip(cols, ["Aashirvaad Atta 5kg", "10", "250.00", "2500.00"]))),
+        (230, [(30, "Subtotal: 2500.00")]),
+    ])
 
     res = client.post(
         "/api/v1/invoices/extract",
-        files={"file": ("invoice_scan.png", buf.getvalue(), "image/png")},
+        files={"file": ("invoice_scan.png", png, "image/png")},
         headers=headers
     )
     assert res.status_code == 200, f"Error: {res.text}"
@@ -395,13 +408,49 @@ def test_extract_invoice_from_image_ocr():
     assert data["status"] == "success"
     assert data["engine_used"] == "backend_ocr_pipeline"
     assert data["diagnostics"]["document_type"] == "image"
-    assert len(data["items"]) >= 1
-    
+    assert len(data["items"]) == 1
+
     atta_item = data["items"][0]
+    assert "aashirvaad" in atta_item["product_name"].lower()
     assert atta_item["quantity"] == 10.0
     assert atta_item["rate"] == 250.0
     assert atta_item["purchase_price"] == 250.0
     assert atta_item["line_total"] == 2500.0
+    assert atta_item["arithmetic_status"] == "VERIFIED"
+
+def _small_font_invoice():
+    img = Image.new("RGB", (900, 320), color="white")
+    draw = ImageDraw.Draw(img)
+    draw.text((30, 30), "Sri Balaji Wholesale Traders", fill="black")
+    draw.text((30, 80), "Item Description    Qty    Rate    Total", fill="black")
+    draw.text((30, 130), "Aashirvaad Atta 5kg  10    250.00  2500.00", fill="black")
+    return img
+
+def test_small_bitmap_font_invoice_is_read():
+    """PIL's tiny default font (the original fixture) is upscaled and read by real OCR."""
+    headers, _, _ = get_auth_setup("small_font_user@example.com")
+    buf = io.BytesIO()
+    _small_font_invoice().save(buf, format="PNG")
+    res = client.post("/api/v1/invoices/extract", files={"file": ("small.png", buf.getvalue(), "image/png")}, headers=headers)
+    assert res.status_code == 200, res.text
+    item = res.json()["items"][0]
+    assert (item["quantity"], item["purchase_price"], item["line_total"]) == (10.0, 250.0, 2500.0)
+    assert item["arithmetic_status"] == "VERIFIED"
+
+def test_unreadable_image_is_flagged_not_fabricated():
+    """A blurred photo OCRs as noise: nothing may be reported as a clean extraction."""
+    from PIL import ImageFilter
+    headers, _, _ = get_auth_setup("blurred_user@example.com")
+    buf = io.BytesIO()
+    _small_font_invoice().filter(ImageFilter.GaussianBlur(1.6)).save(buf, format="PNG")
+
+    res = client.post("/api/v1/invoices/extract", files={"file": ("blurred.png", buf.getvalue(), "image/png")}, headers=headers)
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["status"] == "needs_review"
+    assert data["reason"]
+    for it in data["items"]:
+        assert it["needs_review"] is True
 
 def test_extract_invoice_unsupported_file_extension():
     headers, _, _ = get_auth_setup("unsupported_user@example.com")

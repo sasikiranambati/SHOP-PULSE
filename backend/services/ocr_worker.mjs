@@ -5,108 +5,140 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const ROOT_DIR = path.resolve(__dirname, '../..');
+
+// Machine-readable error codes understood by backend/services/ocr.py
+const ERR_LANG_DATA = 'OCR_LANGUAGE_DATA_UNAVAILABLE';
+const ERR_ENGINE = 'OCR_ENGINE_FAILED';
+
+function fail(code, message) {
+  console.error(JSON.stringify({ error: message, code }));
+  process.exit(1);
+}
+
+/**
+ * Resolve where eng.traineddata comes from, in order of preference:
+ * 1. OCR_LANG_PATH env var (a directory holding eng.traineddata[.gz]) for offline deployments
+ * 2. The @tesseract.js-data/eng npm package installed with the app (no network needed)
+ * 3. A legacy eng.traineddata file in the repository root
+ * 4. tesseract.js default (downloads from the jsDelivr CDN at runtime)
+ */
+function resolveLanguageData() {
+  const candidates = [];
+  if (process.env.OCR_LANG_PATH) candidates.push(path.resolve(process.env.OCR_LANG_PATH));
+  candidates.push(path.join(ROOT_DIR, 'node_modules', '@tesseract.js-data', 'eng', '4.0.0_best_int'));
+  candidates.push(ROOT_DIR);
+
+  for (const dir of candidates) {
+    if (fs.existsSync(path.join(dir, 'eng.traineddata.gz'))) return { langPath: dir, gzip: true, source: dir };
+    if (fs.existsSync(path.join(dir, 'eng.traineddata'))) return { langPath: dir, gzip: false, source: dir };
+  }
+  return { langPath: undefined, gzip: true, source: 'cdn.jsdelivr.net (runtime download)' };
+}
+
+function resolveCacheDir() {
+  const dir = process.env.OCR_CACHE_DIR
+    ? path.resolve(process.env.OCR_CACHE_DIR)
+    : path.join(ROOT_DIR, 'backend', '.ocr-cache');
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch {
+    // An unwritable cache only disables caching; recognition still works.
+  }
+  return dir;
+}
+
+const PSM_BY_ARG = {
+  '3': PSM.AUTO,
+  AUTO: PSM.AUTO,
+  '4': PSM.SINGLE_COLUMN,
+  SINGLE_COLUMN: PSM.SINGLE_COLUMN,
+  '6': PSM.SINGLE_BLOCK,
+  SINGLE_BLOCK: PSM.SINGLE_BLOCK,
+  '11': PSM.SPARSE_TEXT,
+  SPARSE_TEXT: PSM.SPARSE_TEXT,
+};
 
 async function main() {
   const imgPath = process.argv[2];
   if (!imgPath || !fs.existsSync(imgPath)) {
-    console.error(JSON.stringify({ error: `File not found: ${imgPath}` }));
-    process.exit(1);
+    fail(ERR_ENGINE, `File not found: ${imgPath}`);
   }
-
   const psmArg = process.argv[3];
-
-  // Find root directory containing traineddata or node_modules
-  const rootDir = path.resolve(__dirname, '../..');
-  const trainedDataDir = path.resolve(rootDir);
+  const lang = resolveLanguageData();
 
   let worker = null;
   try {
-    worker = await createWorker('eng', 1, {
-      langPath: fs.existsSync(path.join(trainedDataDir, 'eng.traineddata')) ? trainedDataDir : undefined,
-    });
-
-    if (psmArg === '3' || psmArg === 'AUTO') {
-      await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
-    } else if (psmArg === '4' || psmArg === 'SINGLE_COLUMN') {
-      await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_COLUMN });
-    } else if (psmArg === '6' || psmArg === 'SINGLE_BLOCK') {
-      await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
+    try {
+      worker = await createWorker('eng', 1, {
+        langPath: lang.langPath,
+        gzip: lang.gzip,
+        cachePath: resolveCacheDir(),
+      });
+    } catch (err) {
+      fail(
+        ERR_LANG_DATA,
+        `Could not load English OCR language data from ${lang.source}: ${String(err?.message || err)}. ` +
+          'Run `npm install` in the project root (installs @tesseract.js-data/eng) or set OCR_LANG_PATH ' +
+          'to a directory containing eng.traineddata.'
+      );
     }
 
-    const ret = await worker.recognize(imgPath, {}, { blocks: true });
+    const params = { preserve_interword_spaces: '1' };
+    if (psmArg && PSM_BY_ARG[psmArg] !== undefined) {
+      params.tessedit_pageseg_mode = PSM_BY_ARG[psmArg];
+    }
+    await worker.setParameters(params);
 
-    // Extract structured lines and words with spatial bounding boxes
+    const ret = await worker.recognize(imgPath, {}, { text: true, blocks: true });
+
+    // Emit every recognised word with its bounding box and confidence. Table
+    // rows are rebuilt from these coordinates in Python, because Tesseract's
+    // own line grouping often splits one table row across several blocks.
     const lines = [];
     const words = [];
-
-    if (Array.isArray(ret.data?.blocks)) {
-      for (const block of ret.data.blocks) {
-        if (Array.isArray(block.paragraphs)) {
-          for (const para of block.paragraphs) {
-            if (Array.isArray(para.lines)) {
-              for (const line of para.lines) {
-                const lineText = (line.text || '').trim();
-                if (!lineText) continue;
-
-                const lineBbox = line.bbox || { x0: 0, y0: 0, x1: 0, y1: 0 };
-                const lineWords = [];
-
-                if (Array.isArray(line.words) && line.words.length > 0) {
-                  for (const w of line.words) {
-                    const wt = (w.text || '').trim();
-                    if (!wt) continue;
-                    const wBbox = w.bbox || { ...lineBbox };
-                    const wordObj = {
-                      text: wt,
-                      confidence: typeof w.confidence === 'number' ? w.confidence : 80,
-                      bbox: { x0: wBbox.x0, y0: wBbox.y0, x1: wBbox.x1, y1: wBbox.y1 },
-                    };
-                    lineWords.push(wordObj);
-                    words.push(wordObj);
-                  }
-                } else {
-                  const tokens = lineText.split(/\s+/);
-                  for (const tok of tokens) {
-                    if (!tok) continue;
-                    const wordObj = {
-                      text: tok,
-                      confidence: typeof line.confidence === 'number' ? line.confidence : 80,
-                      bbox: { ...lineBbox },
-                    };
-                    lineWords.push(wordObj);
-                    words.push(wordObj);
-                  }
-                }
-
-                lineWords.sort((a, b) => a.bbox.x0 - b.bbox.x0);
-
-                lines.push({
-                  text: lineText,
-                  confidence: typeof line.confidence === 'number' ? line.confidence : 80,
-                  bbox: { x0: lineBbox.x0, y0: lineBbox.y0, x1: lineBbox.x1, y1: lineBbox.y1 },
-                  words: lineWords,
-                });
-              }
-            }
+    for (const block of ret.data?.blocks || []) {
+      for (const para of block.paragraphs || []) {
+        for (const line of para.lines || []) {
+          const lineText = (line.text || '').trim();
+          if (!lineText) continue;
+          const lineWords = [];
+          for (const w of line.words || []) {
+            const text = (w.text || '').trim();
+            if (!text || !w.bbox) continue;
+            const wordObj = {
+              text,
+              confidence: typeof w.confidence === 'number' ? w.confidence : null,
+              bbox: { x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 },
+            };
+            lineWords.push(wordObj);
+            words.push(wordObj);
           }
+          lineWords.sort((a, b) => a.bbox.x0 - b.bbox.x0);
+          lines.push({
+            text: lineText,
+            confidence: typeof line.confidence === 'number' ? line.confidence : null,
+            bbox: line.bbox,
+            words: lineWords,
+          });
         }
       }
     }
-
-    // Sort lines vertically from top to bottom
     lines.sort((a, b) => a.bbox.y0 - b.bbox.y0);
 
-    const output = {
-      text: ret.data.text || '',
-      confidence: typeof ret.data.confidence === 'number' ? ret.data.confidence : 0,
-      lines,
-      words,
-    };
-
-    process.stdout.write(JSON.stringify(output));
+    process.stdout.write(
+      JSON.stringify({
+        text: ret.data?.text || '',
+        confidence: typeof ret.data?.confidence === 'number' ? ret.data.confidence : 0,
+        lines,
+        words,
+        engine: 'tesseract.js',
+        language_data: lang.source,
+        psm: psmArg || 'default',
+      })
+    );
   } catch (err) {
-    console.error(JSON.stringify({ error: String(err?.message || err) }));
-    process.exit(1);
+    fail(ERR_ENGINE, String(err?.message || err));
   } finally {
     if (worker) {
       try {
@@ -118,7 +150,4 @@ async function main() {
   }
 }
 
-main().catch(err => {
-  console.error(JSON.stringify({ error: String(err?.message || err) }));
-  process.exit(1);
-});
+main().catch((err) => fail(ERR_ENGINE, String(err?.message || err)));

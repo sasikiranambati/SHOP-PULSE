@@ -31,8 +31,9 @@ __pycache__/
 *.pyc
 *.db
 
-# OCR models
+# OCR models and the backend OCR language-data cache
 *.traineddata
+backend/.ocr-cache/
 
 # Scratch / temporary scripts
 scratch/
