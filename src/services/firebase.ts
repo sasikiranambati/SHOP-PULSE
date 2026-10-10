@@ -12,8 +12,7 @@ import type { Auth } from 'firebase/auth';
 import { 
   initializeFirestore, 
   getFirestore, 
-  persistentLocalCache, 
-  persistentMultipleTabManager,
+  enableMultiTabIndexedDbPersistence,
   CACHE_SIZE_UNLIMITED,
   enableNetwork as firestoreEnableNetwork,
   disableNetwork as firestoreDisableNetwork,
@@ -54,14 +53,22 @@ let firestoreInstance: Firestore;
 
 try {
   firestoreInstance = initializeFirestore(app, {
-    localCache: persistentLocalCache({
-      tabManager: persistentMultipleTabManager(),
-      cacheSizeBytes: CACHE_SIZE_UNLIMITED
-    })
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED
   });
-} catch (err) {
-  console.warn('Firestore offline multi-tab persistence initialization failed, falling back to standard Firestore instance:', err);
+} catch {
   firestoreInstance = getFirestore(app);
+}
+
+if (typeof window !== 'undefined') {
+  enableMultiTabIndexedDbPersistence(firestoreInstance).catch((err: { code?: string; message?: string }) => {
+    if (err.code === 'failed-precondition') {
+      console.warn('Firestore multi-tab persistence precondition failed:', err);
+    } else if (err.code === 'unimplemented') {
+      console.warn('The current browser does not support all of the features required to enable persistence:', err);
+    } else {
+      console.warn('Firestore persistence initialization error:', err);
+    }
+  });
 }
 
 export const db: Firestore = firestoreInstance;

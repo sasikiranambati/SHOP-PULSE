@@ -220,8 +220,10 @@ export function parseProductRow(row: TableRow): ExtractedProductItem | null {
     unit,
     purchasePrice,
     sellingPrice,
+    mrp: null,
     lineTotal,
     confidence,
+    confidenceLevel: confidence >= 80 ? 'HIGH' : confidence >= 50 ? 'MEDIUM' : 'LOW',
     lowConfidence,
   };
 }

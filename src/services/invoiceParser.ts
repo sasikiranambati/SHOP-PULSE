@@ -7,6 +7,7 @@
  */
 
 import type { OCRWord, OCRLine, BoundingBox } from './ocrService';
+import { extractLineItemsFlexible } from './tableLayoutExtractor';
 
 export type LineClassification =
   | 'HEADER'
@@ -78,8 +79,25 @@ export function cleanNumericToken(raw: string): string {
     .replace(/\/[-=]/g, '')
     .trim();
 
-  // If token is mostly digits with occasional letter confusions (e.g. "12OO", "2I6", "4S0", "B00")
-  if (/^[lI|!OSsbB\d.,]+$/.test(cleaned) && cleaned.length >= 2) {
+  // If token is just a border or separator (e.g. "|", "||", "-", "--")
+  if (/^[|:;\-_=~*#]+$/.test(cleaned)) {
+    return '';
+  }
+
+  // Strip thousands separator commas (e.g. "2,500.00" -> "2500.00", "17,000" -> "17000")
+  cleaned = cleaned.replace(/,/g, '');
+
+  // If token is mostly digits with occasional letter confusions (e.g. "12OO", "2I6", "4S0", "B00", "2S0", "25O", "2,5OO")
+  if (/^[lI|!OSsbB\d.]+$/i.test(cleaned) && cleaned.length >= 1) {
+    // If it's only a single letter like 'l', 'I', '|', '!', don't turn standalone punctuation into 1
+    if (cleaned.length === 1 && !/\d/.test(cleaned)) {
+      if (cleaned === 'l' || cleaned === 'I') return '1';
+      if (cleaned === 'O' || cleaned === 'o') return '0';
+      if (cleaned === 'S' || cleaned === 's') return '5';
+      if (cleaned === 'B' || cleaned === 'b') return '8';
+      return '';
+    }
+
     cleaned = cleaned
       .replace(/[lI|!]/g, '1')
       .replace(/[Oo]/g, '0')
@@ -667,26 +685,44 @@ export function parseInvoiceDocument(
     });
   }
 
-  // Step 3: Only PRODUCT lines become inventory items
+  // Step 3: Multi-tier flexible line item extraction (structured table, layout, tokenization, multi-line)
+  const { items: flexibleItems } = extractLineItemsFlexible(lines, words, rawText);
   const items: ExtractedProduct[] = [];
 
-  for (const cl of classifiedLines) {
-    if (cl.classification === 'PRODUCT') {
-      const product = parseProductLine(cl.text, cl.confidence);
-      if (product) {
-        items.push(product);
+  if (flexibleItems && flexibleItems.length > 0) {
+    for (const fit of flexibleItems) {
+      const pPrice = fit.purchasePrice || 0;
+      const lTotal = fit.lineTotal || Math.round((fit.quantity || 1) * pPrice * 100) / 100;
+      const sPrice = fit.sellingPrice || Math.max(pPrice + 2, Math.round(pPrice * 1.2 * 10) / 10);
+      items.push({
+        id: 'item_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+        name: fit.productName,
+        category: inferProductCategory(fit.productName),
+        quantity: fit.quantity || 1,
+        unit: normalizeUnit(fit.unit || 'pcs'),
+        purchasePrice: pPrice,
+        sellingPrice: sPrice,
+        lineTotal: lTotal,
+        confidence: fit.confidence,
+        lowConfidence: fit.confidence < 70 || pPrice <= 0,
+        rawLine: fit.sourceText,
+      });
+    }
+  } else {
+    // Fallback: If 0 items were detected, scan classified lines
+    for (const cl of classifiedLines) {
+      if (cl.classification === 'PRODUCT') {
+        const product = parseProductLine(cl.text, cl.confidence);
+        if (product) items.push(product);
       }
     }
-  }
-
-  // Fallback: If 0 items were detected from strict PRODUCT classification,
-  // scan unclassified / unknown lines to never drop products
-  if (items.length === 0) {
-    for (const cl of classifiedLines) {
-      if (cl.classification !== 'HEADER' && cl.classification !== 'TOTAL' && cl.classification !== 'GST' && cl.classification !== 'FOOTER') {
-        const product = parseProductLine(cl.text, cl.confidence);
-        if (product && product.purchasePrice > 0) {
-          items.push(product);
+    if (items.length === 0) {
+      for (const cl of classifiedLines) {
+        if (cl.classification !== 'HEADER' && cl.classification !== 'TOTAL' && cl.classification !== 'GST' && cl.classification !== 'FOOTER') {
+          const product = parseProductLine(cl.text, cl.confidence);
+          if (product && product.purchasePrice > 0) {
+            items.push(product);
+          }
         }
       }
     }

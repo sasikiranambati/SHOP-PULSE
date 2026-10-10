@@ -12,6 +12,7 @@ def create_product(db: Session, product_in: ProductCreate, shop_id: UUID) -> Pro
         category=product_in.category,
         selling_price=product_in.selling_price,
         purchase_price=product_in.purchase_price,
+        mrp=product_in.mrp,
         current_stock=product_in.current_stock,
         reorder_level=product_in.reorder_level,
         unit=product_in.unit,

@@ -87,8 +87,10 @@ export async function createSale(
   }
 
   // Dispatch inventory & sales change events to refresh UI
-  window.dispatchEvent(new CustomEvent('shoppulse_sales_changed'));
-  window.dispatchEvent(new CustomEvent('shoppulse_inventory_changed'));
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new CustomEvent('shoppulse_sales_changed'));
+    window.dispatchEvent(new CustomEvent('shoppulse_inventory_changed'));
+  }
 
   return sale;
 }

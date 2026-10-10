@@ -37,7 +37,7 @@ export interface OCRResult {
   imageHeight?: number;
 }
 
-export type SupportedPSM = '4' | '6' | '11' | 'auto';
+export type SupportedPSM = '3' | '4' | '6' | '11' | 'auto';
 
 /**
  * Evaluates the quality of OCR output for invoice/table parsing.
@@ -46,9 +46,9 @@ function scoreOCRResult(result: OCRResult): number {
   const lineCount = result.lines.length;
   const wordCount = result.words.length;
   const avgConf = result.confidence;
-  // Count lines that contain both alphabetic text and numbers (typical product line items)
+  // Count lines that contain both alphabetic/regional script text and numbers (typical product line items)
   const candidateItemLines = result.lines.filter(
-    (l) => /[a-zA-Z]/.test(l.text) && /\d/.test(l.text)
+    (l) => /[a-zA-Z\u0900-\u0D7F]/.test(l.text) && /\d/.test(l.text)
   ).length;
 
   return candidateItemLines * 25 + lineCount * 5 + wordCount * 2 + avgConf;
@@ -190,16 +190,18 @@ export async function performOCR(
 
   try {
     // Mode resolution
-    if (psmMode === '4' || psmMode === '6' || psmMode === '11') {
+    if (psmMode === '3' || psmMode === '4' || psmMode === '6' || psmMode === '11') {
       const targetPsm =
-        psmMode === '4'
+        psmMode === '3'
+          ? PSM.AUTO
+          : psmMode === '4'
           ? PSM.SINGLE_COLUMN
           : psmMode === '6'
           ? PSM.SINGLE_BLOCK
           : PSM.SPARSE_TEXT;
 
       await worker.setParameters({ tessedit_pageseg_mode: targetPsm });
-      const { data } = await worker.recognize(imageSource);
+      const { data } = await worker.recognize(imageSource, {}, { blocks: true });
       const { lines, words } = extractLinesAndWordsFromPage(data);
 
       return {
@@ -211,35 +213,35 @@ export async function performOCR(
       };
     }
 
-    // Step 1: Automatic Best Result Selection between PSM 4, PSM 6, and PSM 11
-    // 1. First run PSM 4 (optimized for table column structure)
-    await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_COLUMN });
-    const res4 = await worker.recognize(imageSource);
-    const { lines: lines4, words: words4 } = extractLinesAndWordsFromPage(res4.data);
+    // Step 1: Primary extraction using PSM.AUTO (PSM 3 - Fully automatic multi-column page segmentation)
+    await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
+    const resAuto = await worker.recognize(imageSource, {}, { blocks: true });
+    const { lines: linesAuto, words: wordsAuto } = extractLinesAndWordsFromPage(resAuto.data);
 
-    const result4: OCRResult = {
-      text: res4.data.text || '',
-      confidence: typeof res4.data.confidence === 'number' ? res4.data.confidence : 75,
-      lines: lines4,
-      words: words4,
-      psmModeUsed: 'PSM 4',
+    const resultAuto: OCRResult = {
+      text: resAuto.data.text || '',
+      confidence: typeof resAuto.data.confidence === 'number' ? resAuto.data.confidence : 75,
+      lines: linesAuto,
+      words: wordsAuto,
+      psmModeUsed: 'PSM AUTO (3)',
     };
 
-    // If PSM 4 extracted good table content (>= 4 lines with candidate items & good confidence)
-    const score4 = scoreOCRResult(result4);
-    if (result4.lines.length >= 4 && result4.confidence >= 65 && score4 >= 100) {
+    const scoreAuto = scoreOCRResult(resultAuto);
+
+    // If PSM AUTO found good table content (>= 4 candidate lines and acceptable confidence)
+    if (resultAuto.lines.length >= 4 && resultAuto.confidence >= 50 && scoreAuto >= 80) {
       if (onProgress) {
-        onProgress(88, 'Table columns extracted successfully with PSM 4...');
+        onProgress(88, 'Document layout and table structures recognized successfully...');
       }
-      return result4;
+      return resultAuto;
     }
 
-    // 2. If PSM 4 yielded sparse/few lines, evaluate PSM 6 (single uniform block)
+    // Step 2: Fallback to PSM 6 (single uniform block) if AUTO was sparse
     if (onProgress) {
-      onProgress(50, 'Evaluating receipt block layout (PSM 6)...');
+      onProgress(50, 'Evaluating structured block layout (PSM 6)...');
     }
     await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
-    const res6 = await worker.recognize(imageSource);
+    const res6 = await worker.recognize(imageSource, {}, { blocks: true });
     const { lines: lines6, words: words6 } = extractLinesAndWordsFromPage(res6.data);
 
     const result6: OCRResult = {
@@ -251,16 +253,16 @@ export async function performOCR(
     };
 
     const score6 = scoreOCRResult(result6);
-    let bestResult = score6 > score4 ? result6 : result4;
-    let bestScore = Math.max(score4, score6);
+    let bestResult = score6 > scoreAuto ? result6 : resultAuto;
+    let bestScore = Math.max(scoreAuto, score6);
 
-    // 3. If still sparse or few items, evaluate PSM 11 (sparse text)
+    // Step 3: Fallback to PSM 11 (sparse text) if needed
     if (bestResult.lines.length < 3) {
       if (onProgress) {
         onProgress(70, 'Evaluating sparse text layout (PSM 11)...');
       }
       await worker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT });
-      const res11 = await worker.recognize(imageSource);
+      const res11 = await worker.recognize(imageSource, {}, { blocks: true });
       const { lines: lines11, words: words11 } = extractLinesAndWordsFromPage(res11.data);
 
       const result11: OCRResult = {

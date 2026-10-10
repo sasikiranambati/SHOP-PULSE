@@ -19,7 +19,11 @@ import {
   EyeOff,
   FileText,
   AlertTriangle,
-  Cpu
+  AlertCircle,
+  Cpu,
+  Edit3,
+  Search,
+  Package
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/Button';
@@ -42,11 +46,103 @@ import { clearAnalyticsCache } from '../services/analyticsService';
 import { getActiveUserId } from '../services/authService';
 import { db } from '../services/firebase';
 import { collection, addDoc } from 'firebase/firestore';
+import { invoiceApi, mapBackendResponseToParsedInvoice } from '../api/invoice';
+import { getAccessToken } from '../api/client';
+
+export const COMMON_UNITS = [
+  'pcs',
+  'kg',
+  'g',
+  'gm',
+  'l',
+  'ltr',
+  'ml',
+  'bag',
+  'box',
+  'pkt',
+  'can',
+  'tin',
+  'ctn',
+  'set',
+  'pair',
+  'dozen',
+];
+
+export interface ValidationError {
+  itemId: string;
+  itemName: string;
+  issues: string[];
+}
+
+export interface StockSuccessStats {
+  processedCount: number;
+  restockedCount: number;
+  newCount: number;
+  unitsAdded: number;
+  purchaseValue: number;
+  invoiceNumber?: string;
+}
+
+export const validateInvoiceItems = (items: InvoiceLineItem[]): ValidationError[] => {
+  const errors: ValidationError[] = [];
+  for (const item of items) {
+    const issues: string[] = [];
+    const trimmedName = (item.name || '').trim();
+    if (!trimmedName || trimmedName.length < 2) {
+      issues.push('Product name is required (min 2 characters)');
+    }
+    const qty = Number(item.quantity);
+    if (isNaN(qty) || qty <= 0) {
+      issues.push('Quantity must be greater than 0');
+    }
+    if (!item.unit || item.unit.trim() === '') {
+      issues.push('Unit is required');
+    }
+    if (item.purchasePrice !== null && item.purchasePrice !== undefined) {
+      const pur = Number(item.purchasePrice);
+      if (isNaN(pur) || pur < 0) {
+        issues.push('Purchase price cannot be negative');
+      }
+    }
+    if (item.sellingPrice !== null && item.sellingPrice !== undefined) {
+      const sell = Number(item.sellingPrice);
+      if (isNaN(sell) || sell < 0) {
+        issues.push('Selling price cannot be negative');
+      }
+    }
+    if (item.mrp !== null && item.mrp !== undefined) {
+      const mrpVal = Number(item.mrp);
+      if (isNaN(mrpVal) || mrpVal < 0) {
+        issues.push('MRP cannot be negative');
+      }
+    }
+    if (item.discount !== null && item.discount !== undefined) {
+      const disc = Number(item.discount);
+      if (isNaN(disc) || disc < 0) {
+        issues.push('Discount cannot be negative');
+      }
+    }
+    if (item.gstRate !== null && item.gstRate !== undefined) {
+      const gst = Number(item.gstRate);
+      if (isNaN(gst) || gst < 0) {
+        issues.push('GST % cannot be negative');
+      }
+    }
+    if (issues.length > 0) {
+      errors.push({
+        itemId: item.id,
+        itemName: trimmedName || 'Unnamed Item',
+        issues,
+      });
+    }
+  }
+  return errors;
+};
 
 interface InvoiceScannerProps {
   products?: Product[];
   onAddProduct?: (newProd: Omit<Product, 'id'>) => Promise<void>;
-  onRestock?: (id: string, amount: number, purchasePrice?: number) => Promise<void>;
+  onRestock?: (id: string, amount: number, purchasePrice?: number, sellingPrice?: number, mrp?: number) => Promise<void>;
   setActivePage?: (page: PageRoute) => void;
 }
 
@@ -64,8 +160,18 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
   const [scanStatusText, setScanStatusText] = useState('');
   const [invoiceData, setInvoiceData] = useState<ParsedInvoice | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [stockSuccessData, setStockSuccessData] = useState<StockSuccessStats | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [scanWarning, setScanWarning] = useState<string | null>(null);
+
+  // Review, Validation & Editing state
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<InvoiceLineItem | null>(null);
+  const [matchingPickerItem, setMatchingPickerItem] = useState<InvoiceLineItem | null>(null);
+  const [matchingSearch, setMatchingSearch] = useState('');
+  const [stockUpdateError, setStockUpdateError] = useState<string | null>(null);
+  const isSubmittingRef = useRef<boolean>(false);
   
   // Settings & Engine state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -73,6 +179,8 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
   const [showApiKey, setShowApiKey] = useState(false);
   const [selectedEngine, setSelectedEngine] = useState<'auto' | 'gemini' | 'tesseract'>(() => getPreferredOcrEngine());
   const [isRawTextOpen, setIsRawTextOpen] = useState(false);
+  const [isDebugOpen, setIsDebugOpen] = useState(false);
+  const [debugTab, setDebugTab] = useState<'overview' | 'raw_ocr' | 'detected_words' | 'columns_rows' | 'objects_api'>('overview');
   
   // Camera modal state
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -153,6 +261,24 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
     setScanWarning(null);
 
     try {
+      if (getAccessToken()) {
+        try {
+          setScanProgress(25);
+          setScanStatusText('Connecting to ShopPulse backend extraction service...');
+          const backendResp = await invoiceApi.extractInvoice(file);
+          if (backendResp && backendResp.items && backendResp.items.length > 0) {
+            setScanProgress(90);
+            setScanStatusText('Mapping extracted invoice items & matching inventory...');
+            const parsed = mapBackendResponseToParsedInvoice(backendResp, products);
+            setInvoiceData(parsed);
+            setIsScanning(false);
+            return;
+          }
+        } catch (apiErr) {
+          console.warn('Backend invoice extraction failed or unavailable, falling back to local OCR engine:', apiErr);
+        }
+      }
+
       const parsed = await parseInvoiceFile(file, products, (progress, statusText) => {
         setScanProgress(progress);
         setScanStatusText(statusText);
@@ -220,12 +346,104 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
       items: invoiceData.items.map((item) => {
         if (item.id !== id) return item;
         const updated = { ...item, [field]: value };
+        // Auto-detect store match on name change if not user-confirmed
+        if (field === 'name' && !item.isMatchConfirmed) {
+          const found = products.find(
+            (p) => p.name.toLowerCase().trim() === String(value).toLowerCase().trim()
+          );
+          if (found) {
+            updated.matchedProductId = found.id;
+            updated.inventoryData = {
+              id: found.id,
+              name: found.name,
+              currentStock: found.stock,
+              storePurchasePrice: found.purchasePrice,
+              storeSellingPrice: found.sellingPrice || found.price,
+              storeMrp: found.mrp,
+            };
+          } else {
+            updated.matchedProductId = undefined;
+            updated.inventoryData = undefined;
+          }
+        }
+        // Auto-recalculate dependent line total on quantity or purchase price change
+        if (field === 'purchasePrice') {
+          updated.rate = value;
+        }
         if (field === 'quantity' || field === 'purchasePrice') {
-          updated.lineTotal = Math.round((updated.quantity || 0) * (updated.purchasePrice || 0));
+          const effP = updated.purchasePrice ?? updated.rate;
+          if (
+            effP !== null &&
+            effP !== undefined &&
+            updated.quantity !== null &&
+            updated.quantity !== undefined
+          ) {
+            updated.lineTotal = Math.round(Number(updated.quantity) * Number(effP) * 100) / 100;
+          }
         }
         return updated;
       }),
     });
+    if (validationErrors.length > 0) {
+      setValidationErrors((prev) => prev.filter((e) => e.itemId !== id));
+    }
+  };
+
+  const handleSaveEditingItem = (savedItem: InvoiceLineItem) => {
+    if (!invoiceData) return;
+    const finalItem = { ...savedItem };
+    if (finalItem.purchasePrice !== null && finalItem.purchasePrice !== undefined) {
+      finalItem.rate = finalItem.purchasePrice;
+    }
+    const effP = finalItem.purchasePrice ?? finalItem.rate;
+    if (
+      effP !== null &&
+      effP !== undefined &&
+      finalItem.quantity !== null &&
+      finalItem.quantity !== undefined
+    ) {
+      finalItem.lineTotal = Math.round(Number(finalItem.quantity) * Number(effP) * 100) / 100;
+    }
+    setInvoiceData({
+      ...invoiceData,
+      items: invoiceData.items.map((it) => (it.id === finalItem.id ? finalItem : it)),
+    });
+    setEditingItem(null);
+    if (validationErrors.length > 0) {
+      setValidationErrors((prev) => prev.filter((e) => e.itemId !== finalItem.id));
+    }
+  };
+
+  const handleSelectMatchProduct = (itemId: string, selectedProduct: Product | null) => {
+    if (!invoiceData) return;
+    setInvoiceData({
+      ...invoiceData,
+      items: invoiceData.items.map((it) => {
+        if (it.id !== itemId) return it;
+        if (!selectedProduct) {
+          return {
+            ...it,
+            matchedProductId: undefined,
+            isMatchConfirmed: false,
+            inventoryData: undefined,
+          };
+        }
+        return {
+          ...it,
+          matchedProductId: selectedProduct.id,
+          isMatchConfirmed: true,
+          inventoryData: {
+            id: selectedProduct.id,
+            name: selectedProduct.name,
+            currentStock: selectedProduct.stock,
+            storePurchasePrice: selectedProduct.purchasePrice,
+            storeSellingPrice: selectedProduct.sellingPrice || selectedProduct.price,
+            storeMrp: selectedProduct.mrp,
+          },
+        };
+      }),
+    });
+    setMatchingPickerItem(null);
   };
 
   const handleRemoveItem = (id: string) => {
@@ -234,6 +452,9 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
       ...invoiceData,
       items: invoiceData.items.filter((item) => item.id !== id),
     });
+    if (validationErrors.length > 0) {
+      setValidationErrors((prev) => prev.filter((e) => e.itemId !== id));
+    }
   };
 
   const handleAddItem = () => {
@@ -246,7 +467,11 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
       unit: 'pcs',
       purchasePrice: 50,
       sellingPrice: 65,
+      mrp: 70,
       lineTotal: 500,
+      confidence: 100,
+      confidenceLevel: 'HIGH',
+      lowConfidence: false,
     };
     setInvoiceData({
       ...invoiceData,
@@ -258,10 +483,35 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
   const calculatedTotal = invoiceData?.items.reduce((acc, item) => acc + (item.lineTotal || 0), 0) || 0;
   const totalUnits = invoiceData?.items.reduce((acc, item) => acc + (item.quantity || 0), 0) || 0;
 
-  // Confirm and update inventory
-  const handleConfirmAddToStock = async () => {
+  // Step 1: Validate items and trigger confirmation modal
+  const handleInitiateAddToStock = () => {
     if (!invoiceData || invoiceData.items.length === 0) return;
+    setStockUpdateError(null);
+    const errors = validateInvoiceItems(invoiceData.items);
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
+    setValidationErrors([]);
+    setIsConfirmModalOpen(true);
+  };
+
+  // Step 2: Atomic execution after user explicitly confirms in modal
+  const handleConfirmAddToStock = async () => {
+    if (isSubmittingRef.current || !invoiceData || invoiceData.items.length === 0) return;
+    
+    // Strict re-validation safeguard
+    const errors = validateInvoiceItems(invoiceData.items);
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      setIsConfirmModalOpen(false);
+      return;
+    }
+
+    isSubmittingRef.current = true;
     setIsSaving(true);
+    setStockUpdateError(null);
+
     let addedCount = 0;
     let restockedCount = 0;
 
@@ -278,15 +528,30 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
         if (existing) {
           existing.quantity = (Number(existing.quantity) || 0) + (Number(item.quantity) || 0);
           existing.lineTotal = (Number(existing.lineTotal) || 0) + (Number(item.lineTotal) || 0);
+          if ((existing.purchasePrice === null || existing.purchasePrice === undefined) && item.purchasePrice !== null && item.purchasePrice !== undefined) {
+            existing.purchasePrice = item.purchasePrice;
+          }
+          if ((existing.sellingPrice === null || existing.sellingPrice === undefined) && item.sellingPrice !== null && item.sellingPrice !== undefined) {
+            existing.sellingPrice = item.sellingPrice;
+          }
+          if ((existing.mrp === null || existing.mrp === undefined) && item.mrp !== null && item.mrp !== undefined) {
+            existing.mrp = item.mrp;
+          }
         } else {
           mergedBatch.push({ ...item });
         }
       }
 
       for (const item of mergedBatch) {
+        const purPrice = item.purchasePrice !== null && item.purchasePrice !== undefined
+          ? Number(item.purchasePrice)
+          : (item.rate !== null && item.rate !== undefined ? Number(item.rate) : undefined);
+        const sellPrice = item.sellingPrice !== null && item.sellingPrice !== undefined ? Number(item.sellingPrice) : undefined;
+        const mrpPrice = item.mrp !== null && item.mrp !== undefined ? Number(item.mrp) : undefined;
+
         if (item.matchedProductId && onRestock) {
-          // Increase stock for existing product and preserve wholesale purchase price
-          await onRestock(item.matchedProductId, Number(item.quantity), Number(item.purchasePrice));
+          // Increase stock for existing product and save edited purchase, selling, and mrp prices
+          await onRestock(item.matchedProductId, Number(item.quantity), purPrice, sellPrice, mrpPrice);
           restockedCount++;
         } else if (onAddProduct) {
           // Check if product already exists in current store inventory by exact name
@@ -295,19 +560,21 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
           );
 
           if (existingInStore && onRestock) {
-            await onRestock(existingInStore.id, Number(item.quantity), Number(item.purchasePrice));
+            await onRestock(existingInStore.id, Number(item.quantity), purPrice, sellPrice, mrpPrice);
             restockedCount++;
           } else {
-            // Create new product in inventory
+            // Create new product in inventory with edited prices
             const now = new Date().toISOString();
+            const fallbackPur = purPrice ?? 0;
             await onAddProduct({
-              name: item.name,
+              name: item.name.trim(),
               category: item.category || 'Groceries',
               stock: Number(item.quantity),
               unit: item.unit || 'pcs',
-              purchasePrice: Number(item.purchasePrice),
-              sellingPrice: Number(item.sellingPrice || item.purchasePrice * 1.2),
-              price: Number(item.sellingPrice || item.purchasePrice * 1.2),
+              purchasePrice: fallbackPur,
+              sellingPrice: sellPrice ?? (fallbackPur > 0 ? fallbackPur * 1.2 : 0),
+              price: sellPrice ?? (fallbackPur > 0 ? fallbackPur * 1.2 : 0),
+              mrp: mrpPrice,
               reorderLevel: 10,
               minStock: 10,
               status: 'In Stock',
@@ -316,6 +583,35 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
             });
             addedCount++;
           }
+        }
+      }
+
+      // Synchronize with FastAPI backend database if authenticated
+      if (getAccessToken()) {
+        try {
+          const backendResp = await invoiceApi.confirmInvoice({
+            supplier_name: invoiceData.supplierName,
+            invoice_number: invoiceData.invoiceNumber,
+            invoice_date: invoiceData.invoiceDate,
+            items: mergedBatch.map((it) => ({
+              name: it.name.trim(),
+              category: it.category,
+              quantity: Number(it.quantity),
+              unit: it.unit || 'pcs',
+              purchase_price: it.purchasePrice !== null && it.purchasePrice !== undefined
+                ? Number(it.purchasePrice)
+                : (it.rate !== null && it.rate !== undefined ? Number(it.rate) : undefined),
+              selling_price: it.sellingPrice !== null && it.sellingPrice !== undefined ? Number(it.sellingPrice) : undefined,
+              mrp: it.mrp !== null && it.mrp !== undefined ? Number(it.mrp) : undefined,
+              matched_product_id: it.matchedProductId,
+            })),
+          });
+          if (backendResp) {
+            if (backendResp.items_created !== undefined) addedCount = backendResp.items_created;
+            if (backendResp.items_restocked !== undefined) restockedCount = backendResp.items_restocked;
+          }
+        } catch (beErr) {
+          console.warn('Backend invoice confirm notice (persisted in workspace):', beErr);
         }
       }
 
@@ -331,11 +627,15 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
             totalUnits,
             totalItems: mergedBatch.length,
             items: mergedBatch.map((it) => ({
-              name: it.name,
+              name: it.name.trim(),
               category: it.category,
               quantity: Number(it.quantity),
               unit: it.unit,
-              purchasePrice: Number(it.purchasePrice),
+              purchasePrice: it.purchasePrice !== null && it.purchasePrice !== undefined
+                ? Number(it.purchasePrice)
+                : (it.rate !== null && it.rate !== undefined ? Number(it.rate) : null),
+              sellingPrice: it.sellingPrice !== null && it.sellingPrice !== undefined ? Number(it.sellingPrice) : null,
+              mrp: it.mrp !== null && it.mrp !== undefined ? Number(it.mrp) : null,
               lineTotal: Number(it.lineTotal),
             })),
             createdAt: new Date().toISOString(),
@@ -353,22 +653,34 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
         await createAlert({
           type: 'system',
           priority: 'low',
-          productName: invoiceData.supplierName,
-          message: `📦 Restocked ${totalUnits} units across ${mergedBatch.length} items (Total: ₹${calculatedTotal.toLocaleString('en-IN')}) from Bill #${invoiceData.invoiceNumber}.`,
+          productName: invoiceData.supplierName || 'Supplier Invoice',
+          message: `📦 Restocked ${totalUnits} units across ${mergedBatch.length} items (Total: ₹${calculatedTotal.toLocaleString('en-IN')}) from Bill #${invoiceData.invoiceNumber || 'N/A'}.`,
         });
       } catch (alertErr) {
         console.warn('Could not post restock alert:', alertErr);
       }
 
-      setSuccessMessage(
-        `Successfully updated inventory! Restocked ${restockedCount} existing items and created ${addedCount} new products (${totalUnits} total units added).`
-      );
+      // Success notification only after atomic database success
+      setIsConfirmModalOpen(false);
+      setStockSuccessData({
+        processedCount: mergedBatch.length,
+        restockedCount,
+        newCount: addedCount,
+        unitsAdded: totalUnits,
+        purchaseValue: calculatedTotal,
+        invoiceNumber: invoiceData.invoiceNumber,
+      });
+      setSuccessMessage(null);
+      setValidationErrors([]);
       setInvoiceData(null);
     } catch (err: any) {
       console.error('Error adding invoice items to stock:', err);
-      alert('Failed to update inventory: ' + (err?.message || 'Unknown error'));
+      setIsConfirmModalOpen(false);
+      setStockUpdateError('⚠️ Stock Update Failed: ' + (err?.message || 'Your inventory was not updated. Please try again.'));
+      // Keep invoiceData intact so user doesn't lose their edits!
     } finally {
       setIsSaving(false);
+      isSubmittingRef.current = false;
     }
   };
 
@@ -422,6 +734,17 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {invoiceData && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsDebugOpen(true)}
+              icon={<Cpu className="w-4 h-4 text-purple-600" />}
+              className="text-xs font-bold py-1 px-3 bg-white hover:border-purple-300"
+            >
+              OCR Debug View
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -445,7 +768,80 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
         </div>
       )}
 
-      {/* Success Notification */}
+      {/* Stock Update Success Modal / Card (Section 21) */}
+      {stockSuccessData && (
+        <Card className="border-2 border-emerald-500 bg-white shadow-xl p-6 sm:p-8 rounded-3xl text-center space-y-4 animate-in fade-in zoom-in-95">
+          <div className="w-16 h-16 rounded-2xl bg-emerald-600 text-white mx-auto flex items-center justify-center shadow-lg shadow-emerald-600/30">
+            <CheckCircle2 className="w-10 h-10" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              ✓ Stock Updated Successfully
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-600 font-medium">
+              Your inventory has been verified and successfully updated with supplier bill #{stockSuccessData.invoiceNumber || 'N/A'}.
+            </p>
+            <div className="flex items-center justify-center gap-2 sm:gap-3 text-xs sm:text-sm text-slate-600 font-bold flex-wrap pt-1">
+              <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-800 border border-slate-200">
+                {stockSuccessData.processedCount} products processed ({stockSuccessData.restockedCount} restocked, {stockSuccessData.newCount} new)
+              </span>
+              <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                {stockSuccessData.unitsAdded} units added to inventory
+              </span>
+              <span className="px-3 py-1 rounded-full bg-teal-100 text-teal-800 border border-teal-200">
+                Total purchase value: ₹{stockSuccessData.purchaseValue.toLocaleString('en-IN')}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center justify-center gap-3 pt-3">
+            {setActivePage && (
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={() => {
+                  setStockSuccessData(null);
+                  setActivePage('inventory');
+                }}
+                icon={<ArrowRight className="w-5 h-5" />}
+                className="font-black px-6 shadow-md shadow-emerald-600/20"
+              >
+                View Inventory
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => setStockSuccessData(null)}
+              className="font-bold px-6 border-slate-300"
+            >
+              Done
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Stock Update Failure Error Banner */}
+      {stockUpdateError && (
+        <div className="p-4 bg-rose-50 rounded-2xl border-2 border-rose-500 text-rose-950 shadow-md flex items-start justify-between gap-3 animate-in fade-in">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-black text-sm">{stockUpdateError}</p>
+              <p className="text-xs text-rose-800 mt-0.5">Your edited invoice items are preserved above. Please review them and try again.</p>
+            </div>
+          </div>
+          <button 
+            type="button"
+            onClick={() => setStockUpdateError(null)} 
+            className="text-rose-600 hover:text-rose-800 p-1 cursor-pointer"
+            aria-label="Dismiss error"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* General Success Notification */}
       {successMessage && (
         <div className="p-4 bg-emerald-50 rounded-2xl border-2 border-emerald-500 text-emerald-900 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-300">
           <div className="flex items-center gap-3">
@@ -619,10 +1015,18 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
-                    {invoiceData.supplierName}
+                    {invoiceData.supplierName && invoiceData.supplierName.trim() !== ''
+                      ? invoiceData.supplierName
+                      : 'Supplier could not be detected'}
                   </h3>
+                  <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[10px] font-black border border-slate-300">
+                    OCR Quality: {invoiceData.confidenceScore}%
+                  </span>
                   <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black border border-emerald-300">
-                    {invoiceData.confidenceScore}% OCR Match
+                    Line Extraction: {invoiceData.items.length} items
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-black border border-blue-300">
+                    Inventory Match: {invoiceData.items.filter((i) => i.matchedProductId).length}/{invoiceData.items.length}
                   </span>
                   <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-black border border-slate-300">
                     {invoiceData.engineUsed === 'gemini' 
@@ -633,12 +1037,21 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                  Invoice #{invoiceData.invoiceNumber} • Date: {invoiceData.invoiceDate}
+                  Invoice #{invoiceData.invoiceNumber || 'Not detected'} • Date: {invoiceData.invoiceDate && invoiceData.invoiceDate.trim() !== '' ? invoiceData.invoiceDate : 'Invoice date could not be detected'}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsDebugOpen(true)}
+                icon={<Cpu className="w-4 h-4 text-purple-600" />}
+                className="font-bold text-xs text-purple-700 bg-purple-50 hover:bg-purple-100 border-purple-200"
+              >
+                Inspect Layout & OCR
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -655,7 +1068,9 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
             <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
               <p className="text-[11px] text-slate-500 font-bold uppercase">{t('scanner.supplier')}</p>
-              <p className="font-extrabold text-slate-900 mt-1 truncate">{invoiceData.supplierName}</p>
+              <p className="font-extrabold text-slate-900 mt-1 truncate">
+                {invoiceData.supplierName && invoiceData.supplierName.trim() !== '' ? invoiceData.supplierName : 'Not detected'}
+              </p>
             </div>
             <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
               <p className="text-[11px] text-slate-500 font-bold uppercase">{t('scanner.itemsExtracted')}</p>
@@ -671,8 +1086,61 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
             </div>
           </div>
 
+          {/* Total Validation Warning */}
+          {Boolean(
+            (invoiceData.canonical?.totalAmount || invoiceData.totalAmount) &&
+            Math.abs(calculatedTotal - (invoiceData.canonical?.totalAmount || invoiceData.totalAmount)) > 2
+          ) && (
+            <div className="p-3 bg-amber-50 border border-amber-300 rounded-2xl text-amber-900 text-xs font-semibold flex items-center gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                Extraction requires review: Sum of line items (₹{calculatedTotal.toLocaleString('en-IN')}) differs from invoice total (₹{(invoiceData.canonical?.totalAmount || invoiceData.totalAmount).toLocaleString('en-IN')}). Please check and edit lines if needed.
+              </span>
+            </div>
+          )}
+
           {/* Extracted Items: Mobile Cards & Desktop Table */}
-          <div className="space-y-3">
+          <div className="space-y-4">
+            
+            {/* Validation Errors Alert Banner */}
+            {validationErrors.length > 0 && (
+              <div className="p-4 bg-rose-50 rounded-2xl border-2 border-rose-400 text-rose-950 shadow-sm space-y-2 animate-in fade-in">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+                    <p className="font-extrabold text-sm sm:text-base">
+                      Please fix {validationErrors.length === 1 ? 'this item' : `these ${validationErrors.length} items`} before adding to stock:
+                    </p>
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={() => setValidationErrors([])} 
+                    className="text-rose-600 hover:text-rose-800 text-xs font-bold cursor-pointer"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+                <ul className="text-xs space-y-1 pl-6 list-disc text-rose-900 font-medium">
+                  {validationErrors.map((err) => (
+                    <li key={err.itemId}>
+                      <span className="font-bold">{err.itemName}:</span> {err.issues.join(' • ')}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Review & Edit Mode Banner */}
+            <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-emerald-50/70 border border-emerald-200 rounded-2xl text-xs">
+              <div className="flex items-center gap-2 text-emerald-950 font-bold">
+                <Edit3 className="w-4 h-4 text-emerald-700 shrink-0" />
+                <span>Review & Edit: You can correct any spelling, quantities, prices, or units inline, or click ✏️ for full details.</span>
+              </div>
+              <span className="text-[11px] text-emerald-800 font-semibold bg-emerald-100/70 px-2 py-0.5 rounded-lg border border-emerald-200">
+                Totals recalculate live
+              </span>
+            </div>
+
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
                 <Layers className="w-4 h-4 text-emerald-600" />
@@ -691,98 +1159,227 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
             {invoiceData.confidenceScore < 70 && (
               <div className="p-3 bg-amber-50 border border-amber-300 rounded-2xl text-amber-900 text-xs font-semibold flex items-center gap-2.5">
                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>Moderate OCR match ({invoiceData.confidenceScore}%). Items with ⚠️ Review have uncertain text or numbers—please check and edit if needed.</span>
+                <span>OCR Quality is {invoiceData.confidenceScore}%. Items with ⚠️ Review have uncertain text or numbers—please check and edit if needed.</span>
               </div>
             )}
+
             {/* Mobile Cards View (< md) */}
             <div className="md:hidden space-y-3">
-              {invoiceData.items.map((item) => (
-                <div key={item.id} className="p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Product Name</label>
-                      <input
-                        type="text"
-                        value={item.name}
-                        onChange={(e) => handleItemChange(item.id, 'name', e.target.value)}
-                        className="w-full font-bold text-slate-900 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-base sm:text-sm"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveItem(item.id)}
-                      aria-label="Remove item"
-                      className="text-slate-400 hover:text-rose-600 w-9 h-9 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-xl bg-white border border-slate-200 mt-4 active:scale-95 transition-all cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+              {invoiceData.items.map((item) => {
+                const itemError = validationErrors.find((e) => e.itemId === item.id);
+                const isUncertain = item.lowConfidence || (typeof item.confidence === 'number' && item.confidence < 70);
+                return (
+                  <div 
+                    key={item.id} 
+                    className={`p-3.5 rounded-2xl transition-all space-y-3 ${
+                      itemError 
+                        ? 'border-2 border-rose-400 bg-rose-50/40 ring-1 ring-rose-300' 
+                        : isUncertain
+                        ? 'border border-amber-300 bg-amber-50/30'
+                        : 'border border-slate-200 bg-slate-50/80'
+                    }`}
+                  >
+                    {itemError && (
+                      <div className="text-[11px] font-bold text-rose-700 bg-rose-100 border border-rose-200 px-2 py-1 rounded-lg flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        <span>{itemError.issues.join(' • ')}</span>
+                      </div>
+                    )}
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Category</label>
-                      <input
-                        type="text"
-                        value={item.category}
-                        onChange={(e) => handleItemChange(item.id, 'category', e.target.value)}
-                        className="w-full text-xs font-semibold bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Quantity</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={item.quantity}
-                        onChange={(e) => handleItemChange(item.id, 'quantity', Math.max(1, Number(e.target.value)))}
-                        className="w-full text-center font-extrabold text-slate-900 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-base sm:text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 text-right">
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5 text-left">Purchase</label>
-                      <input
-                        type="number"
-                        step="0.5"
-                        value={item.purchasePrice}
-                        onChange={(e) => handleItemChange(item.id, 'purchasePrice', Number(e.target.value))}
-                        className="w-full text-right font-bold text-slate-800 bg-white px-2 py-1.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-base sm:text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5 text-left">Selling</label>
-                      <input
-                        type="number"
-                        step="0.5"
-                        value={item.sellingPrice}
-                        onChange={(e) => handleItemChange(item.id, 'sellingPrice', Number(e.target.value))}
-                        className="w-full text-right font-bold text-emerald-700 bg-white px-2 py-1.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-base sm:text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5 text-right">Total</label>
-                      <div className="h-[38px] flex items-center justify-end px-2 font-black text-slate-900 text-sm">
-                        ₹{item.lineTotal.toLocaleString('en-IN')}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <label className="text-[10px] font-bold uppercase text-slate-500">Product Name</label>
+                          {isUncertain && (
+                            <span className="text-[9px] font-black text-amber-800 bg-amber-200 px-1 rounded">⚠️ Review</span>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          value={item.name}
+                          onChange={(e) => handleItemChange(item.id, 'name', e.target.value)}
+                          placeholder="e.g. Aashirvaad Atta 5 kg"
+                          className="w-full font-bold text-slate-900 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-base sm:text-sm"
+                        />
+                        {item.inventoryData && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500 bg-white border border-slate-200 px-2 py-1 rounded-lg">
+                            <span className="font-semibold text-slate-700">Store:</span>
+                            <span>Purch: {item.inventoryData.storePurchasePrice != null ? `₹${item.inventoryData.storePurchasePrice}` : '—'}</span>
+                            <span>•</span>
+                            <span>Sell: {item.inventoryData.storeSellingPrice != null ? `₹${item.inventoryData.storeSellingPrice}` : '—'}</span>
+                            {item.inventoryData.storeMrp != null && (
+                              <>
+                                <span>•</span>
+                                <span>MRP: ₹{item.inventoryData.storeMrp}</span>
+                              </>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (item.inventoryData?.storePurchasePrice != null) {
+                                  handleItemChange(item.id, 'purchasePrice', item.inventoryData.storePurchasePrice);
+                                }
+                                if (item.inventoryData?.storeSellingPrice != null) {
+                                  handleItemChange(item.id, 'sellingPrice', item.inventoryData.storeSellingPrice);
+                                }
+                                if (item.inventoryData?.storeMrp != null) {
+                                  handleItemChange(item.id, 'mrp', item.inventoryData.storeMrp);
+                                }
+                              }}
+                              className="ml-auto text-[10px] text-emerald-700 hover:text-emerald-800 font-bold hover:underline cursor-pointer"
+                              title="Click to copy existing inventory prices to this item"
+                            >
+                              Use Store Prices
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 mt-4 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setEditingItem({ ...item })}
+                          aria-label="Edit item details"
+                          title="Edit full item details"
+                          className="text-slate-500 hover:text-emerald-700 w-9 h-9 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-xl bg-white border border-slate-200 active:scale-95 transition-all cursor-pointer"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveItem(item.id)}
+                          aria-label="Remove item"
+                          title="Remove item"
+                          className="text-slate-400 hover:text-rose-600 w-9 h-9 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-xl bg-white border border-slate-200 active:scale-95 transition-all cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-xs">
-                    <span className="text-[11px] text-slate-500 font-medium">Status:</span>
-                    {item.matchedProductId ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold">
-                        <Check className="w-3 h-3 text-emerald-700" /> Restock Existing
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-extrabold">
-                        <Plus className="w-3 h-3 text-blue-700" /> New Product
-                      </span>
-                    )}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Category</label>
+                        <input
+                          type="text"
+                          value={item.category}
+                          onChange={(e) => handleItemChange(item.id, 'category', e.target.value)}
+                          className="w-full text-xs font-semibold bg-white px-2 py-1.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Quantity</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) => handleItemChange(item.id, 'quantity', Math.max(1, Number(e.target.value)))}
+                          className="w-full text-center font-extrabold text-slate-900 bg-white px-2 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Unit</label>
+                        <select
+                          value={item.unit || 'pcs'}
+                          onChange={(e) => handleItemChange(item.id, 'unit', e.target.value)}
+                          className="w-full text-xs font-bold text-slate-800 bg-white px-1.5 py-1.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none capitalize"
+                        >
+                          {COMMON_UNITS.map((u) => (
+                            <option key={u} value={u}>{u}</option>
+                          ))}
+                          {item.unit && !COMMON_UNITS.includes(item.unit.toLowerCase()) && (
+                            <option value={item.unit}>{item.unit}</option>
+                          )}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-right">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5 text-left">
+                          Purchase (₹)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={item.purchasePrice ?? item.rate ?? ''}
+                          placeholder="—"
+                          title={item.purchasePrice === null && item.rate === null ? 'Purchase price not provided in invoice' : undefined}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            handleItemChange(item.id, 'purchasePrice', val === '' ? null : Number(val));
+                          }}
+                          className="w-full text-right font-bold text-slate-800 bg-white px-2 py-1.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-base sm:text-sm placeholder:text-slate-400 placeholder:font-normal"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5 text-left">
+                          Selling (₹)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={item.sellingPrice ?? ''}
+                          placeholder="—"
+                          title={item.sellingPrice === null ? 'Selling price not provided in invoice' : undefined}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            handleItemChange(item.id, 'sellingPrice', val === '' ? null : Number(val));
+                          }}
+                          className="w-full text-right font-bold text-emerald-700 bg-white px-2 py-1.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-base sm:text-sm placeholder:text-slate-400 placeholder:font-normal"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5 text-left">
+                          MRP (₹)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={item.mrp ?? ''}
+                          placeholder="—"
+                          title={item.mrp === null ? 'MRP not provided in invoice' : undefined}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            handleItemChange(item.id, 'mrp', val === '' ? null : Number(val));
+                          }}
+                          className="w-full text-right font-bold text-slate-700 bg-white px-2 py-1.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-base sm:text-sm placeholder:text-slate-400 placeholder:font-normal"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5 text-right">Line Total</label>
+                        <div className="h-[38px] flex items-center justify-end px-2 font-black text-slate-900 text-sm">
+                          {item.lineTotal !== null && item.lineTotal !== undefined ? (
+                            `₹${item.lineTotal.toLocaleString('en-IN')}`
+                          ) : (
+                            <span className="text-slate-400 font-normal" title="Line total not provided or could not be confidently extracted">—</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-xs">
+                      <span className="text-[11px] text-slate-500 font-medium">Store Match:</span>
+                      <button
+                        type="button"
+                        onClick={() => setMatchingPickerItem(item)}
+                        className="cursor-pointer active:scale-95 flex items-center gap-1"
+                        title="Click to match with store inventory or mark as new"
+                      >
+                        {item.matchedProductId ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold shadow-2xs border border-emerald-200">
+                            <Check className="w-3 h-3 text-emerald-700" /> Matched: {item.inventoryData?.name || 'Existing Product'}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-extrabold shadow-2xs border border-blue-200">
+                            <Plus className="w-3 h-3 text-blue-700" /> + New Item
+                          </span>
+                        )}
+                        <span className="text-[10px] text-slate-400 hover:text-slate-600 underline">Change</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Desktop Table View (>= md) */}
@@ -791,23 +1388,28 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                 <thead className="bg-slate-50 text-slate-700 font-extrabold uppercase text-[11px] border-b border-slate-200 select-none">
                   <tr>
                     <th className="py-3 px-3 sm:px-4">Product Name</th>
-                    <th className="py-3 px-2 sm:px-3">Category</th>
-                    <th className="py-3 px-2 sm:px-3 text-center">Qty</th>
-                    <th className="py-3 px-2 sm:px-3 text-right">Purchase (₹)</th>
-                    <th className="py-3 px-2 sm:px-3 text-right">Selling (₹)</th>
-                    <th className="py-3 px-2 sm:px-3 text-right">Line Total</th>
-                    <th className="py-3 px-2 text-center">Status</th>
-                    <th className="py-3 px-2 text-center"></th>
+                    <th className="py-3 px-2">Category</th>
+                    <th className="py-3 px-2 text-center">Qty</th>
+                    <th className="py-3 px-2 text-center">Unit</th>
+                    <th className="py-3 px-2 text-right">Purchase (₹)</th>
+                    <th className="py-3 px-2 text-right">Selling (₹)</th>
+                    <th className="py-3 px-2 text-right">MRP (₹)</th>
+                    <th className="py-3 px-2 text-right">Line Total</th>
+                    <th className="py-3 px-2 text-center">Store Status</th>
+                    <th className="py-3 px-2 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {invoiceData.items.map((item) => {
+                    const itemError = validationErrors.find((e) => e.itemId === item.id);
                     const isUncertain = item.lowConfidence || (typeof item.confidence === 'number' && item.confidence < 70);
                     return (
                     <tr 
                       key={item.id} 
                       className={`transition-colors ${
-                        isUncertain 
+                        itemError
+                          ? 'bg-rose-50/70 hover:bg-rose-100/60 border-l-4 border-l-rose-500'
+                          : isUncertain 
                           ? 'bg-amber-50/70 hover:bg-amber-100/60 border-l-4 border-l-amber-400' 
                           : 'hover:bg-slate-50/80'
                       }`}
@@ -818,9 +1420,18 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                             type="text"
                             value={item.name}
                             onChange={(e) => handleItemChange(item.id, 'name', e.target.value)}
+                            placeholder="e.g. Tata Salt 1 kg"
                             className="w-full font-bold text-slate-900 bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none"
                           />
-                          {isUncertain && (
+                          {itemError && (
+                            <span 
+                              className="px-1.5 py-0.5 rounded bg-rose-200 text-rose-900 text-[10px] font-black shrink-0 select-none"
+                              title={itemError.issues.join(' • ')}
+                            >
+                              ⚠️ Fix Required
+                            </span>
+                          )}
+                          {isUncertain && !itemError && (
                             <span 
                               className="px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 text-[10px] font-black shrink-0 select-none"
                               title="Low OCR certainty - please verify"
@@ -828,66 +1439,165 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                               ⚠️ Review
                             </span>
                           )}
+                          {item.validationWarning && !itemError && (
+                            <span 
+                              className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 text-[10px] font-black shrink-0 select-none border border-rose-200"
+                              title={item.validationWarning}
+                            >
+                              ⚠️ Math Mismatch
+                            </span>
+                          )}
                         </div>
+                        {item.inventoryData && (
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 bg-slate-50 border border-slate-200/80 px-2 py-0.5 rounded-md">
+                            <span className="font-semibold text-slate-600">Store:</span>
+                            <span>Purch: {item.inventoryData.storePurchasePrice != null ? `₹${item.inventoryData.storePurchasePrice}` : '—'}</span>
+                            <span>•</span>
+                            <span>Sell: {item.inventoryData.storeSellingPrice != null ? `₹${item.inventoryData.storeSellingPrice}` : '—'}</span>
+                            {item.inventoryData.storeMrp != null && (
+                              <>
+                                <span>•</span>
+                                <span>MRP: ₹{item.inventoryData.storeMrp}</span>
+                              </>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (item.inventoryData?.storePurchasePrice != null) {
+                                  handleItemChange(item.id, 'purchasePrice', item.inventoryData.storePurchasePrice);
+                                }
+                                if (item.inventoryData?.storeSellingPrice != null) {
+                                  handleItemChange(item.id, 'sellingPrice', item.inventoryData.storeSellingPrice);
+                                }
+                                if (item.inventoryData?.storeMrp != null) {
+                                  handleItemChange(item.id, 'mrp', item.inventoryData.storeMrp);
+                                }
+                              }}
+                              className="ml-auto text-[10px] text-emerald-700 hover:text-emerald-800 font-bold hover:underline cursor-pointer"
+                              title="Click to copy existing inventory prices to this item"
+                            >
+                              Use Store Prices
+                            </button>
+                          </div>
+                        )}
                       </td>
-                      <td className="py-2.5 px-2 sm:px-3 text-slate-600">
+                      <td className="py-2.5 px-2 text-slate-600">
                         <input
                           type="text"
                           value={item.category}
                           onChange={(e) => handleItemChange(item.id, 'category', e.target.value)}
-                          className="w-20 sm:w-24 text-xs font-semibold bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none"
+                          className="w-16 sm:w-20 text-xs font-semibold bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none"
                         />
                       </td>
-                      <td className="py-2.5 px-2 sm:px-3 text-center">
+                      <td className="py-2.5 px-2 text-center">
                         <input
                           type="number"
                           min="1"
                           value={item.quantity}
                           onChange={(e) => handleItemChange(item.id, 'quantity', Math.max(1, Number(e.target.value)))}
-                          className="w-14 text-center font-extrabold text-slate-900 bg-slate-100 rounded-lg py-1 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          className="w-12 text-center font-extrabold text-slate-900 bg-slate-100 rounded-lg py-1 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                         />
-                      </td>
-                      <td className="py-2.5 px-2 sm:px-3 text-right">
-                        <input
-                          type="number"
-                          step="0.5"
-                          value={item.purchasePrice}
-                          onChange={(e) => handleItemChange(item.id, 'purchasePrice', Number(e.target.value))}
-                          className="w-16 text-right font-bold text-slate-800 bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none"
-                        />
-                      </td>
-                      <td className="py-2.5 px-2 sm:px-3 text-right">
-                        <input
-                          type="number"
-                          step="0.5"
-                          value={item.sellingPrice}
-                          onChange={(e) => handleItemChange(item.id, 'sellingPrice', Number(e.target.value))}
-                          className="w-16 text-right font-bold text-emerald-700 bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none"
-                        />
-                      </td>
-                      <td className="py-2.5 px-2 sm:px-3 text-right font-black text-slate-900">
-                        ₹{item.lineTotal.toLocaleString('en-IN')}
                       </td>
                       <td className="py-2.5 px-2 text-center">
-                        {item.matchedProductId ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold">
-                            <Check className="w-3 h-3 text-emerald-700" /> Restock
-                          </span>
+                        <select
+                          value={item.unit || 'pcs'}
+                          onChange={(e) => handleItemChange(item.id, 'unit', e.target.value)}
+                          className="text-xs font-bold text-slate-800 bg-slate-100 rounded-lg py-1 px-1 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 capitalize"
+                        >
+                          {COMMON_UNITS.map((u) => (
+                            <option key={u} value={u}>{u}</option>
+                          ))}
+                          {item.unit && !COMMON_UNITS.includes(item.unit.toLowerCase()) && (
+                            <option value={item.unit}>{item.unit}</option>
+                          )}
+                        </select>
+                      </td>
+                      <td className="py-2.5 px-2 text-right">
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={item.purchasePrice ?? item.rate ?? ''}
+                          placeholder="—"
+                          title={item.purchasePrice === null && item.rate === null ? 'Purchase price not provided in invoice' : undefined}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            handleItemChange(item.id, 'purchasePrice', val === '' ? null : Number(val));
+                          }}
+                          className="w-16 sm:w-20 text-right font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-400"
+                        />
+                      </td>
+                      <td className="py-2.5 px-2 text-right">
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={item.sellingPrice ?? ''}
+                          placeholder="—"
+                          title={item.sellingPrice === null ? 'Selling price not provided in invoice' : undefined}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            handleItemChange(item.id, 'sellingPrice', val === '' ? null : Number(val));
+                          }}
+                          className="w-16 sm:w-20 text-right font-bold text-emerald-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-400"
+                        />
+                      </td>
+                      <td className="py-2.5 px-2 text-right">
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={item.mrp ?? ''}
+                          placeholder="—"
+                          title={item.mrp === null ? 'MRP not provided in invoice' : undefined}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            handleItemChange(item.id, 'mrp', val === '' ? null : Number(val));
+                          }}
+                          className="w-16 sm:w-20 text-right font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-400"
+                        />
+                      </td>
+                      <td className="py-2.5 px-2 text-right font-black text-slate-900">
+                        {item.lineTotal !== null && item.lineTotal !== undefined ? (
+                          `₹${item.lineTotal.toLocaleString('en-IN')}`
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-extrabold">
-                            <Plus className="w-3 h-3 text-blue-700" /> New Item
-                          </span>
+                          <span className="text-slate-400 font-normal" title="Line total not provided or could not be confidently extracted">—</span>
                         )}
                       </td>
                       <td className="py-2.5 px-2 text-center">
                         <button
                           type="button"
-                          onClick={() => handleRemoveItem(item.id)}
-                          className="text-slate-400 hover:text-rose-600 p-1 transition-colors cursor-pointer"
-                          title="Remove item"
+                          onClick={() => setMatchingPickerItem(item)}
+                          title="Click to match with store product or toggle new item"
+                          className="cursor-pointer transition-transform active:scale-95 select-none inline-block"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          {item.matchedProductId ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[10px] font-extrabold shadow-2xs border border-emerald-200">
+                              <Check className="w-3 h-3 text-emerald-700" /> Restock
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-100 hover:bg-blue-200 text-blue-800 text-[10px] font-extrabold shadow-2xs border border-blue-200">
+                              <Plus className="w-3 h-3 text-blue-700" /> New Item
+                            </span>
+                          )}
                         </button>
+                      </td>
+                      <td className="py-2.5 px-2 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setEditingItem({ ...item })}
+                            className="text-slate-500 hover:text-emerald-700 p-1.5 transition-colors cursor-pointer rounded-lg hover:bg-slate-100"
+                            title="Edit full item details (HSN, Tax, MRP, etc.)"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItem(item.id)}
+                            className="text-slate-400 hover:text-rose-600 p-1.5 transition-colors cursor-pointer rounded-lg hover:bg-slate-100"
+                            title="Remove item"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -896,16 +1606,48 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
               </table>
             </div>
 
-            {/* Zero Items Warning */}
+            {/* Structured Diagnostic Failure Card (Phase 20) */}
             {invoiceData.items.length === 0 && (
-              <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl text-amber-900 text-xs sm:text-sm font-medium space-y-1">
-                <div className="flex items-center gap-2 font-extrabold text-amber-950">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>No tabular product lines were automatically recognized from this bill.</span>
+              <div className="p-5 bg-amber-50/90 border-2 border-amber-300 rounded-3xl text-amber-950 text-xs sm:text-sm space-y-3 shadow-xs animate-in fade-in">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-200 text-amber-900 flex items-center justify-center shrink-0 mt-0.5">
+                      <AlertTriangle className="w-5 h-5 text-amber-700" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-amber-950 text-sm">Extraction Needs Review</span>
+                        <span className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[10px] font-mono font-bold uppercase">
+                          0 Products Extracted
+                        </span>
+                      </div>
+                      <p className="text-amber-800 font-medium text-xs mt-1">
+                        {invoiceData.reason || 'The parser could not confidently isolate standard table columns or price rows from this document.'}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-amber-800">
-                  You can click <button type="button" onClick={handleAddItem} className="font-black underline text-emerald-800 cursor-pointer">+ Add Item</button> above to manually input line items, or click below to inspect what text was detected.
-                </p>
+
+                <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-amber-200">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleAddItem}
+                    icon={<Plus className="w-4 h-4" />}
+                    className="font-bold text-xs"
+                  >
+                    + Add Item Manually
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsDebugOpen(true)}
+                    icon={<Cpu className="w-4 h-4" />}
+                    className="font-bold text-xs bg-white text-slate-800"
+                  >
+                    Inspect OCR Diagnostics
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -938,7 +1680,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
           <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2 text-xs text-slate-600 font-semibold">
               <Info className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>Confirming will immediately increment store stock & track wholesale purchase expense.</span>
+              <span>Confirming will validate items, prompt confirmation, and update store stock atomically.</span>
             </div>
 
             <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -953,16 +1695,514 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                 variant="primary"
                 size="lg"
                 disabled={isSaving || invoiceData.items.length === 0}
-                onClick={handleConfirmAddToStock}
+                onClick={handleInitiateAddToStock}
                 icon={isSaving ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
                 className="w-2/3 sm:w-auto font-black px-6 shadow-md shadow-emerald-600/20"
               >
-                {isSaving ? 'Updating Stock...' : `Add to Stock (${totalUnits} Units)`}
+                {isSaving ? 'Adding to Stock...' : `Add to Stock (${totalUnits} Units)`}
               </Button>
             </div>
           </div>
 
         </Card>
+      )}
+
+      {/* Confirmation Before Stock Update Modal (Section 8 & 15) */}
+      {isConfirmModalOpen && invoiceData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                  <Package className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900">Confirm & Add to Stock</h3>
+                  <p className="text-xs text-slate-500 font-medium">Verify summary before inventory database update</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={() => setIsConfirmModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer disabled:opacity-50"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Exact Impact Summary */}
+            <div className="grid grid-cols-3 gap-2.5 p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-center">
+              <div>
+                <p className="text-[10px] font-bold text-slate-500 uppercase">Products</p>
+                <p className="text-base sm:text-lg font-black text-slate-900 mt-0.5">{invoiceData.items.length}</p>
+                <p className="text-[10px] text-slate-500 font-semibold">
+                  {invoiceData.items.filter((i) => i.matchedProductId || products.some(p => p.name.toLowerCase().trim() === i.name.toLowerCase().trim())).length} restock • {invoiceData.items.filter((i) => !i.matchedProductId && !products.some(p => p.name.toLowerCase().trim() === i.name.toLowerCase().trim())).length} new
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-500 uppercase">Total Units</p>
+                <p className="text-base sm:text-lg font-black text-emerald-700 mt-0.5">{totalUnits}</p>
+                <p className="text-[10px] text-slate-500 font-semibold">To inventory</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-500 uppercase">Purchase Cost</p>
+                <p className="text-base sm:text-lg font-black text-teal-700 mt-0.5">₹{calculatedTotal.toLocaleString('en-IN')}</p>
+                <p className="text-[10px] text-slate-500 font-semibold">Wholesale value</p>
+              </div>
+            </div>
+
+            {/* Products Breakdown List */}
+            <div className="space-y-2">
+              <p className="text-xs font-black uppercase text-slate-500 tracking-wider">Item Details to Add ({invoiceData.items.length})</p>
+              <div className="max-h-48 overflow-y-auto space-y-1.5 border border-slate-200 rounded-xl p-2 bg-slate-50/50">
+                {invoiceData.items.map((it) => (
+                  <div key={it.id} className="flex items-center justify-between text-xs py-1 px-2 bg-white rounded-lg border border-slate-100">
+                    <div className="min-w-0 flex-1 pr-2">
+                      <p className="font-bold text-slate-900 truncate">{it.name}</p>
+                      <p className="text-[10px] text-slate-500">
+                        {it.quantity} {it.unit} @ {it.purchasePrice != null ? `₹${it.purchasePrice}` : 'Rate —'}
+                        {it.matchedProductId ? ' • Restocking' : ' • New Item'}
+                      </p>
+                    </div>
+                    <span className="font-black text-slate-900 shrink-0">₹{(it.lineTotal ?? 0).toLocaleString('en-IN')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl text-[11px] text-emerald-950 font-medium">
+              ℹ️ Atomic Update: Stock levels will increment immediately and wholesale costs will be recorded.
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-3">
+              <Button
+                variant="outline"
+                disabled={isSaving}
+                onClick={() => setIsConfirmModalOpen(false)}
+                className="font-bold"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                disabled={isSaving}
+                onClick={handleConfirmAddToStock}
+                icon={isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                className="font-black px-5 shadow-md shadow-emerald-600/20"
+              >
+                {isSaving ? 'Adding to Stock...' : 'Confirm & Add to Stock'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Full Line Item Edit Modal (Section 1, 2, 3, 4, 5, 6) */}
+      {editingItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                  <Edit3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Edit Line Item Details</h3>
+                  <p className="text-xs text-slate-500">Correct spelling, prices, units, HSN, and taxes</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingItem(null)}
+                className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              {/* Product Name */}
+              <div>
+                <label className="font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                  Product Name *
+                </label>
+                <input
+                  type="text"
+                  value={editingItem.name}
+                  onChange={(e) => setEditingItem({ ...editingItem, name: e.target.value })}
+                  placeholder="e.g. Aashirvaad Atta 5 kg"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-900 text-sm focus:outline-none focus:border-emerald-600 focus:bg-white"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  You can correct any OCR spelling mistakes directly here.
+                </p>
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                  Category
+                </label>
+                <input
+                  type="text"
+                  value={editingItem.category}
+                  onChange={(e) => setEditingItem({ ...editingItem, category: e.target.value })}
+                  placeholder="e.g. Groceries, Dairy, Beverages"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white"
+                />
+              </div>
+
+              {/* Quantity & Unit */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                    Quantity *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={editingItem.quantity}
+                    onChange={(e) => {
+                      const q = Math.max(1, Number(e.target.value));
+                      const pur = editingItem.purchasePrice != null ? Number(editingItem.purchasePrice) : 0;
+                      setEditingItem({
+                        ...editingItem,
+                        quantity: q,
+                        lineTotal: Math.round(q * pur * 100) / 100,
+                      });
+                    }}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-extrabold text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                    Unit *
+                  </label>
+                  <select
+                    value={editingItem.unit || 'pcs'}
+                    onChange={(e) => setEditingItem({ ...editingItem, unit: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white capitalize"
+                  >
+                    {COMMON_UNITS.map((u) => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                    {editingItem.unit && !COMMON_UNITS.includes(editingItem.unit.toLowerCase()) && (
+                      <option value={editingItem.unit}>{editingItem.unit}</option>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              {/* Purchase, Selling, MRP Prices */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                    Purchase Price (₹)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={editingItem.purchasePrice ?? editingItem.rate ?? ''}
+                    placeholder="— (not on bill)"
+                    onChange={(e) => {
+                      const val = e.target.value.trim();
+                      const num = val === '' ? null : Number(val);
+                      const q = Number(editingItem.quantity) || 1;
+                      setEditingItem({
+                        ...editingItem,
+                        purchasePrice: num,
+                        rate: num,
+                        lineTotal: num !== null ? Math.round(q * num * 100) / 100 : editingItem.lineTotal,
+                      });
+                    }}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white placeholder:text-slate-400 placeholder:font-normal"
+                  />
+                </div>
+                <div>
+                  <label className="font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                    Selling Price (₹)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={editingItem.sellingPrice ?? ''}
+                    placeholder="— (not on bill)"
+                    onChange={(e) => {
+                      const val = e.target.value.trim();
+                      setEditingItem({
+                        ...editingItem,
+                        sellingPrice: val === '' ? null : Number(val),
+                      });
+                    }}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold text-emerald-700 focus:outline-none focus:border-emerald-600 focus:bg-white placeholder:text-slate-400 placeholder:font-normal"
+                  />
+                </div>
+                <div>
+                  <label className="font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                    MRP (₹)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={editingItem.mrp ?? ''}
+                    placeholder="— (not on bill)"
+                    onChange={(e) => {
+                      const val = e.target.value.trim();
+                      setEditingItem({
+                        ...editingItem,
+                        mrp: val === '' ? null : Number(val),
+                      });
+                    }}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-700 focus:outline-none focus:border-emerald-600 focus:bg-white placeholder:text-slate-400 placeholder:font-normal"
+                  />
+                </div>
+              </div>
+
+              {/* Discount, GST Rate, HSN Code */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                    Discount (₹)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={editingItem.discount ?? ''}
+                    placeholder="—"
+                    onChange={(e) => {
+                      const val = e.target.value.trim();
+                      setEditingItem({
+                        ...editingItem,
+                        discount: val === '' ? null : Number(val),
+                      });
+                    }}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-800 focus:outline-none focus:border-emerald-600 focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                    GST / Tax Rate (%)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={editingItem.gstRate ?? ''}
+                    placeholder="—"
+                    onChange={(e) => {
+                      const val = e.target.value.trim();
+                      setEditingItem({
+                        ...editingItem,
+                        gstRate: val === '' ? null : Number(val),
+                      });
+                    }}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-800 focus:outline-none focus:border-emerald-600 focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                    HSN Code
+                  </label>
+                  <input
+                    type="text"
+                    value={editingItem.hsnCode ?? ''}
+                    placeholder="—"
+                    onChange={(e) => {
+                      const val = e.target.value.trim();
+                      setEditingItem({
+                        ...editingItem,
+                        hsnCode: val === '' ? null : val,
+                      });
+                    }}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-800 focus:outline-none focus:border-emerald-600 focus:bg-white font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Line Total */}
+              <div>
+                <label className="font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                  Line Total (₹)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={editingItem.lineTotal ?? ''}
+                    onChange={(e) => {
+                      setEditingItem({
+                        ...editingItem,
+                        lineTotal: Number(e.target.value) || 0,
+                      });
+                    }}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-black text-slate-900 text-sm focus:outline-none focus:border-emerald-600 focus:bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const pur = (editingItem.purchasePrice != null ? Number(editingItem.purchasePrice) : null) ?? (editingItem.rate != null ? Number(editingItem.rate) : 0);
+                      const q = Number(editingItem.quantity) || 0;
+                      setEditingItem({
+                        ...editingItem,
+                        lineTotal: Math.round(q * pur * 100) / 100,
+                      });
+                    }}
+                    className="px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold shrink-0 text-xs cursor-pointer"
+                    title="Auto-calculate as Qty × Purchase Price"
+                  >
+                    Recalculate
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Calculated as: {editingItem.quantity} {editingItem.unit} × ₹{editingItem.purchasePrice ?? editingItem.rate ?? 0} = ₹{Math.round((Number(editingItem.quantity) || 0) * (Number(editingItem.purchasePrice ?? editingItem.rate) || 0) * 100) / 100}
+                </p>
+              </div>
+
+              {/* Store Matching info */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+                <div>
+                  <p className="font-bold text-slate-800">Store Catalog Link</p>
+                  <p className="text-[11px] text-slate-500">
+                    {editingItem.matchedProductId ? `Matched to store item (Stock: ${editingItem.inventoryData?.currentStock ?? 0})` : 'New item (will be created in catalog)'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const currentIt = editingItem;
+                    setMatchingPickerItem(currentIt);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-emerald-700 font-bold text-xs hover:bg-emerald-50 cursor-pointer"
+                >
+                  {editingItem.matchedProductId ? 'Change Match' : 'Link Store Item'}
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditingItem(null)}
+                className="font-bold"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => handleSaveEditingItem(editingItem)}
+                className="font-black px-4"
+              >
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Product Matcher Picker Modal (Section 10) */}
+      {matchingPickerItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
+                  <Search className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Select Store Product</h3>
+                  <p className="text-xs text-slate-500">Link extracted line to existing product or create new</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMatchingPickerItem(null)}
+                className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs text-slate-600">
+                Item from invoice: <span className="font-extrabold text-slate-900">{matchingPickerItem.name}</span>
+              </p>
+              
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  value={matchingSearch}
+                  onChange={(e) => setMatchingSearch(e.target.value)}
+                  placeholder="Search products by name or category..."
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-600 focus:bg-white"
+                />
+              </div>
+
+              {/* Option to create as brand new item */}
+              <button
+                type="button"
+                onClick={() => handleSelectMatchProduct(matchingPickerItem.id, null)}
+                className="w-full text-left p-3 rounded-xl border border-dashed border-blue-300 bg-blue-50/50 hover:bg-blue-50 transition-colors flex items-center justify-between cursor-pointer"
+              >
+                <div>
+                  <p className="font-extrabold text-blue-900 text-xs">+ Mark as Brand New Product</p>
+                  <p className="text-[10px] text-blue-700">Creates a new product record in catalog rather than restocking existing</p>
+                </div>
+                <span className="text-xs font-bold text-blue-700">Select →</span>
+              </button>
+            </div>
+
+            {/* List of matching products */}
+            <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 min-h-[160px]">
+              <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                Matching Store Products ({products.filter((p) => !matchingSearch || p.name.toLowerCase().includes(matchingSearch.toLowerCase()) || p.category.toLowerCase().includes(matchingSearch.toLowerCase())).length})
+              </p>
+              {products
+                .filter((p) => !matchingSearch || p.name.toLowerCase().includes(matchingSearch.toLowerCase()) || p.category.toLowerCase().includes(matchingSearch.toLowerCase()))
+                .map((p) => {
+                  const isCurrent = matchingPickerItem.matchedProductId === p.id;
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => handleSelectMatchProduct(matchingPickerItem.id, p)}
+                      className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between text-xs ${
+                        isCurrent
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-950 font-bold'
+                          : 'border-slate-200 bg-white hover:border-emerald-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="min-w-0 pr-2">
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-extrabold text-slate-900 truncate">{p.name}</p>
+                          <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 text-[10px] font-medium">{p.category}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          Stock: {p.stock} {p.unit || 'pcs'} • Purch: ₹{p.purchasePrice} • Sell: ₹{p.sellingPrice || p.price}
+                          {p.mrp != null && ` • MRP: ₹${p.mrp}`}
+                        </p>
+                      </div>
+                      <span className={`text-[11px] font-extrabold shrink-0 ${isCurrent ? 'text-emerald-700' : 'text-slate-600'}`}>
+                        {isCurrent ? '✓ Linked' : 'Link →'}
+                      </span>
+                    </div>
+                  );
+                })}
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setMatchingPickerItem(null)}
+                className="font-bold text-xs"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Live Camera Viewfinder Modal */}
@@ -1166,6 +2406,462 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                 className="font-black px-4"
               >
                 Save Preferences
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Developer Debug Inspector Modal (Phase 19) */}
+      {isDebugOpen && invoiceData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-700 text-slate-100 rounded-3xl p-5 sm:p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-purple-600/30 text-purple-400 flex items-center justify-center border border-purple-500/30">
+                  <Cpu className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
+                    <span>Developer OCR & Layout Inspector</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-900/60 text-purple-300 font-mono uppercase">
+                      Dev Debug View
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Spatial tokens, zoning sections, column aliases & arithmetic validation
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDebugOpen(false)}
+                className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Document & Engine Metadata Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+              <div className="p-3 bg-slate-800/60 rounded-xl border border-slate-700/60">
+                <span className="text-[10px] text-slate-400 uppercase font-bold block">Document Type</span>
+                <span className="font-extrabold text-white capitalize">{invoiceData.documentType || 'Image / Camera'}</span>
+              </div>
+              <div className="p-3 bg-slate-800/60 rounded-xl border border-slate-700/60">
+                <span className="text-[10px] text-slate-400 uppercase font-bold block">Engine Used</span>
+                <span className="font-extrabold text-purple-300">{invoiceData.engineUsed || 'tesseract'}</span>
+              </div>
+              <div className="p-3 bg-slate-800/60 rounded-xl border border-slate-700/60">
+                <span className="text-[10px] text-slate-400 uppercase font-bold block">Extraction Method</span>
+                <span className="font-mono text-emerald-400 font-bold">{invoiceData.extractionMethod || 'TABLE_STRUCTURED'}</span>
+              </div>
+              <div className="p-3 bg-slate-800/60 rounded-xl border border-slate-700/60">
+                <span className="text-[10px] text-slate-400 uppercase font-bold block">Overall Confidence</span>
+                <span className="font-black text-amber-300">{invoiceData.confidenceScore}%</span>
+              </div>
+            </div>
+
+            {/* Tab Navigation */}
+            <div className="flex items-center gap-1.5 border-b border-slate-800 pb-2 text-xs overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setDebugTab('overview')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer shrink-0 ${
+                  debugTab === 'overview'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-slate-800/80 text-slate-400 hover:text-white'
+                }`}
+              >
+                Overview & Math
+              </button>
+              <button
+                type="button"
+                onClick={() => setDebugTab('raw_ocr')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer shrink-0 ${
+                  debugTab === 'raw_ocr'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-slate-800/80 text-slate-400 hover:text-white'
+                }`}
+              >
+                Raw OCR Text
+              </button>
+              <button
+                type="button"
+                onClick={() => setDebugTab('detected_words')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer shrink-0 ${
+                  debugTab === 'detected_words'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-slate-800/80 text-slate-400 hover:text-white'
+                }`}
+              >
+                Detected Words ({invoiceData.diagnostics?.rawWords?.length || 0})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDebugTab('columns_rows')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer shrink-0 ${
+                  debugTab === 'columns_rows'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-slate-800/80 text-slate-400 hover:text-white'
+                }`}
+              >
+                Detected Columns & Rows
+              </button>
+              <button
+                type="button"
+                onClick={() => setDebugTab('objects_api')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer shrink-0 ${
+                  debugTab === 'objects_api'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-slate-800/80 text-slate-400 hover:text-white'
+                }`}
+              >
+                Parsed, API & Frontend
+              </button>
+            </div>
+
+            {/* TAB 1: OVERVIEW & MATH CHECK */}
+            {debugTab === 'overview' && (
+              <div className="space-y-4">
+                {/* Document & Engine Metadata Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                  <div className="p-3 bg-slate-800/60 rounded-xl border border-slate-700/60">
+                    <span className="text-[10px] text-slate-400 uppercase font-bold block">Document Type</span>
+                    <span className="font-extrabold text-white capitalize">{invoiceData.documentType || 'Image / Camera'}</span>
+                  </div>
+                  <div className="p-3 bg-slate-800/60 rounded-xl border border-slate-700/60">
+                    <span className="text-[10px] text-slate-400 uppercase font-bold block">Engine Used</span>
+                    <span className="font-extrabold text-purple-300">{invoiceData.engineUsed || 'tesseract'}</span>
+                  </div>
+                  <div className="p-3 bg-slate-800/60 rounded-xl border border-slate-700/60">
+                    <span className="text-[10px] text-slate-400 uppercase font-bold block">Extraction Method</span>
+                    <span className="font-mono text-emerald-400 font-bold">{invoiceData.extractionMethod || 'TABLE_STRUCTURED'}</span>
+                  </div>
+                  <div className="p-3 bg-slate-800/60 rounded-xl border border-slate-700/60">
+                    <span className="text-[10px] text-slate-400 uppercase font-bold block">Overall Confidence</span>
+                    <span className="font-black text-amber-300">{invoiceData.confidenceScore}%</span>
+                  </div>
+                </div>
+
+                {/* Detected Document Sections */}
+                {invoiceData.detectedSections && (
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider">
+                      Document Zoning Sections
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
+                      <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-700/50">
+                        <span className="text-emerald-400 font-bold block text-[11px] mb-1">
+                          Header & Supplier ({invoiceData.detectedSections.supplierLines?.length || 0} lines)
+                        </span>
+                        <p className="text-slate-300 truncate">
+                          {invoiceData.detectedSections.supplierLines?.join(' • ') || 'None detected'}
+                        </p>
+                      </div>
+                      <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-700/50">
+                        <span className="text-blue-400 font-bold block text-[11px] mb-1">
+                          Candidate Item Lines ({invoiceData.detectedSections.itemLines?.length || 0} lines)
+                        </span>
+                        <p className="text-slate-300 truncate">
+                          {invoiceData.detectedSections.itemLines?.slice(0, 3).join(' • ') || 'None detected'}
+                        </p>
+                      </div>
+                      <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-700/50">
+                        <span className="text-amber-400 font-bold block text-[11px] mb-1">
+                          Tax & Subtotals ({invoiceData.detectedSections.taxLines?.length || 0} lines)
+                        </span>
+                        <p className="text-slate-300 truncate">
+                          {invoiceData.detectedSections.taxLines?.join(' • ') || 'None detected'}
+                        </p>
+                      </div>
+                      <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-700/50">
+                        <span className="text-rose-400 font-bold block text-[11px] mb-1">
+                          Totals & Summary ({invoiceData.detectedSections.totalLines?.length || 0} lines)
+                        </span>
+                        <p className="text-slate-300 truncate">
+                          {invoiceData.detectedSections.totalLines?.join(' • ') || 'None detected'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Canonical Line Items & Arithmetic Verification */}
+                <div className="space-y-2">
+                  <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider">
+                    Canonical Items & Mathematical Validation ({invoiceData.items.length})
+                  </h4>
+                  <div className="border border-slate-700 rounded-xl overflow-x-auto bg-slate-800/40">
+                    <table className="w-full text-left text-xs font-mono">
+                      <thead className="bg-slate-800 text-slate-300 text-[11px] uppercase">
+                        <tr>
+                          <th className="p-2">Item Name</th>
+                          <th className="p-2 text-center">Qty</th>
+                          <th className="p-2 text-right">Rate</th>
+                          <th className="p-2 text-right">Total</th>
+                          <th className="p-2 text-center">Math Check</th>
+                          <th className="p-2 text-center">Conf</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-700/50">
+                        {invoiceData.items.map((it) => {
+                          const expectedTotal = (it.quantity !== null && it.purchasePrice !== null) ? Math.round(it.quantity * it.purchasePrice * 100) / 100 : null;
+                          const hasMathIssue = Boolean(it.validationWarning);
+                          return (
+                            <tr key={it.id} className="hover:bg-slate-700/30">
+                              <td className="p-2 font-bold text-white">{it.name}</td>
+                              <td className="p-2 text-center">{it.quantity} {it.unit}</td>
+                              <td className="p-2 text-right">{it.purchasePrice !== null ? `₹${it.purchasePrice}` : '—'}</td>
+                              <td className="p-2 text-right">{it.lineTotal !== null ? `₹${it.lineTotal}` : '—'}</td>
+                              <td className="p-2 text-center">
+                                {hasMathIssue ? (
+                                  <span className="text-[10px] text-rose-300 font-bold bg-rose-900/60 px-1.5 py-0.5 rounded">
+                                    Diff (calc ₹{expectedTotal})
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-emerald-300 font-bold bg-emerald-900/60 px-1.5 py-0.5 rounded">
+                                    ✓ Exact Match
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-2 text-center text-amber-300">{it.confidence}%</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: RAW OCR TEXT */}
+            {debugTab === 'raw_ocr' && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider">
+                    RAW OCR Output Stream
+                  </h4>
+                  <span className="text-[11px] text-slate-500 font-mono">
+                    {invoiceData.rawOcrText ? invoiceData.rawOcrText.split('\n').filter(Boolean).length : 0} lines • {invoiceData.rawOcrText?.length || 0} characters
+                  </span>
+                </div>
+                <pre className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-[11px] font-mono text-emerald-300 max-h-96 overflow-y-auto whitespace-pre-wrap select-all leading-relaxed">
+                  {invoiceData.rawOcrText || 'No raw OCR text recorded.'}
+                </pre>
+              </div>
+            )}
+
+            {/* TAB 3: DETECTED WORDS (word | x | y | width | height | confidence) */}
+            {debugTab === 'detected_words' && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider">
+                    DETECTED WORDS (word | x | y | width | height | confidence)
+                  </h4>
+                  <span className="text-[11px] text-slate-500 font-mono">
+                    {invoiceData.diagnostics?.rawWords?.length || 0} words with spatial coordinates
+                  </span>
+                </div>
+                {invoiceData.diagnostics?.rawWords && invoiceData.diagnostics.rawWords.length > 0 ? (
+                  <div className="border border-slate-700 rounded-xl overflow-x-auto max-h-96 overflow-y-auto bg-slate-800/40">
+                    <table className="w-full text-left text-xs font-mono">
+                      <thead className="bg-slate-800 text-slate-300 text-[11px] uppercase sticky top-0">
+                        <tr>
+                          <th className="p-2">word</th>
+                          <th className="p-2 text-right">x</th>
+                          <th className="p-2 text-right">y</th>
+                          <th className="p-2 text-right">width</th>
+                          <th className="p-2 text-right">height</th>
+                          <th className="p-2 text-center">confidence</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-700/50">
+                        {invoiceData.diagnostics.rawWords.map((w, idx) => {
+                          const x0 = w.bbox ? w.bbox.x0 : (w as any).x ?? 0;
+                          const y0 = w.bbox ? w.bbox.y0 : (w as any).y ?? 0;
+                          const width = w.bbox ? Math.round(w.bbox.x1 - w.bbox.x0) : (w as any).width ?? 0;
+                          const height = w.bbox ? Math.round(w.bbox.y1 - w.bbox.y0) : (w as any).height ?? 0;
+                          return (
+                            <tr key={idx} className="hover:bg-slate-700/30">
+                              <td className="p-2 font-bold text-white">{w.text}</td>
+                              <td className="p-2 text-right text-slate-300">{Math.round(x0)}</td>
+                              <td className="p-2 text-right text-slate-300">{Math.round(y0)}</td>
+                              <td className="p-2 text-right text-slate-400">{width}</td>
+                              <td className="p-2 text-right text-slate-400">{height}</td>
+                              <td className="p-2 text-center text-amber-300">{Math.round(w.confidence)}%</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700 text-slate-400 text-xs">
+                    No OCR bounding boxes available for this scan (words were extracted as pure text or synthesized).
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 4: DETECTED COLUMNS & DETECTED ROWS */}
+            {debugTab === 'columns_rows' && (
+              <div className="space-y-4">
+                {/* Detected Columns */}
+                <div className="space-y-2">
+                  <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider">
+                    DETECTED COLUMNS
+                  </h4>
+                  {invoiceData.diagnostics?.detectedColumnsList && invoiceData.diagnostics.detectedColumnsList.length > 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
+                      {invoiceData.diagnostics.detectedColumnsList.map((col, idx) => (
+                        <div key={idx} className="p-2.5 bg-slate-800/70 rounded-xl border border-slate-700">
+                          <span className="text-[10px] text-purple-400 uppercase font-black block">
+                            {col.type.toUpperCase()}
+                          </span>
+                          <span className="text-white font-bold block truncate">{col.headerText}</span>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            x = {Math.round(col.leftX ?? col.minX)}–{Math.round(col.rightX ?? col.maxX)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {['ITEM', 'QTY', 'UNIT', 'RATE', 'DISCOUNT', 'TAX', 'AMOUNT'].map((c) => (
+                        <span key={c} className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 text-xs font-mono border border-slate-700">
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Detected Rows */}
+                <div className="space-y-2">
+                  <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider">
+                    DETECTED ROWS ({invoiceData.diagnostics?.detectedRows?.length || 0})
+                  </h4>
+                  {invoiceData.diagnostics?.detectedRows && invoiceData.diagnostics.detectedRows.length > 0 ? (
+                    <div className="border border-slate-700 rounded-xl overflow-x-auto max-h-96 overflow-y-auto bg-slate-800/40">
+                      <table className="w-full text-left text-xs font-mono">
+                        <thead className="bg-slate-800 text-slate-300 text-[11px] uppercase sticky top-0">
+                          <tr>
+                            <th className="p-2">Product Name</th>
+                            <th className="p-2 text-center">Qty</th>
+                            <th className="p-2 text-center">Unit</th>
+                            <th className="p-2 text-right">Rate</th>
+                            <th className="p-2 text-right">Discount</th>
+                            <th className="p-2 text-right">Tax</th>
+                            <th className="p-2 text-right">Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-700/50">
+                          {invoiceData.diagnostics.detectedRows.map((row, idx) => (
+                            <tr key={idx} className="hover:bg-slate-700/30">
+                              <td className="p-2 font-bold text-white max-w-[200px] truncate" title={row.productName}>
+                                {row.productName || '—'}
+                              </td>
+                              <td className="p-2 text-center text-slate-300">{row.quantity || '—'}</td>
+                              <td className="p-2 text-center text-slate-400">{row.unit || '—'}</td>
+                              <td className="p-2 text-right text-emerald-400 font-bold">{row.rate || '—'}</td>
+                              <td className="p-2 text-right text-slate-400">{row.discount || '—'}</td>
+                              <td className="p-2 text-right text-slate-400">{row.tax || '—'}</td>
+                              <td className="p-2 text-right text-amber-300 font-bold">{row.amount || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700 text-slate-400 text-xs">
+                      No raw structured table rows recorded for this extraction tier.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 5: PARSED OBJECTS, API RESPONSE & FRONTEND OBJECT */}
+            {debugTab === 'objects_api' && (
+              <div className="space-y-4 text-xs font-mono">
+                {/* PARSED OBJECT */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider">
+                      PARSED OBJECT (Canonical Normalized Items)
+                    </h4>
+                    <span className="text-[11px] text-purple-400">
+                      {invoiceData.canonical?.items?.length || invoiceData.items.length} items
+                    </span>
+                  </div>
+                  <pre className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-[11px] text-cyan-300 max-h-60 overflow-y-auto whitespace-pre-wrap select-all">
+                    {JSON.stringify(
+                      (invoiceData.canonical?.items || invoiceData.items).map((it: any) => ({
+                        productName: it.productName || it.name,
+                        quantity: it.quantity,
+                        unit: it.unit,
+                        rate: it.rate ?? it.purchasePrice ?? null,
+                        purchasePrice: it.purchasePrice ?? null,
+                        sellingPrice: it.sellingPrice ?? null,
+                        mrp: it.mrp ?? null,
+                        lineTotal: it.lineTotal ?? null,
+                      })),
+                      null,
+                      2
+                    )}
+                  </pre>
+                </div>
+
+                {/* API RESPONSE */}
+                <div className="space-y-1.5">
+                  <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider">
+                    API RESPONSE (Backend JSON)
+                  </h4>
+                  <pre className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-[11px] text-amber-300 max-h-48 overflow-y-auto whitespace-pre-wrap select-all">
+                    {invoiceData.diagnostics?.rawApiResponse
+                      ? JSON.stringify(invoiceData.diagnostics.rawApiResponse, null, 2)
+                      : '// Client-side in-browser OCR engine utilized. Backend API response not applicable for client scan.'}
+                  </pre>
+                </div>
+
+                {/* FRONTEND OBJECT */}
+                <div className="space-y-1.5">
+                  <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider">
+                    FRONTEND OBJECT (Current Review Table State)
+                  </h4>
+                  <pre className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-[11px] text-emerald-300 max-h-60 overflow-y-auto whitespace-pre-wrap select-all">
+                    {JSON.stringify(
+                      invoiceData.items.map((it) => ({
+                        id: it.id,
+                        name: it.name,
+                        quantity: it.quantity,
+                        unit: it.unit,
+                        purchasePrice: it.purchasePrice,
+                        sellingPrice: it.sellingPrice,
+                        mrp: it.mrp,
+                        lineTotal: it.lineTotal,
+                        confidence: it.confidence,
+                        confidenceLevel: it.confidenceLevel,
+                        validationWarning: it.validationWarning || null,
+                      })),
+                      null,
+                      2
+                    )}
+                  </pre>
+                </div>
+              </div>
+            )}
+
+            <div className="pt-3 border-t border-slate-800 flex justify-end">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setIsDebugOpen(false)}
+                className="font-bold text-xs"
+              >
+                Close Inspector
               </Button>
             </div>
           </div>

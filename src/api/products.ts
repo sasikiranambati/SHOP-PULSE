@@ -115,4 +115,32 @@ export const productsApi = {
   deleteProduct: async (id: string): Promise<void> => {
     return apiClient.delete<void>(`/api/v1/products/${id}`);
   },
+
+  /**
+   * Look up product details, historical purchase price, and MRP via backend.
+   * Securely queries shop inventory and external catalog services without exposing API keys.
+   */
+  lookupProduct: async (params: { barcode?: string; name?: string }): Promise<ProductLookupResult> => {
+    return apiClient.get<ProductLookupResult>('/api/v1/products/lookup', {
+      params: {
+        barcode: params.barcode,
+        name: params.name,
+      }
+    });
+  },
 };
+
+export interface ProductLookupResult {
+  found: boolean;
+  name?: string | null;
+  barcode?: string | null;
+  unit?: string | null;
+  purchase_price?: number | null;
+  selling_price?: number | null;
+  mrp?: number | null;
+  source: string;
+  confidence: number;
+  matched_product_id?: string | null;
+  notes?: string | null;
+}
+

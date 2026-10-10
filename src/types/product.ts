@@ -30,6 +30,7 @@ export interface Product {
   sellingPrice: number;
   price: number; // Backward compatibility alias for sellingPrice
   purchasePrice: number;
+  mrp?: number;
   reorderLevel: number;
   minStock: number; // Backward compatibility alias for reorderLevel
   imageUrl?: string;
@@ -53,6 +54,7 @@ export interface ProductInput {
   sellingPrice: number;
   price?: number; // Optional alias
   purchasePrice?: number;
+  mrp?: number;
   reorderLevel: number;
   minStock?: number; // Optional alias
   imageUrl?: string;

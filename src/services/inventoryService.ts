@@ -177,14 +177,26 @@ export async function deleteProduct(id: string): Promise<void> {
 /**
  * Increase stock for a product (restock).
  */
-export async function increaseStock(id: string, quantity: number = 10, newPurchasePrice?: number): Promise<void> {
+export async function increaseStock(
+  id: string,
+  quantity: number = 10,
+  newPurchasePrice?: number,
+  newSellingPrice?: number,
+  newMrp?: number
+): Promise<void> {
   const current = await getProductById(id);
   if (!current) throw new Error('Product not found');
   const updatePayload: any = {
     current_stock: current.stock + quantity,
   };
-  if (newPurchasePrice && newPurchasePrice > 0) {
+  if (typeof newPurchasePrice === 'number' && newPurchasePrice >= 0) {
     updatePayload.purchase_price = newPurchasePrice;
+  }
+  if (typeof newSellingPrice === 'number' && newSellingPrice > 0) {
+    updatePayload.selling_price = newSellingPrice;
+  }
+  if (typeof newMrp === 'number' && newMrp > 0) {
+    updatePayload.mrp = newMrp;
   }
   await productsApi.updateProduct(id, updatePayload);
   window.dispatchEvent(new CustomEvent('shoppulse_inventory_changed'));

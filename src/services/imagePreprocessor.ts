@@ -32,26 +32,37 @@ function loadImageFromFile(file: File): Promise<HTMLImageElement> {
 }
 
 /**
- * Rescales image dimensions while maintaining aspect ratio.
+ * Rescales image dimensions intelligently.
+ * For low-resolution images (< 1500px, such as compressed WhatsApp photos 525x662),
+ * upscales by 2.5x to 3.5x so character heights reach at least 24-30 pixels for reliable OCR.
+ * For very large images (> 2500px), downscales to optimal OCR resolution.
  */
 function getScaledDimensions(
   width: number,
-  height: number,
-  maxDimension: number = 2000
-): { width: number; height: number } {
-  if (width <= maxDimension && height <= maxDimension) {
-    return { width, height };
-  }
-  if (width > height) {
+  height: number
+): { width: number; height: number; scaleFactor: number } {
+  // Low resolution: Upscale to around 1800 - 2200px width
+  if (width < 1400 || height < 1400) {
+    const targetDim = 2000;
+    const scale = Math.min(3.5, Math.max(2.0, targetDim / Math.min(width, height)));
     return {
-      width: maxDimension,
-      height: Math.round((height * maxDimension) / width),
+      width: Math.round(width * scale),
+      height: Math.round(height * scale),
+      scaleFactor: scale,
     };
   }
-  return {
-    width: Math.round((width * maxDimension) / height),
-    height: maxDimension,
-  };
+
+  // Excessively large photos (e.g. 48MP phone captures > 3000px): Normalize to 2400px max
+  if (width > 2500 || height > 2500) {
+    const scale = 2400 / Math.max(width, height);
+    return {
+      width: Math.round(width * scale),
+      height: Math.round(height * scale),
+      scaleFactor: scale,
+    };
+  }
+
+  return { width, height, scaleFactor: 1.0 };
 }
 
 /**
@@ -165,7 +176,7 @@ function detectSkewAngle(gray: Uint8Array, width: number, height: number): numbe
  * Fast integral image for Bradley-Roth adaptive thresholding.
  * Normalizes uneven shadows, camera lighting, and thermal receipt backgrounds.
  */
-function adaptiveThreshold(
+export function adaptiveThreshold(
   gray: Uint8Array,
   width: number,
   height: number,
@@ -223,7 +234,7 @@ function adaptiveThreshold(
 /**
  * Sharpens text edges using unsharp masking while preserving horizontal/vertical table borders.
  */
-function sharpenAndPreserveTables(
+export function sharpenAndPreserveTables(
   binary: Uint8Array,
   gray: Uint8Array,
   width: number,
@@ -276,9 +287,9 @@ function sharpenAndPreserveTables(
  */
 export async function preprocessInvoiceImage(file: File): Promise<PreprocessedImageResult> {
   const img = await loadImageFromFile(file);
-  const { width: initW, height: initH } = getScaledDimensions(img.naturalWidth, img.naturalHeight, 2000);
+  const { width: initW, height: initH } = getScaledDimensions(img.naturalWidth, img.naturalHeight);
 
-  // 1. Render initial scaled image
+  // 1. Render initial scaled image with high quality smoothing
   const initialCanvas = document.createElement('canvas');
   initialCanvas.width = initW;
   initialCanvas.height = initH;
@@ -286,6 +297,8 @@ export async function preprocessInvoiceImage(file: File): Promise<PreprocessedIm
   if (!initialCtx) {
     throw new Error('Canvas 2D context unavailable.');
   }
+  initialCtx.imageSmoothingEnabled = true;
+  initialCtx.imageSmoothingQuality = 'high';
   initialCtx.drawImage(img, 0, 0, initW, initH);
   const originalDataUrl = initialCanvas.toDataURL('image/jpeg', 0.95);
 
@@ -303,7 +316,7 @@ export async function preprocessInvoiceImage(file: File): Promise<PreprocessedIm
   let curW = initW;
   let curH = initH;
 
-  // Apply deskew rotation if skew is significant (> 0.6 degrees)
+  // Apply deskew rotation if skew is significant (> 0.6 degrees and < 15 degrees)
   if (Math.abs(skewAngle) > 0.6 && Math.abs(skewAngle) < 15) {
     const rad = (-skewAngle * Math.PI) / 180;
     const rotatedCanvas = document.createElement('canvas');
@@ -311,6 +324,8 @@ export async function preprocessInvoiceImage(file: File): Promise<PreprocessedIm
     rotatedCanvas.height = initH;
     const rotCtx = rotatedCanvas.getContext('2d', { willReadFrequently: true });
     if (rotCtx) {
+      rotCtx.imageSmoothingEnabled = true;
+      rotCtx.imageSmoothingQuality = 'high';
       rotCtx.fillStyle = '#FFFFFF';
       rotCtx.fillRect(0, 0, initW, initH);
       rotCtx.translate(initW / 2, initH / 2);
@@ -327,17 +342,25 @@ export async function preprocessInvoiceImage(file: File): Promise<PreprocessedIm
     }
   }
 
-  // 4. Adaptive Thresholding (removes thermal paper shadows, creases, uneven lighting)
-  const binary = adaptiveThreshold(gray, curW, curH, 0.08, 12);
+  // 4. Non-destructive contrast enhancement (stretch intensity dynamic range for crisp OCR without tearing fonts)
+  let minVal = 255;
+  let maxVal = 0;
+  for (let i = 0; i < gray.length; i += 2) {
+    if (gray[i] < minVal) minVal = gray[i];
+    if (gray[i] > maxVal) maxVal = gray[i];
+  }
+  const range = Math.max(30, maxVal - minVal);
+  const enhanced = new Uint8Array(curW * curH);
+  for (let i = 0; i < gray.length; i++) {
+    const norm = (gray[i] - minVal) / range;
+    enhanced[i] = Math.max(0, Math.min(255, Math.round(norm * 255)));
+  }
 
-  // 5. Sharpen Text & Preserve Table Borders
-  const refined = sharpenAndPreserveTables(binary, gray, curW, curH);
-
-  // 6. Write binary refined image back into final canvas
+  // 5. Write enhanced image back into final canvas
   const outputImgData = finalCtx.createImageData(curW, curH);
   const outData = outputImgData.data;
   for (let i = 0, p = 0; i < outData.length; i += 4, p++) {
-    const v = refined[p];
+    const v = enhanced[p];
     outData[i] = v;
     outData[i + 1] = v;
     outData[i + 2] = v;

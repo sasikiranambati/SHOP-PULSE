@@ -14,6 +14,7 @@ class Product(Base):
     category = Column(String, index=True, nullable=True)
     selling_price = Column(Float, nullable=False)
     purchase_price = Column(Float, nullable=True, default=0.0)
+    mrp = Column(Float, nullable=True)
     current_stock = Column(Integer, nullable=False, default=0)
     reorder_level = Column(Integer, nullable=True, default=0)
     unit = Column(String, nullable=True, default="pcs")

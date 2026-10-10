@@ -1,0 +1,18 @@
+{
+  "name": "ShopPulse - Retail POS & Inventory",
+  "short_name": "ShopPulse",
+  "description": "Smart offline-first POS & inventory management system for retail stores",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f8fafc",
+  "theme_color": "#059669",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -10,9 +10,11 @@ from schemas.product import (
     ProductUpdate,
     ProductResponse,
     PaginatedProductResponse,
+    ProductLookupResponse,
 )
 from services import shop as shop_service
 from services import product as product_service
+from services import product_lookup as product_lookup_service
 
 router = APIRouter()
 
@@ -81,6 +83,27 @@ def get_low_stock_products(
         db, shop_id=shop.id, skip=skip, limit=limit
     )
     return PaginatedProductResponse(items=items, total=total, skip=skip, limit=limit)
+
+@router.get("/lookup", response_model=ProductLookupResponse)
+def lookup_product(
+    *,
+    db: Session = Depends(deps.get_db),
+    barcode: Optional[str] = Query(None, description="Product barcode or SKU"),
+    name: Optional[str] = Query(None, description="Product name"),
+    current_user: User = Depends(deps.get_current_user)
+) -> Any:
+    """
+    Look up product information, purchase rates, selling prices, and MRP.
+    Checks shop inventory first, followed by external catalog integration if configured.
+    Never exposes API keys or internal credentials to the client.
+    """
+    user_shop = get_user_shop_or_raise(db, current_user)
+    return product_lookup_service.lookup_product(
+        db=db,
+        shop_id=user_shop.id,
+        barcode=barcode,
+        name=name
+    )
 
 @router.get("/{id}", response_model=ProductResponse)
 def get_product(

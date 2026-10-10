@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     VOICE_MODE: str = "mock"  # "mock" or "sarvam"
     SARVAM_API_KEY: Optional[str] = None
 
+    # OpenMRP Settings (Material Requirements Planning platform)
+    OPENMRP_API_KEY: Optional[str] = None
+    OPENMRP_ACCOUNT_ID: Optional[str] = None
+
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"

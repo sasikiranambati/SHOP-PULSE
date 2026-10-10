@@ -13,7 +13,22 @@ from api.main import api_router
 from db.session import Base, engine
 import db.models  # noqa
 
-Base.metadata.create_all(bind=engine)
+from sqlalchemy import inspect, text
+
+def init_db_schema():
+    Base.metadata.create_all(bind=engine)
+    try:
+        with engine.connect() as conn:
+            inspector = inspect(conn)
+            if "products" in inspector.get_table_names():
+                columns = [c["name"] for c in inspector.get_columns("products")]
+                if "mrp" not in columns:
+                    conn.execute(text("ALTER TABLE products ADD COLUMN mrp FLOAT"))
+                    conn.commit()
+    except Exception:
+        pass
+
+init_db_schema()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

@@ -8,6 +8,7 @@ class ProductBase(BaseModel):
     category: Optional[str] = Field(None, description="Product category")
     selling_price: float = Field(..., ge=0, description="Selling price (must be >= 0)")
     purchase_price: Optional[float] = Field(0.0, ge=0, description="Purchase price (must be >= 0)")
+    mrp: Optional[float] = Field(None, ge=0, description="Maximum retail price (must be >= 0)")
     current_stock: int = Field(0, ge=0, description="Current stock quantity (must be >= 0)")
     reorder_level: Optional[int] = Field(0, ge=0, description="Reorder level (must be >= 0)")
     unit: Optional[str] = Field("pcs", description="Unit of measurement")
@@ -22,6 +23,7 @@ class ProductUpdate(BaseModel):
     category: Optional[str] = None
     selling_price: Optional[float] = Field(None, ge=0)
     purchase_price: Optional[float] = Field(None, ge=0)
+    mrp: Optional[float] = Field(None, ge=0)
     current_stock: Optional[int] = Field(None, ge=0)
     reorder_level: Optional[int] = Field(None, ge=0)
     unit: Optional[str] = None
@@ -53,3 +55,17 @@ class PaginatedProductResponse(BaseModel):
     total: int
     skip: int
     limit: int
+
+class ProductLookupResponse(BaseModel):
+    found: bool = Field(False, description="Whether product was matched")
+    name: Optional[str] = Field(None, description="Product name")
+    barcode: Optional[str] = Field(None, description="Barcode or SKU")
+    unit: Optional[str] = Field(None, description="Packaging unit")
+    purchase_price: Optional[float] = Field(None, description="Wholesale/purchase price (never substituted for MRP)")
+    selling_price: Optional[float] = Field(None, description="Retail selling price")
+    mrp: Optional[float] = Field(None, description="Maximum Retail Price (MRP)")
+    source: str = Field("NONE", description="Source: 'SHOP_INVENTORY', 'OPENMRP_CATALOG', 'NONE'")
+    confidence: float = Field(0.0, description="Match confidence score (0.0 - 1.0)")
+    matched_product_id: Optional[UUID] = Field(None, description="Matched database product ID if from local shop")
+    notes: Optional[str] = Field(None, description="Contextual or statutory notes")
+
