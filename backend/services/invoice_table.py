@@ -4,20 +4,23 @@ Invoice table reconstruction and line-item price extraction.
 Input is either OCR/PDF words with coordinates or plain text lines. Both go through
 the same steps:
 
-    rows -> header detection -> per-column cells -> numeric parsing
+    rows -> header detection -> per-column cells -> field parsers
          -> arithmetic validation -> ExtractedLine
 
 Rules this module enforces:
-- Purchase price comes from the invoice's Purchase Price / Rate / Unit Price column.
-- Quantity, Rate, Amount, MRP, Discount and Tax are kept in separate columns.
-- Missing numbers stay None. Nothing defaults to 1 or 0.
-- A computed value never replaces a value printed on the invoice. Possible OCR
-  corrections are offered as suggestions and the line is flagged for review.
+- Every value comes from the column it is printed in. Numbers inside the product
+  description ("CHANA 50 KG", "OIL CAN 10") belong to the description.
+- Quantity and its printed unit are read together ("1.0 BOR" -> 1.0, "BOR"); the unit
+  is kept as printed and only normalized through the explicit UNIT_WORDS table.
+- Missing numbers stay None and are distinct from a printed 0.
+- Money is handled as Decimal. A computed value never replaces a printed one;
+  discrepancies are reported with the expected amount and the difference.
 """
 
 import re
 import statistics
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 # --------------------------------------------------------------------------
@@ -77,46 +80,57 @@ class Column:
 
 @dataclass
 class NumberParse:
-    value: Optional[float]
+    value: Optional[Decimal]
     raw: str
-    corrected: bool = False
-    ambiguous: bool = False
+    corrected: bool = False         # a letter inside a run of digits was read as a digit (O->0, l->1)
+    ambiguous: bool = False         # the cell holds two different numbers
+    symbol_stripped: bool = False   # an unreadable mark was glued to the number (often a misread ₹)
+    percent: Optional[Decimal] = None  # percentage printed in the cell, e.g. "124.08 (3%)"
+    unit: Optional[str] = None      # unit printed with a quantity, e.g. "1.0 BOR" -> "BOR"
 
 
 @dataclass
 class Reconciliation:
     status: str  # VERIFIED | MISMATCH | INSUFFICIENT_DATA
-    line_total: Optional[float]
-    line_total_source: Optional[str]  # INVOICE | CALCULATED | None
+    line_total: Optional[Decimal]          # printed line amount (never a calculation)
+    line_total_source: Optional[str]       # INVOICE | None
+    calculated_amount: Optional[Decimal] = None
+    amount_difference: Optional[Decimal] = None  # printed - calculated
+    rule: Optional[str] = None
     explanation: Optional[str] = None
     issues: List[str] = field(default_factory=list)
     suggestions: List[str] = field(default_factory=list)
-    suggested_rate: Optional[float] = None
+    suggested_rate: Optional[Decimal] = None
 
 
 @dataclass
 class ExtractedLine:
     product_name: str
-    quantity: Optional[float]
-    unit: Optional[str]
-    rate: Optional[float]
-    purchase_price: Optional[float]
-    selling_price: Optional[float]
-    invoice_mrp: Optional[float]
-    discount: Optional[float]
-    discount_pct: Optional[float]
-    tax_amount: Optional[float]
-    gst_rate: Optional[float]
-    taxable_amount: Optional[float]
+    quantity: Optional[Decimal]
+    unit: Optional[str]             # as printed on the invoice
+    unit_normalized: Optional[str]  # only via UNIT_WORDS; None for units like BOR or PET
+    rate: Optional[Decimal]
+    purchase_price: Optional[Decimal]
+    selling_price: Optional[Decimal]
+    invoice_mrp: Optional[Decimal]
+    discount: Optional[Decimal]
+    discount_pct: Optional[Decimal]
+    tax_amount: Optional[Decimal]
+    gst_rate: Optional[Decimal]
+    taxable_amount: Optional[Decimal]
     hsn_code: Optional[str]
     barcode: Optional[str]
-    line_total: Optional[float]
+    line_total: Optional[Decimal]
     line_total_source: Optional[str]
+    calculated_amount: Optional[Decimal]
+    amount_difference: Optional[Decimal]
     arithmetic_status: str
+    arithmetic_rule: Optional[str]
+    arithmetic_explanation: Optional[str]
     confidence: float
     issues: List[str]
     suggestions: List[str]
-    suggested_rate: Optional[float]
+    suggested_rate: Optional[Decimal]
     raw_cells: Dict[str, str]
     source_text: str
     row_index: int
@@ -131,6 +145,7 @@ class TableResult:
     header_row_index: Optional[int]
     rows: List[Dict[str, Any]]
     warnings: List[str]
+    totals_row: Dict[str, Decimal] = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------
@@ -180,11 +195,11 @@ _alias("ignore", "batch", "batch no", "exp", "expiry", "exp date", "expiry date"
        "free", "free qty", "pack", "packing", "pkg", "size", "remarks", "sch qty", "case", "cases")
 
 CORE_ROLES = {"qty", "unit", "rate", "purchase_price", "selling_price", "mrp", "total", "discount",
-              "tax_amount", "gst_rate", "taxable", "hsn", "barcode", "serial"}
+              "discount_pct", "tax_amount", "gst_rate", "taxable", "hsn", "barcode", "serial"}
 NUMERIC_ROLES = {"qty", "rate", "purchase_price", "selling_price", "mrp", "total", "discount",
                  "discount_pct", "tax_amount", "gst_rate", "taxable"}
 PRICE_ROLES = {"rate", "purchase_price", "selling_price", "mrp", "total", "taxable"}
-GST_SLABS = {0.25, 3.0, 5.0, 12.0, 18.0, 28.0}
+GST_SLABS = {Decimal(v) for v in ("0.25", "3", "5", "12", "18", "28")}
 
 UNIT_WORDS = {
     "pcs": "pcs", "pc": "pcs", "piece": "pcs", "pieces": "pcs", "nos": "pcs", "no": "pcs", "ea": "pcs",
@@ -273,65 +288,146 @@ def classify_header_text(text: str) -> List[Tuple[str, List[int]]]:
 # Number parsing
 # --------------------------------------------------------------------------
 
-_NUM_TOKEN_RE = re.compile(r"[0-9OoIl|SB][0-9OoIl|SB,]*(?:\.[0-9OoIl|SB]+)?")
+_DASHES = {"-", "—", "–", "--", "n/a", "na", "nil", "null", "none", "."}
+_PCT_RE = re.compile(r"\(?\s*(\d+(?:[.,]\d+)?)\s*%\s*\)?")
+_NUM_RUN_RE = re.compile(r"\d[\d.,OoIl|]*")
 _STRICT_NUM_RE = re.compile(r"^\d{1,3}(?:,\d{2,3})*(?:\.\d+)?$|^\d+(?:\.\d+)?$|^\d+,\d{1,2}$")
-_OCR_DIGIT_MAP = str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1", "|": "1", "S": "5", "B": "8"})
+# Letter-for-digit OCR slips that are repaired only *inside* a run of digits ("1O0", "2.O0").
+# S/B are deliberately absent: next to a number they are usually a misread ₹ or a unit ("2.0BOR").
+_OCR_DIGIT_MAP = str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1", "|": "1"})
+_GLUED_SYMBOL_RE = re.compile(r"[^\w\s/:.,\-]{1,2}|[A-Za-z]")
+
+
+def _to_decimal(text: str) -> Optional[Decimal]:
+    try:
+        return Decimal(text)
+    except (InvalidOperation, ValueError):
+        return None
 
 
 def parse_number(text: Optional[str]) -> NumberParse:
     """
-    Parses an invoice amount/quantity cell.
+    Parses a money or numeric cell exactly (Decimal).
     - Handles ₹ / Rs / INR, Indian digit grouping (1,25,000.00), decimal commas (250,50),
       trailing '/-', unit suffixes (/kg) and accounting negatives ((250.00)).
-    - Letter-for-digit OCR slips (O->0, l->1, S->5) are corrected only inside tokens that
-      already contain a digit, and the result is marked `corrected`.
-    - A cell holding two different numbers is `ambiguous` and yields no value.
+    - A percentage in the cell is returned separately: "124.08 (3%)" -> 124.08 and 3;
+      "(3%)" is a percentage, never a negative number.
+    - A single unreadable mark glued to the number (a misread ₹ such as "X22.00") is
+      dropped and reported; it is never converted into a digit.
+    - Letters inside a run of digits ("1O0") are repaired and reported as corrected.
+    - A cell holding two different numbers is ambiguous and yields no value.
     """
     raw = (text or "").strip()
-    if not raw or raw.lower() in {"-", "—", "–", "--", "n/a", "na", "nil", "null", "none", "."}:
+    if not raw or raw.lower() in _DASHES:
         return NumberParse(None, raw)
 
     s = raw
+    percent: Optional[Decimal] = None
+    pcts = _PCT_RE.findall(s)
+    if pcts:
+        found = {_to_decimal(p.replace(",", ".")) for p in pcts}
+        if len(found) > 1 or None in found:
+            return NumberParse(None, raw, ambiguous=True)
+        percent = found.pop()
+        s = _PCT_RE.sub(" ", s)
+
+    st = s.strip()
     negative = False
-    m = re.match(r"^\((.*)\)$", s)
+    m = re.fullmatch(r"\((.*)\)", st)
     if m:
         negative = True
-        s = m.group(1)
-    s = _CURRENCY_RE.sub(" ", s)
-    s = re.sub(r"/-", " ", s)
-    s = re.sub(r"/\s*[a-zA-Z]+\b", " ", s)  # 250.00/kg
-    s = s.replace("%", " ")
-    s = re.sub(r"(\d)\s*\.\s*(\d)", r"\1.\2", s)  # '22 . 50' from OCR
+        st = m.group(1)
+    st = _CURRENCY_RE.sub(" ", st)
+    st = re.sub(r"/-", " ", st)
+    st = re.sub(r"/\s*[a-zA-Z]+\b", " ", st)  # 250.00/kg
+    st = re.sub(r"(\d)\s*\.\s*(\d)", r"\1.\2", st)  # '22 . 50' from OCR
+    # A decimal point read as ':' or ';' ("1:12") is repaired and reported as corrected
+    st, colon_fixes = re.subn(r"(?<=\d)[:;](?=\d{1,2}(?!\d))", ".", st)
 
-    candidates: List[Tuple[float, bool]] = []
-    for tok in _NUM_TOKEN_RE.findall(s):
-        tok = tok.strip(",.")
-        if not tok or not re.search(r"\d", tok):
-            continue  # never turn a pure-letter token into a number
-        corrected = False
-        fixed = tok.translate(_OCR_DIGIT_MAP)
-        if fixed != tok:
+    values: List[Decimal] = []
+    corrected = bool(colon_fixes)
+    symbol_stripped = False
+    for match in _NUM_RUN_RE.finditer(st):
+        before = st[: match.start()]
+        glued = re.search(r"(\S*)$", before).group(1)
+        if glued:
+            if _GLUED_SYMBOL_RE.fullmatch(glued):
+                symbol_stripped = True
+            elif re.search(r"[A-Za-z]{2,}", glued):
+                continue  # digits inside a code such as 'SBW1021'
+        token = match.group(0)
+        # Letters trailing the number are a unit or noise, never digits
+        core = re.sub(r"[OoIl|]+[.,]*$", "", token).rstrip(".,")
+        if not core:
+            continue
+        fixed = core.translate(_OCR_DIGIT_MAP)
+        if fixed != core:
             corrected = True
         if not _STRICT_NUM_RE.match(fixed):
             continue
-        if re.match(r"^\d+,\d{1,2}$", fixed):
-            fixed = fixed.replace(",", ".")  # decimal comma
-        else:
-            fixed = fixed.replace(",", "")
-        try:
-            candidates.append((float(fixed), corrected))
-        except ValueError:
-            continue
+        fixed = fixed.replace(",", ".") if re.fullmatch(r"\d+,\d{1,2}", fixed) else fixed.replace(",", "")
+        value = _to_decimal(fixed)
+        if value is not None:
+            values.append(value)
 
-    if not candidates:
-        return NumberParse(None, raw)
-    distinct = {round(v, 6) for v, _ in candidates}
-    if len(distinct) > 1:
-        return NumberParse(None, raw, ambiguous=True)
-    value, corrected = candidates[0]
-    if value > 1e8:
-        return NumberParse(None, raw)
-    return NumberParse(-value if negative else value, raw, corrected=corrected)
+    if not values:
+        return NumberParse(None, raw, percent=percent)
+    if len(set(values)) > 1:
+        return NumberParse(None, raw, ambiguous=True, percent=percent)
+    value = values[0]
+    if value > Decimal("100000000"):
+        return NumberParse(None, raw, percent=percent)
+    return NumberParse(-value if negative else value, raw, corrected=corrected,
+                       symbol_stripped=symbol_stripped, percent=percent)
+
+
+_QTY_RE = re.compile(r"^\s*(?P<num>\d[\d.,OoIl|]*?)\s*(?P<unit>[A-Za-z][A-Za-z.]{0,11})?\s*$")
+_QTY_GREEDY_RE = re.compile(r"^\s*(?P<num>\d[\d.,OoIl|]*)\s*(?P<unit>[A-Za-z][A-Za-z.]{0,11})?\s*$")
+# Words accepted as a printed unit after a quantity (includes units with no stock mapping, e.g. BOR, PET)
+QTY_UNIT_WORDS = set(UNIT_WORDS) | {"bor", "bori", "pet", "jar", "doz", "bdl", "cs", "btls", "nos"}
+
+
+def parse_quantity(text: Optional[str]) -> NumberParse:
+    """
+    Parses a quantity cell, keeping the printed unit separate: "1.0 BOR" -> 1.0 + "BOR",
+    "2.0BOR" -> 2.0 + "BOR", "10 Nos" -> 10 + "Nos". Letters after the number are a unit,
+    never digits, except O/o/I/l/| that only make sense as digits ("1O" -> 10, "2OOml" -> 200 ml).
+    """
+    raw = (text or "").strip()
+    m = _QTY_RE.match(raw)
+    greedy = _QTY_GREEDY_RE.match(raw)
+    digits_from_letters = False
+    if m and greedy and m.group("unit"):
+        def is_unit(u: Optional[str]) -> bool:
+            return not u or re.sub(r"[^a-z]", "", u.lower()) in QTY_UNIT_WORDS
+        if not is_unit(m.group("unit")) and (is_unit(greedy.group("unit")) or re.fullmatch(r"[OoIl|]+", m.group("unit"))):
+            m, digits_from_letters = greedy, True
+    if m:
+        num = m.group("num")
+        if digits_from_letters:
+            # The trailing O/l are digits here; parse_number alone would drop them as a unit
+            num = num.translate(_OCR_DIGIT_MAP)
+        parsed = parse_number(num)
+        parsed.corrected = parsed.corrected or digits_from_letters
+        parsed.raw = raw
+        unit = m.group("unit")
+        parsed.unit = unit.rstrip(".") if unit else None
+        return parsed
+    parsed = parse_number(raw)
+    unit_match = re.search(r"\d\s*([A-Za-z]{2,12})\b", raw)
+    parsed.unit = unit_match.group(1) if unit_match else None
+    return parsed
+
+
+def parse_hsn(text: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """Returns (hsn_code, issue). '-' or blank means no HSN printed."""
+    t = (text or "").strip()
+    if not t or t.lower() in _DASHES:
+        return None, None
+    digits = re.sub(r"\s", "", t)
+    if re.fullmatch(r"\d{2,8}", digits):
+        return digits, None
+    return None, f"HSN '{t}' is not a valid HSN/SAC code"
 
 
 def looks_numeric(text: str) -> bool:
@@ -341,13 +437,14 @@ def looks_numeric(text: str) -> bool:
     if t in {"-", "—", "–"}:
         return True
     p = parse_number(t)
-    if p.value is None:
+    if p.value is None and p.percent is None:
         return False
     letters = re.sub(r"(?i)₹|rs\.?|inr|[0-9.,()/%\-]", "", t)
     return len(letters) <= 1
 
 
 def normalize_unit(text: Optional[str]) -> Optional[str]:
+    """Maps a printed unit through the explicit UNIT_WORDS table; unknown units return None."""
     if not text:
         return None
     key = re.sub(r"[^a-z]", "", text.lower())
@@ -358,108 +455,146 @@ def normalize_unit(text: Optional[str]) -> Optional[str]:
 # Arithmetic validation
 # --------------------------------------------------------------------------
 
+CENT = Decimal("0.01")
 
-def _fmt(v: Optional[float]) -> str:
+ARITHMETIC_RULE = (
+    "Expected amount = quantity × rate − discount + tax, using the printed discount and tax "
+    "amounts (or their printed percentages when no amount is printed). Alternatives checked for "
+    "suppliers whose rate already includes tax or discount: quantity × rate − discount, "
+    "quantity × rate + tax, quantity × rate. Tolerance for paise rounding: "
+    "₹0.005 × quantity + ₹0.02."
+)
+
+
+def amount_tolerance(qty: Decimal) -> Decimal:
+    """Rates are printed to the paisa, so each unit can carry up to ₹0.005 of rounding."""
+    return abs(qty) * Decimal("0.005") + Decimal("0.02")
+
+
+def _fmt(v: Optional[Decimal]) -> str:
+    """Plain number without trailing zeros: 3, 1378.62, 4015.8."""
     if v is None:
         return "—"
-    return f"{v:,.2f}".rstrip("0").rstrip(".") if v % 1 else f"{v:,.0f}"
+    d = Decimal(v)
+    text = format(d.normalize(), "f") if d != d.to_integral() else format(d.quantize(Decimal(1)), "f")
+    return text
 
 
-def _close(a: float, b: float) -> bool:
-    return abs(a - b) <= max(1.0, abs(b) * 0.01)
+def _money(v: Optional[Decimal]) -> str:
+    if v is None:
+        return "—"
+    return f"₹{Decimal(v).quantize(CENT):,}"
 
 
 def reconcile_line(
-    qty: Optional[float],
-    rate: Optional[float],
-    amount: Optional[float],
-    discount: Optional[float] = None,
-    discount_pct: Optional[float] = None,
-    tax_amount: Optional[float] = None,
-    gst_rate: Optional[float] = None,
-    taxable: Optional[float] = None,
+    qty: Optional[Decimal],
+    rate: Optional[Decimal],
+    amount: Optional[Decimal],
+    discount: Optional[Decimal] = None,
+    discount_pct: Optional[Decimal] = None,
+    tax_amount: Optional[Decimal] = None,
+    gst_rate: Optional[Decimal] = None,
+    taxable: Optional[Decimal] = None,
 ) -> Reconciliation:
     """
-    Checks quantity × rate against the printed line amount, allowing for discount
-    and GST. Never rewrites the printed values; a mismatch is reported with
-    suggestions instead.
+    Compares the printed line amount with the documented ARITHMETIC_RULE. The printed
+    amount, rate and quantity are never changed; a discrepancy is recorded with the
+    expected amount, the difference and a plain-language explanation.
     """
-    if qty is not None and rate is not None:
-        base = qty * rate
-        pre_tax: List[Tuple[str, float]] = [("qty × rate", base)]
-        if discount:
-            pre_tax.append(("qty × rate − discount", base - discount))
-        if discount_pct:
-            pre_tax.append((f"qty × rate − {_fmt(discount_pct)}% discount", base * (1 - discount_pct / 100.0)))
-        candidates = list(pre_tax)
-        for label, v in pre_tax:
-            if tax_amount:
-                candidates.append((f"{label} + tax", v + tax_amount))
-            if gst_rate:
-                candidates.append((f"{label} + {_fmt(gst_rate)}% GST", v * (1 + gst_rate / 100.0)))
+    qty, rate, amount = (_dec(qty), _dec(rate), _dec(amount))
+    discount, discount_pct, tax_amount, gst_rate, taxable = map(_dec, (discount, discount_pct, tax_amount, gst_rate, taxable))
+    printed = amount if amount is not None else taxable
+    printed_source = "INVOICE" if printed is not None else None
 
-        if amount is not None:
-            for label, v in candidates:
-                if _close(v, amount):
-                    return Reconciliation("VERIFIED", amount, "INVOICE", explanation=f"{label} = {_fmt(amount)}")
-            if taxable is not None and any(_close(v, taxable) for _, v in pre_tax):
-                return Reconciliation("VERIFIED", amount, "INVOICE", explanation="qty × rate matches taxable value")
-            issue = (
-                f"Amount ₹{_fmt(amount)} does not match quantity × rate "
-                f"({_fmt(qty)} × ₹{_fmt(rate)} = ₹{_fmt(base)})"
-            )
-            return Reconciliation(
-                "MISMATCH", amount, "INVOICE", issues=[issue],
-                suggestions=_decimal_shift_suggestions(qty, rate, amount, candidates),
-            )
+    if qty is None or rate is None:
+        issues: List[str] = []
+        suggested_rate = None
+        if qty is None:
+            issues.append("Quantity could not be read; enter it manually")
+        if rate is None:
+            if qty and printed is not None and qty > 0:
+                suggested_rate = (printed / qty).quantize(CENT)
+                issues.append(
+                    f"Rate could not be read. Amount ÷ quantity = {_money(suggested_rate)}, "
+                    "which may include tax or discount; confirm the purchase price manually"
+                )
+            else:
+                issues.append("Rate / purchase price could not be read; enter it manually")
+        return Reconciliation("INSUFFICIENT_DATA", printed, printed_source, issues=issues, suggested_rate=suggested_rate)
 
-        best = pre_tax[-1][1] if len(pre_tax) > 1 else base
-        if taxable is not None:
-            return Reconciliation(
-                "VERIFIED" if _close(best, taxable) else "MISMATCH", taxable, "INVOICE",
-                explanation="line amount taken from taxable value",
-                issues=[] if _close(best, taxable) else [
-                    f"Taxable value ₹{_fmt(taxable)} does not match quantity × rate (₹{_fmt(best)})"],
-            )
+    gross = qty * rate
+    disc = discount if discount is not None else (gross * discount_pct / 100 if discount_pct is not None else None)
+    net = gross - (disc or 0)
+    tax = tax_amount if tax_amount is not None else (net * gst_rate / 100 if gst_rate is not None else None)
+
+    def label(with_disc: bool, with_tax: bool) -> str:
+        text = f"{_fmt(qty)} × {_money(rate)}"
+        if with_disc and disc:
+            text += f" − {_money(disc)} discount"
+        if with_tax and tax:
+            text += f" + {_money(tax)} tax"
+        return text
+
+    conventions: List[Tuple[str, Decimal]] = [(label(True, True), net + (tax or 0))]
+    if tax:
+        conventions.append((label(True, False) + " (tax included in rate)", net))
+    if disc:
+        conventions.append((label(False, True) + " (discount already in rate)", gross + (tax or 0)))
+    if disc or tax:
+        conventions.append((label(False, False), gross))
+
+    if printed is None:
+        expected_label, expected = conventions[0]
         return Reconciliation(
-            "INSUFFICIENT_DATA", round(best, 2), "CALCULATED",
-            explanation="no line amount on invoice; calculated as quantity × rate",
-            issues=["Line amount not printed on invoice; calculated from quantity × rate"],
+            "INSUFFICIENT_DATA", None, None, calculated_amount=expected.quantize(CENT), rule=ARITHMETIC_RULE,
+            explanation=f"No line amount printed. Calculated: {expected_label} = {_money(expected)}",
+            issues=[f"Line amount not printed on invoice; calculated amount is {_money(expected)}"],
         )
 
-    line_total = amount if amount is not None else taxable
-    issues: List[str] = []
-    suggested_rate = None
-    if qty is None:
-        issues.append("Quantity could not be read; enter it manually")
-    if rate is None:
-        if qty and line_total is not None and qty > 0:
-            suggested_rate = round(line_total / qty, 2)
-            issues.append(
-                f"Rate could not be read. Amount ÷ quantity = ₹{_fmt(suggested_rate)}, "
-                "which may include tax or discount; confirm the purchase price manually"
+    tol = amount_tolerance(qty)
+    what = "amount" if amount is not None else "taxable value"
+    for text, value in conventions:
+        diff = printed - value
+        if abs(diff) <= tol:
+            note = "" if diff == 0 else f" (rounding difference {_money(diff)})"
+            return Reconciliation(
+                "VERIFIED", printed, printed_source, calculated_amount=value.quantize(CENT),
+                amount_difference=diff.quantize(CENT), rule=ARITHMETIC_RULE,
+                explanation=f"Printed {what} {_money(printed)} = {text}{note}",
             )
-        else:
-            issues.append("Rate / purchase price could not be read; enter it manually")
+
+    text, value = min(conventions, key=lambda c: abs(printed - c[1]))
+    diff = printed - value
+    issue = (f"Printed {what} {_money(printed)} does not match quantity × rate: {text} = {_money(value)} "
+             f"(difference {_money(diff)}). The printed value is kept. Check the invoice.")
     return Reconciliation(
-        "INSUFFICIENT_DATA", line_total, "INVOICE" if line_total is not None else None,
-        issues=issues, suggested_rate=suggested_rate,
+        "MISMATCH", printed, printed_source, calculated_amount=value.quantize(CENT),
+        amount_difference=diff.quantize(CENT), rule=ARITHMETIC_RULE, explanation=issue, issues=[issue],
+        suggestions=_decimal_shift_suggestions(qty, rate, printed, [v for _, v in conventions]),
     )
 
 
-def _decimal_shift_suggestions(qty: float, rate: float, amount: float, candidates: Sequence[Tuple[str, float]]) -> List[str]:
+def _dec(v: Any) -> Optional[Decimal]:
+    if v is None or isinstance(v, Decimal):
+        return v
+    return Decimal(str(v))
+
+
+def _decimal_shift_suggestions(qty: Decimal, rate: Decimal, amount: Decimal, expected: Sequence[Decimal]) -> List[str]:
     """OCR often drops a decimal point (22.00 -> 2200). Report which single fix would reconcile."""
     out: List[str] = []
-    ratios = [amount / v for _, v in candidates if v]
-    for r in ratios:
-        for factor in (10.0, 100.0):
-            if abs(r * factor - 1.0) <= 0.01:
+    for value in expected:
+        if not value:
+            continue
+        ratio = amount / value
+        for factor in (Decimal(10), Decimal(100)):
+            if abs(ratio * factor - 1) <= Decimal("0.01"):
                 if rate >= factor:
-                    out.append(f"Rate may be ₹{_fmt(rate / factor)} (decimal point missing in OCR)")
-                if qty >= factor and float(qty / factor).is_integer():
+                    out.append(f"Rate may be {_money(rate / factor)} (decimal point missing in OCR)")
+                if qty >= factor and (qty / factor) == (qty / factor).to_integral():
                     out.append(f"Quantity may be {_fmt(qty / factor)} (decimal point missing in OCR)")
-            if abs(r / factor - 1.0) <= 0.01:
-                out.append(f"Amount may be ₹{_fmt(amount / factor)} (decimal point missing in OCR)")
+            if abs(ratio / factor - 1) <= Decimal("0.01"):
+                out.append(f"Amount may be {_money(amount / factor)} (decimal point missing in OCR)")
     return list(dict.fromkeys(out))
 
 
@@ -654,6 +789,59 @@ def _assign_spatial_ranges(cols: List[Column], med_h: float) -> None:
             col.end = float("inf")
 
 
+def _body_bands(body: Sequence[Row], med_h: float) -> List[Tuple[float, float]]:
+    """
+    Horizontal bands of the table body: x-ranges covered by words in any body row, with
+    the whitespace gutters between columns left open. Words of one cell ('77.68 (12%)')
+    are closer than a gutter, so they merge into one band.
+    """
+    spans = sorted((w.x0, w.x1) for r in body for w in r.words)
+    bands: List[List[float]] = []
+    join = med_h * 0.6
+    for x0, x1 in spans:
+        if bands and x0 <= bands[-1][1] + join:
+            bands[-1][1] = max(bands[-1][1], x1)
+        else:
+            bands.append([x0, x1])
+    return [(a, b) for a, b in bands]
+
+
+def _refine_ranges_with_body(cols: List[Column], body: Sequence[Row], med_h: float) -> None:
+    """
+    Moves each column boundary into the whitespace gutter between that column's values
+    and the next column's values. Header midpoints alone fail for right-aligned numbers
+    under short headers ('4.01 (0.1%)' under 'TAX' reaches back under 'DISC.'). A boundary
+    is changed only when both neighbours own separate bands; otherwise the header-based
+    boundary is kept.
+    """
+    if len(body) < 2 or len(cols) < 2:
+        return
+    bands = _body_bands(body, med_h)
+    real = [i for i, c in enumerate(cols) if c.header_text != "(implied)"]
+    owner: Dict[int, List[int]] = {i: [] for i in range(len(cols))}
+    for b_idx, (b0, b1) in enumerate(bands):
+        overlapping = [i for i in real if min(b1, cols[i].x1) - max(b0, cols[i].x0) > 0]
+        if len(overlapping) == 1:
+            owner[overlapping[0]].append(b_idx)
+        elif not overlapping and real:
+            # A band under no header belongs to the nearest header
+            centre = (b0 + b1) / 2.0
+            nearest = min(real, key=lambda i: min(abs(centre - cols[i].x0), abs(centre - cols[i].x1)))
+            owner[nearest].append(b_idx)
+        # A band under two headers cannot be split here; those boundaries stay header-based
+    extent = {i: (bands[min(bs)][0], bands[max(bs)][1]) for i, bs in owner.items() if bs}
+    for i in range(len(cols) - 1):
+        left, right = extent.get(i), extent.get(i + 1)
+        if left is None or right is None or left[1] >= right[0]:
+            continue
+        boundary = (left[1] + right[0]) / 2.0
+        lower = cols[i].start if cols[i].start != float("-inf") else float("-inf")
+        upper = cols[i + 1].end
+        if lower < boundary < upper:
+            cols[i].end = boundary
+            cols[i + 1].start = boundary
+
+
 def _cells_spatial(row: Row, cols: Sequence[Column]) -> Dict[int, List[Word]]:
     cells: Dict[int, List[Word]] = {i: [] for i in range(len(cols))}
     for w in row.words:
@@ -678,12 +866,16 @@ def _cells_spatial(row: Row, cols: Sequence[Column]) -> Dict[int, List[Word]]:
 
 
 def _fits_role(token: str, role: str) -> bool:
+    if role in ("discount", "discount_pct", "tax_amount", "gst_rate") and token.strip() in {"-", "—", "–"}:
+        return True
+    if role == "qty":
+        return parse_quantity(token).value is not None and not re.search(r"[A-Za-z]{13,}", token)
     if role in NUMERIC_ROLES:
         return looks_numeric(token)
     if role == "unit":
-        return normalize_unit(token) is not None
+        return normalize_unit(token) is not None or bool(re.fullmatch(r"[A-Za-z]{2,5}\.?", token))
     if role == "hsn":
-        return bool(re.match(r"^\d{4,8}$", token))
+        return bool(re.fullmatch(r"\d{2,8}|[-—–]", token))
     if role == "barcode":
         return bool(re.match(r"^\d{8,14}$", token))
     if role == "serial":
@@ -722,6 +914,12 @@ def _cells_text(row: Row, cols: Sequence[Column]) -> Dict[int, List[str]]:
             end -= 1
             out[i].append(tok)
             continue
+        if role == "qty" and end - 2 >= start and re.fullmatch(r"[A-Za-z]{2,6}\.?", tok) \
+                and parse_number(tokens[end - 2]).value is not None and not any(c.role == "unit" for c in cols):
+            # "1.0 BOR" split into two tokens: quantity and its printed unit
+            out[i].append(f"{tokens[end - 2]} {tok}")
+            end -= 2
+            continue
         if _fits_role(tok, role):
             out[i].append(tok)
             end -= 1
@@ -733,17 +931,38 @@ def _cells_text(row: Row, cols: Sequence[Column]) -> Dict[int, List[str]]:
 # Table extraction
 # --------------------------------------------------------------------------
 
+PERCENT_ROLES = {"discount", "discount_pct", "tax_amount", "gst_rate"}
+_TOTAL_ROW_RE = re.compile(r"^\s*(?:grand\s*)?total\b(?!\s*(?:amount|amt|payable)\s*[:₹\d])", re.I)
+
 
 def _join(ws: Sequence[Any]) -> str:
     return " ".join(w.text if isinstance(w, Word) else str(w) for w in ws).strip()
 
 
-def _first_by_role(values: Dict[str, List[Tuple[int, NumberParse, List[Word]]]], role: str, rightmost: bool = False):
-    lst = values.get(role) or []
-    lst = [v for v in lst if v[1].value is not None]
-    if not lst:
-        return None
-    return lst[-1] if rightmost else lst[0]
+def _parse_cell(role: str, text: str) -> NumberParse:
+    return parse_quantity(text) if role == "qty" else parse_number(text)
+
+
+def _row_cells(row: Row, cols: Sequence[Column], text_mode: bool) -> Tuple[Dict[int, List[Word]], Dict[int, str]]:
+    if text_mode:
+        raw = _cells_text(row, cols)
+        return {i: [] for i in range(len(cols))}, {i: " ".join(v).strip() for i, v in raw.items()}
+    cell_words = _cells_spatial(row, cols)
+    return cell_words, {i: _join(ws) for i, ws in cell_words.items()}
+
+
+def _strip_serial(product_text: str, expected_serial: int, serial_cell_filled: bool) -> str:
+    """
+    Removes a serial number printed in the description cell. A leading number is kept as
+    part of the description unless it is clearly a serial: '3.' / '3)' or the next serial
+    number when the S.No. column is empty. ('500 GM', '5 STAR' stay intact.)
+    """
+    m = re.match(r"^\s*(\d{1,3})([.)])?\s+(?=\S)", product_text)
+    if not m:
+        return product_text
+    if m.group(2) or (int(m.group(1)) == expected_serial and not serial_cell_filled):
+        return product_text[m.end():]
+    return product_text
 
 
 def extract_table(
@@ -759,13 +978,23 @@ def extract_table(
             return TableResult([], [], None, None, [], ["No table header (Item / Qty / Rate / Amount) was found"])
         # Continuation page without a repeated header: reuse the previous page's columns
         header_idx, cols = -1, fallback_columns
+    elif not text_mode:
+        body: List[Row] = []
+        for r in rows[header_idx + 1:header_idx + 201]:
+            if TABLE_END_RE.match(r.text.strip()) and body:
+                break
+            if sum(1 for w in r.words if looks_numeric(w.text)) >= 2:
+                body.append(r)
+        _refine_ranges_with_body(cols, body, _median_height(rows))
 
     items: List[ExtractedLine] = []
     debug_rows: List[Dict[str, Any]] = []
     warnings: List[str] = []
+    totals_row: Dict[str, Decimal] = {}
     pending_text: List[Tuple[str, Row]] = []
     med_h = _median_height(rows)
     product_col = next((c for c in cols if c.role == "product"), None)
+    serial_idx = next((i for i, c in enumerate(cols) if c.role == "serial"), None)
     prev_row: Optional[Row] = rows[header_idx] if header_idx >= 0 else None
 
     def flush_pending_to_last() -> None:
@@ -792,25 +1021,25 @@ def extract_table(
         if not text:
             continue
         if TABLE_END_RE.match(text):
+            if items and _TOTAL_ROW_RE.match(text):
+                # The TOTAL row is read with the same columns, independently of the line items
+                _, cells = _row_cells(row, cols, text_mode)
+                for i, col in enumerate(cols):
+                    if col.role in ("qty", "discount", "tax_amount", "total", "taxable") and cells.get(i):
+                        val = _parse_cell(col.role, cells[i]).value
+                        if val is not None:
+                            totals_row[col.role] = totals_row.get(col.role, Decimal(0)) + val
             if items:
                 break
             continue
 
-        if text_mode:
-            raw_cells_txt = _cells_text(row, cols)
-            cell_words: Dict[int, List[Word]] = {i: [] for i in range(len(cols))}
-            cell_text = {i: " ".join(v).strip() for i, v in raw_cells_txt.items()}
-        else:
-            cell_words = _cells_spatial(row, cols)
-            cell_text = {i: _join(ws) for i, ws in cell_words.items()}
-
+        cell_words, cell_text = _row_cells(row, cols, text_mode)
         values: Dict[str, List[Tuple[int, NumberParse, List[Word]]]] = {}
         for i, col in enumerate(cols):
             if col.role in NUMERIC_ROLES and cell_text.get(i):
-                values.setdefault(col.role, []).append((i, parse_number(cell_text[i]), cell_words.get(i, [])))
+                values.setdefault(col.role, []).append((i, _parse_cell(col.role, cell_text[i]), cell_words.get(i, [])))
 
         product_text = " ".join(cell_text[i] for i, c in enumerate(cols) if c.role == "product" and cell_text.get(i)).strip()
-        product_text = re.sub(r"^\s*\d{1,3}[.)]?\s+(?=\D)", "", product_text)  # stray serial number
         raw_cells = {f"{c.role}{'' if c.role != 'unknown' else ':' + c.header_text}": cell_text[i]
                      for i, c in enumerate(cols) if cell_text.get(i)}
         has_values = any(v[1].value is not None for role in ("qty", "rate", "purchase_price", "total", "taxable")
@@ -818,14 +1047,26 @@ def extract_table(
         debug_rows.append({"row_index": row.index, "text": text, "cells": raw_cells, "is_item": has_values})
 
         if not has_values:
+            # A line holding only percentages under the discount/tax amounts ("(3%)  (0.1%)")
+            if items and prev_row is not None:
+                for role in PERCENT_ROLES:
+                    for _, parsed, _ in values.get(role, []):
+                        if parsed.value is None and parsed.percent is not None:
+                            target = "discount_pct" if role.startswith("discount") else "gst_rate"
+                            if getattr(items[-1], target) is None:
+                                setattr(items[-1], target, parsed.percent)
             if product_text and is_description_fragment(row, product_text):
                 pending_text.append((product_text, row))
                 prev_row = row
             elif product_text:
                 pending_text.clear()  # unrelated text (notes, addresses) is not part of any item
+            elif values:
+                prev_row = row
             continue
         prev_row = row
 
+        serial_filled = serial_idx is not None and bool(cell_text.get(serial_idx))
+        product_text = _strip_serial(product_text, len(items) + 1, serial_filled)
         if not product_text and pending_text:
             product_text = " ".join(t for t, _ in pending_text)
             pending_text.clear()
@@ -839,7 +1080,177 @@ def extract_table(
         items.append(_build_line(name, cols, values, cell_text, raw_cells, row, extraction_method, text_mode))
 
     flush_pending_to_last()
-    return TableResult(items, cols, header_text, header_idx if header_idx >= 0 else None, debug_rows, warnings)
+    return TableResult(items, cols, header_text, header_idx if header_idx >= 0 else None, debug_rows, warnings,
+                       totals_row)
+
+
+def _build_line(
+    name: str,
+    cols: Sequence[Column],
+    values: Dict[str, List[Tuple[int, NumberParse, List[Word]]]],
+    cell_text: Dict[int, str],
+    raw_cells: Dict[str, str],
+    row: Row,
+    extraction_method: str,
+    text_mode: bool,
+) -> ExtractedLine:
+    issues: List[str] = []
+    penalty = 0.0
+
+    def entries(role: str) -> List[Tuple[int, NumberParse, List[Word]]]:
+        return values.get(role, [])
+
+    def check(role: str, parsed: NumberParse, words: List[Word]) -> None:
+        nonlocal penalty
+        if parsed.ambiguous:
+            issues.append(f"{_label(role)} cell '{parsed.raw}' contains more than one number")
+            penalty += 20
+        if parsed.corrected:
+            issues.append(f"{_label(role)} '{parsed.raw}' was read as {_fmt(parsed.value)} after repairing an "
+                          "OCR misread; verify against the invoice")
+            penalty += 10
+        low = [w for w in words if w.conf is not None and w.conf < 60 and looks_numeric(w.text)]
+        if low:
+            issues.append(f"Low OCR confidence for {_label(role)} '{parsed.raw}' ({int(min(w.conf for w in low))}%)")
+            penalty += 15
+
+    def value_of(role: str, rightmost: bool = False) -> Optional[Decimal]:
+        found = [e for e in entries(role) if e[1].value is not None]
+        for _, parsed, words in entries(role):
+            check(role, parsed, words)
+        if not found:
+            return None
+        return (found[-1] if rightmost else found[0])[1].value
+
+    qty_entry = next((e for e in entries("qty") if e[1].value is not None), None)
+    qty = value_of("qty")
+    rate = value_of("rate")
+    purchase_col = value_of("purchase_price")
+    selling = value_of("selling_price")
+    mrp = value_of("mrp")
+    amount = value_of("total", rightmost=True)
+    taxable = value_of("taxable")
+
+    # Discount and tax cells carry an amount, a percentage, or both ("124.08 (3%)").
+    discount = discount_pct = tax_amount = gst_rate = None
+    for role in PERCENT_ROLES:
+        col_pct = role in ("discount_pct", "gst_rate")
+        for i, parsed, words in entries(role):
+            check(role, parsed, words)
+            is_disc = role.startswith("discount")
+            if parsed.percent is not None:
+                if is_disc:
+                    discount_pct = parsed.percent
+                else:
+                    gst_rate = (gst_rate or 0) + parsed.percent
+            if parsed.value is not None:
+                if col_pct and parsed.percent is None:
+                    if is_disc:
+                        discount_pct = parsed.value
+                    else:
+                        gst_rate = (gst_rate or 0) + parsed.value
+                elif is_disc:
+                    discount = parsed.value
+                else:
+                    tax_amount = (tax_amount or 0) + parsed.value
+
+    for bad in (qty, rate, purchase_col, selling, mrp, amount):
+        if bad is not None and bad < 0:
+            issues.append("Negative value found in a price/quantity column; verify the line")
+            penalty += 20
+            break
+    if qty is not None and qty <= 0:
+        issues.append("Quantity must be greater than 0")
+        qty = None
+
+    purchase_price = purchase_col if purchase_col is not None else rate
+
+    # An unlabelled TAX value that only reconciles when read as a GST slab percentage
+    if tax_amount is not None and gst_rate is None and tax_amount in GST_SLABS:
+        as_amount = reconcile_line(qty, purchase_price, amount, discount, discount_pct, tax_amount, None, taxable)
+        as_pct = reconcile_line(qty, purchase_price, amount, discount, discount_pct, None, tax_amount, taxable)
+        if as_pct.status == "VERIFIED" and as_amount.status != "VERIFIED":
+            gst_rate, tax_amount = tax_amount, None
+
+    # Unit as printed: the Unit column, else the unit written with the quantity ("1.0 BOR")
+    unit = None
+    for i, c in enumerate(cols):
+        if c.role == "unit" and cell_text.get(i):
+            unit = cell_text[i].strip().rstrip(".")
+    if unit is None and qty_entry is not None:
+        unit = qty_entry[1].unit
+
+    hsn = None
+    for i, c in enumerate(cols):
+        if c.role == "hsn" and cell_text.get(i):
+            hsn, hsn_issue = parse_hsn(cell_text[i])
+            if hsn_issue:
+                issues.append(hsn_issue)
+
+    rec = reconcile_line(qty, purchase_price, amount, discount, discount_pct, tax_amount, gst_rate, taxable)
+    issues.extend(rec.issues)
+    if rec.status == "MISMATCH":
+        penalty += 30
+    if purchase_price is None:
+        penalty += 30
+    if qty is None:
+        penalty += 30
+    if mrp is not None and purchase_price is not None and mrp < purchase_price:
+        issues.append(f"MRP {_money(mrp)} is lower than the purchase rate {_money(purchase_price)}; check column alignment")
+        penalty += 15
+
+    if text_mode:
+        base_conf = 100.0
+    else:
+        confs = [w.conf for ws_role in values.values() for _, _, ws in ws_role for w in ws if w.conf is not None]
+        base_conf = statistics.mean(confs) if confs else 100.0  # digital PDF text has no OCR uncertainty
+    if rec.status == "VERIFIED":
+        base_conf = min(100.0, base_conf + 5)
+    confidence = round(max(0.0, min(100.0, base_conf - penalty)), 1)
+
+    barcode = next((re.sub(r"\D", "", cell_text[i]) for i, c in enumerate(cols) if c.role == "barcode" and cell_text.get(i)), None)
+
+    return ExtractedLine(
+        product_name=name,
+        quantity=qty,
+        unit=unit,
+        unit_normalized=normalize_unit(unit),
+        rate=rate if rate is not None else purchase_col,
+        purchase_price=purchase_price,
+        selling_price=selling,
+        invoice_mrp=mrp,
+        discount=discount,
+        discount_pct=discount_pct,
+        tax_amount=tax_amount,
+        gst_rate=gst_rate,
+        taxable_amount=taxable,
+        hsn_code=hsn,
+        barcode=barcode or None,
+        line_total=rec.line_total,
+        line_total_source=rec.line_total_source,
+        calculated_amount=rec.calculated_amount,
+        amount_difference=rec.amount_difference,
+        arithmetic_status=rec.status,
+        arithmetic_rule=rec.rule,
+        arithmetic_explanation=rec.explanation,
+        confidence=confidence,
+        issues=list(dict.fromkeys(issues)),
+        suggestions=rec.suggestions,
+        suggested_rate=rec.suggested_rate,
+        raw_cells=raw_cells,
+        source_text=row.text,
+        row_index=row.index,
+        extraction_method=extraction_method,
+    )
+
+
+_LABELS = {"qty": "Quantity", "rate": "Rate", "purchase_price": "Purchase price", "selling_price": "Selling price",
+           "mrp": "MRP", "total": "Amount", "taxable": "Taxable value", "discount": "Discount",
+           "tax_amount": "Tax", "gst_rate": "GST %", "discount_pct": "Discount %"}
+
+
+def _label(role: str) -> str:
+    return _LABELS.get(role, role)
 
 
 _MULT_RE = re.compile(
@@ -870,17 +1281,18 @@ def extract_headerless_lines(rows: Sequence[Row]) -> TableResult:
             qty = parse_number(m.group("qty")).value
             rate = parse_number(m.group("rate")).value
             amount = parse_number(m.group("amount")).value if m.group("amount") else None
-            unit = normalize_unit(m.group("unit")) if m.group("unit") else None
+            unit = m.group("unit") or None
             name = text[: m.start()].strip(" -:|")
         else:
             toks = text.split()
-            nums: List[float] = []
+            nums: List[Decimal] = []
             while toks and len(nums) < 3 and looks_numeric(toks[-1]):
                 v = parse_number(toks.pop()).value
                 if v is None:
                     break
                 nums.insert(0, v)
-            if len(nums) == 3 and nums[0] > 0 and float(nums[0]).is_integer() and _close(nums[0] * nums[1], nums[2]):
+            if (len(nums) == 3 and nums[0] > 0 and nums[0] == nums[0].to_integral()
+                    and abs(nums[0] * nums[1] - nums[2]) <= amount_tolerance(nums[0])):
                 qty, rate, amount = nums
                 name = " ".join(toks).strip(" -:|")
         if name is None or qty is None or rate is None or len(re.sub(r"[^A-Za-z]", "", name)) < 2:
@@ -892,165 +1304,14 @@ def extract_headerless_lines(rows: Sequence[Row]) -> TableResult:
         debug_rows.append({"row_index": row.index, "text": text, "cells": {"qty": str(qty), "rate": str(rate),
                                                                           "total": str(amount)}, "is_item": True})
         items.append(ExtractedLine(
-            product_name=name, quantity=qty, unit=unit, rate=rate, purchase_price=rate, selling_price=None,
-            invoice_mrp=None, discount=None, discount_pct=None, tax_amount=None, gst_rate=None,
-            taxable_amount=None, hsn_code=None, barcode=None, line_total=rec.line_total,
-            line_total_source=rec.line_total_source, arithmetic_status=rec.status,
+            product_name=name, quantity=qty, unit=unit, unit_normalized=normalize_unit(unit), rate=rate,
+            purchase_price=rate, selling_price=None, invoice_mrp=None, discount=None, discount_pct=None,
+            tax_amount=None, gst_rate=None, taxable_amount=None, hsn_code=None, barcode=None,
+            line_total=rec.line_total, line_total_source=rec.line_total_source,
+            calculated_amount=rec.calculated_amount, amount_difference=rec.amount_difference,
+            arithmetic_status=rec.status, arithmetic_rule=rec.rule, arithmetic_explanation=rec.explanation,
             confidence=min(75.0, 100.0 - (30 if rec.status == "MISMATCH" else 0)), issues=issues,
             suggestions=rec.suggestions, suggested_rate=rec.suggested_rate, raw_cells={},
             source_text=text, row_index=row.index, extraction_method="TEXT_LINE_ITEM",
         ))
     return TableResult(items, [], None, None, debug_rows, warnings)
-
-
-def _build_line(
-    name: str,
-    cols: Sequence[Column],
-    values: Dict[str, List[Tuple[int, NumberParse, List[Word]]]],
-    cell_text: Dict[int, str],
-    raw_cells: Dict[str, str],
-    row: Row,
-    extraction_method: str,
-    text_mode: bool,
-) -> ExtractedLine:
-    issues: List[str] = []
-    suggestions: List[str] = []
-    penalty = 0.0
-
-    def get(role: str, rightmost: bool = False) -> Optional[float]:
-        nonlocal penalty
-        entry = _first_by_role(values, role, rightmost)
-        for _, parsed, _ in values.get(role, []):
-            if parsed.ambiguous:
-                issues.append(f"{_label(role)} cell '{parsed.raw}' contains more than one number")
-                penalty += 20
-        if entry is None:
-            return None
-        _, parsed, words = entry
-        if parsed.corrected:
-            issues.append(f"{_label(role)} '{parsed.raw}' contained letters read as digits (OCR); verify")
-            penalty += 10
-        low = [w for w in words if w.conf is not None and w.conf < 60 and looks_numeric(w.text)]
-        if low:
-            issues.append(f"Low OCR confidence for {_label(role)} '{parsed.raw}' ({int(min(w.conf for w in low))}%)")
-            penalty += 15
-        return parsed.value
-
-    qty = get("qty")
-    rate = get("rate")
-    purchase_col = get("purchase_price")
-    selling = get("selling_price")
-    mrp = get("mrp")
-    amount = get("total", rightmost=True)
-    taxable = get("taxable")
-    # A cell printed with '%' is a rate even when the column header has no '%'
-    gst_entries: List[float] = []
-    tax_entries: List[float] = []
-    for role in ("gst_rate", "tax_amount"):
-        for _, parsed, _ in values.get(role, []):
-            if parsed.value is None:
-                continue
-            (gst_entries if role == "gst_rate" or "%" in parsed.raw else tax_entries).append(parsed.value)
-    gst_rate = round(sum(gst_entries), 4) if gst_entries else None
-    tax_amount = round(sum(tax_entries), 2) if tax_entries else None
-    discount = None
-    discount_pct = None
-    for role in ("discount", "discount_pct"):
-        for _, parsed, _ in values.get(role, []):
-            if parsed.value is None:
-                continue
-            if role == "discount_pct" or "%" in parsed.raw:
-                discount_pct = parsed.value
-            else:
-                discount = parsed.value
-    # An unlabelled 'Tax' value that only reconciles when read as a GST slab percentage
-    if tax_amount is not None and gst_rate is None and tax_amount in GST_SLABS:
-        as_amount = reconcile_line(qty, rate if purchase_col is None else purchase_col, amount, discount, discount_pct, tax_amount, None, taxable)
-        as_pct = reconcile_line(qty, rate if purchase_col is None else purchase_col, amount, discount, discount_pct, None, tax_amount, taxable)
-        if as_pct.status == "VERIFIED" and as_amount.status != "VERIFIED":
-            gst_rate, tax_amount = tax_amount, None
-
-    for bad in (qty, rate, purchase_col, selling, mrp, amount):
-        if bad is not None and bad < 0:
-            issues.append("Negative value found in a price/quantity column; verify the line")
-            penalty += 20
-            break
-    if qty is not None and qty <= 0:
-        issues.append("Quantity must be greater than 0")
-        qty = None
-
-    purchase_price = purchase_col if purchase_col is not None else rate
-
-    # Unit from the Unit column, else a unit word written in the quantity cell ('10 pcs')
-    unit = None
-    for i, c in enumerate(cols):
-        if c.role == "unit" and cell_text.get(i):
-            unit = normalize_unit(cell_text[i]) or cell_text[i].strip().lower()
-    if unit is None:
-        for i, c in enumerate(cols):
-            if c.role == "qty" and cell_text.get(i):
-                m = re.search(r"[A-Za-z]+", cell_text[i])
-                if m:
-                    unit = normalize_unit(m.group(0))
-
-    rec = reconcile_line(qty, purchase_price, amount, discount, discount_pct, tax_amount, gst_rate, taxable)
-    issues.extend(rec.issues)
-    suggestions.extend(rec.suggestions)
-    if rec.status == "MISMATCH":
-        penalty += 30
-    if purchase_price is None:
-        penalty += 30
-    if qty is None:
-        penalty += 30
-    if mrp is not None and purchase_price is not None and mrp < purchase_price:
-        issues.append(f"MRP ₹{_fmt(mrp)} is lower than the purchase rate ₹{_fmt(purchase_price)}; check column alignment")
-        penalty += 15
-
-    if text_mode:
-        base_conf = 100.0
-    else:
-        confs = [w.conf for ws_role in values.values() for _, _, ws in ws_role for w in ws if w.conf is not None]
-        base_conf = statistics.mean(confs) if confs else 100.0  # digital PDF text has no OCR uncertainty
-    if rec.status == "VERIFIED":
-        base_conf = min(100.0, base_conf + 5)
-    confidence = round(max(0.0, min(100.0, base_conf - penalty)), 1)
-
-    hsn = next((cell_text[i] for i, c in enumerate(cols) if c.role == "hsn" and cell_text.get(i)), None)
-    barcode = next((re.sub(r"\D", "", cell_text[i]) for i, c in enumerate(cols) if c.role == "barcode" and cell_text.get(i)), None)
-
-    return ExtractedLine(
-        product_name=name,
-        quantity=qty,
-        unit=unit,
-        rate=rate if rate is not None else purchase_col,
-        purchase_price=purchase_price,
-        selling_price=selling,
-        invoice_mrp=mrp,
-        discount=discount,
-        discount_pct=discount_pct,
-        tax_amount=tax_amount,
-        gst_rate=gst_rate,
-        taxable_amount=taxable,
-        hsn_code=hsn,
-        barcode=barcode or None,
-        line_total=rec.line_total,
-        line_total_source=rec.line_total_source,
-        arithmetic_status=rec.status,
-        confidence=confidence,
-        issues=list(dict.fromkeys(issues)),
-        suggestions=suggestions,
-        suggested_rate=rec.suggested_rate,
-        raw_cells=raw_cells,
-        source_text=row.text,
-        row_index=row.index,
-        extraction_method=extraction_method,
-    )
-
-
-_LABELS = {"qty": "Quantity", "rate": "Rate", "purchase_price": "Purchase price", "selling_price": "Selling price",
-           "mrp": "MRP", "total": "Amount", "taxable": "Taxable value", "discount": "Discount",
-           "tax_amount": "Tax", "gst_rate": "GST %", "discount_pct": "Discount %"}
-
-
-def _label(role: str) -> str:
-    return _LABELS.get(role, role)

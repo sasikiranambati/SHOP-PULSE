@@ -1,22 +1,52 @@
 /**
  * @file invoiceReview.ts
- * @description Rules used by the invoice review table: when a line amount may be recalculated
- * and how a line's MRP origin (or the reason it is missing) is described.
+ * @description Rules used by the invoice review table: how the expected line amount is
+ * recalculated after an edit, and how a line's MRP origin (or the reason it is missing) is described.
  */
 
 import type { InvoiceLineItem } from './invoiceTypes';
+import { checkLineArithmetic, formatMoney } from './lineArithmetic';
+
+export { formatMoney };
+
+// Review notes that describe the old arithmetic result and are replaced after an edit
+const ARITHMETIC_NOTE = /does not match quantity × rate|Line amount not printed|calculated amount is|Arithmetic discrepancy/;
 
 /**
- * Recomputes a line amount after quantity/price edits, unless the amount was printed on the
- * invoice or typed by the user: those are kept and the mismatch stays visible for review.
+ * Recomputes the expected amount after an edit with the same rule as the server
+ * (lineArithmetic.ts). The printed (or user-typed) line amount is never changed; the
+ * difference stays visible. Only an amount that was itself a calculation (in-browser
+ * engine) follows the edit.
  */
-export function recalculateLineTotal(item: InvoiceLineItem): void {
-  if (item.lineTotalSource === 'INVOICE' || item.lineTotalSource === 'MANUAL') return;
-  const price = item.purchasePrice ?? item.rate;
-  if (price !== null && price !== undefined && item.quantity !== null && item.quantity !== undefined) {
-    item.lineTotal = Math.round(Number(item.quantity) * Number(price) * 100) / 100;
-    item.lineTotalSource = 'CALCULATED';
+export function recalculateAmounts(item: InvoiceLineItem): void {
+  const current = item.validationIssues ?? (item.validationWarning ? item.validationWarning.split('; ') : []);
+  const notes = current.filter((n) => n && !ARITHMETIC_NOTE.test(n));
+  const isCalculation = item.lineTotalSource === 'CALCULATED';
+  const result = checkLineArithmetic({
+    quantity: item.quantity,
+    rate: item.purchasePrice ?? item.rate,
+    amount: isCalculation ? null : item.lineTotal,
+    discount: item.discount,
+    discountPct: item.discountPct,
+    taxAmount: item.taxAmount,
+    gstRate: item.gstRate,
+    amountLabel: item.lineTotalSource === 'MANUAL' ? 'Entered amount' : 'Printed amount',
+  });
+  item.calculatedAmount = result.calculatedAmount;
+  item.amountDifference = result.difference;
+  item.arithmeticStatus = result.status;
+  item.arithmeticExplanation = result.explanation;
+  if (isCalculation && result.calculatedAmount !== null) {
+    item.lineTotal = result.calculatedAmount;
   }
+  if (result.issue) notes.push(result.issue);
+  item.validationIssues = notes;
+  item.validationWarning = notes.length ? notes.join('; ') : undefined;
+}
+
+/** The amount used for purchase totals: printed (or typed) amount, else the calculated one. */
+export function effectiveLineAmount(item: InvoiceLineItem): number | null {
+  return item.lineTotal ?? item.calculatedAmount ?? null;
 }
 
 /** Short text describing where the line's MRP came from, or why there is none. */

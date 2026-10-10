@@ -26,7 +26,7 @@ import {
   mapTokensToColumns,
 } from './semanticColumnDetector';
 import { isDisallowedItemLine, classifyDocumentSection } from './sectionClassifier';
-import { cleanNumericToken, normalizeUnit, splitMergedUnits } from './invoiceParser';
+import { cleanNumericToken, normalizeUnit, mapPrintedUnit, QTY_UNIT_WORD_RE, splitMergedUnits } from './invoiceParser';
 
 export interface RawExtractedItem {
   productName: string;
@@ -46,6 +46,8 @@ export interface RawExtractedItem {
   gstRate?: number | null;
   hsnCode?: string | null;
   lineTotal?: number | null;
+  /** Unit exactly as printed (Unit column or next to the quantity) */
+  printedUnit?: string | null;
   confidence: number;
   sourceText: string;
   extractionMethod: ExtractionMethod;
@@ -175,44 +177,34 @@ export function extractLineItemsFlexible(
   return { items: [], methodUsed: 'MANUAL_FALLBACK' };
 }
 
+const QTY_LAZY_RE = /^(\d[\d.OoIl|]*?)\s*([A-Za-z][A-Za-z.]{0,11})?$/;
+const QTY_GREEDY_RE = /^(\d[\d.OoIl|]*)\s*([A-Za-z][A-Za-z.]{0,11})?$/;
+
+/** Splits a quantity cell into its number and printed unit: "1.0 BOR" -> 1.0 + "BOR", "1O" -> 10. */
+export function splitQuantityCell(raw: string | null): { value: number | null; unit: string | null } {
+  const text = (raw || '').trim().replace(/,/g, '');
+  const lazy = text.match(QTY_LAZY_RE);
+  const greedy = text.match(QTY_GREEDY_RE);
+  if (!lazy && !greedy) return { value: null, unit: null };
+  const isUnitWord = (u?: string) => !u || QTY_UNIT_WORD_RE.test(u.replace(/\.$/, ''));
+  let m = lazy || greedy;
+  if (lazy && greedy && lazy[2] && !isUnitWord(lazy[2])) {
+    // "1O" / "2OOml": the letters are OCR digits when the greedy reading leaves a real unit (or none)
+    if (isUnitWord(greedy[2]) || /^[OoIl|]+$/.test(lazy[2])) m = greedy;
+  }
+  const num = m![1].replace(/[Oo]/g, '0').replace(/[Il|]/g, '1').replace(/\.$/, '');
+  if (!/^\d+(?:\.\d+)?$/.test(num)) return { value: null, unit: null };
+  const value = parseFloat(num);
+  return { value: value > 0 ? value : null, unit: m![2] ? m![2].replace(/\.$/, '') : null };
+}
+
 /**
- * Smart quantity parser: handles OCR confusions (e.g. S->5, O->0, l->1, 808->BOR)
- * and strips unit suffixes.
+ * Quantity parser: the number in the quantity cell, without its printed unit. Letters after
+ * the number are a unit, never digits ("2.0BOR" is 2.0, not 2.08); only O/o/I/l/| inside the
+ * number are read as digits.
  */
 export function parseSmartQuantity(raw: string | null): number | null {
-  if (!raw) return null;
-  let clean = raw.trim();
-  // Strip thousands separator commas
-  clean = clean.replace(/,/g, '');
-  // Strip unit suffix
-  clean = clean.replace(/(?:pcs|pc|pkt|box|bag|bor|pet|kg|g|gm|l|ltr|can|tin|fc|fcs|rcs|orcs)$/i, '').trim();
-
-  // OCR letter-digit confusion:
-  // e.g. '10808' / '1.0808' -> '1.0 BOR' -> '1.0'
-  if (/(?:808|8o8|bob|bor)$/i.test(clean)) {
-    clean = clean.replace(/(?:808|8o8|bob|bor)$/i, '');
-  }
-  // 'lao' / 'laorcs' -> '10'
-  if (/^lao/i.test(clean) || /^la$/i.test(clean)) {
-    clean = '10';
-  }
-  // 'so' / 'sopcs' / 'sofc' -> '50'
-  if (/^so$/i.test(clean)) {
-    clean = '50';
-  }
-
-  clean = clean
-    .replace(/[lI|!]/g, '1')
-    .replace(/[Oo]/g, '0')
-    .replace(/[Ss]/g, '5')
-    .replace(/[Bb]/g, '8');
-
-  clean = clean.replace(/\.$/, '');
-
-  if (!/^[\d.]+$/.test(clean)) return null;
-
-  const num = parseFloat(clean);
-  return !isNaN(num) && num > 0 ? num : null;
+  return splitQuantityCell(raw).value;
 }
 
 /**
@@ -295,119 +287,21 @@ export function parseSmartPrice(raw: string | null, allowZero: boolean = false):
 }
 
 /**
- * Reconciles quantity, rate, and total with mathematical validation.
- * Corrects OCR decimal point dropouts (e.g. 200 -> 20.0, 711000 -> 71100.0).
+ * Returns the printed quantity, rate and amount unchanged.
+ *
+ * This used to rewrite values until qty × rate matched the amount: dividing printed numbers
+ * by 10, substituting values from one sample invoice (e.g. any rate ≥ 40000 became 4825),
+ * and deriving a missing rate or quantity from the amount. That hid OCR errors and invented
+ * values. Discrepancies are now reported by the normalizer (lineArithmetic.ts) and left
+ * for the user to confirm; nothing is derived or replaced here.
  */
 export function resolveItemArithmetic(
   qty: number | null,
   rate: number | null,
   total: number | null,
-  tax: number | null = null
+  _tax: number | null = null
 ): { quantity: number | null; rate: number | null; purchasePrice: number | null; lineTotal: number | null } {
-  const tVal = tax || 0;
-
-  // Specific numeric artifact normalizations from low-resolution scans:
-  // 1. Qty = 100 (read from 10.0) and rate = 10.0, total = 1000 (read from 100.0)
-  if (qty === 100 && rate === 10 && total === 1000) {
-    return { quantity: 10, rate: 10, purchasePrice: 10, lineTotal: 100 };
-  }
-  // 2. Qty = 50, Rate = 5, Total missing or noise (e.g. 'sah')
-  if (qty === 50 && rate === 5 && (total === null || total < 100)) {
-    return { quantity: 50, rate: 5, purchasePrice: 5, lineTotal: 250 };
-  }
-  // 3. Qty = 10, Total = 3008 (read from 300.0), Rate missing
-  if (qty === 10 && (total === 3008 || total === 300)) {
-    return { quantity: 10, rate: 30, purchasePrice: 30, lineTotal: 300 };
-  }
-  // 4. Qty = 360, Rate = 19750, Total = 711000 (All 3 dropped .0: 36.0 * 1975.0 = 71100.0)
-  if (qty === 360 && rate === 19750 && total === 711000) {
-    return { quantity: 36, rate: 1975, purchasePrice: 1975, lineTotal: 71100 };
-  }
-  // 5. Rate dropped decimal (e.g. 48250 -> 4825.0)
-  if ((qty === 10 || qty === 1) && rate !== null && rate >= 40000) {
-    return { quantity: 1, rate: 4825, purchasePrice: 4825, lineTotal: 4825 };
-  }
-  // 6. Qty = 50, Rate = 20, Total = 1600 (5 * 32 = 160)
-  if (qty === 50 && total === 1600) {
-    return { quantity: 5, rate: 32, purchasePrice: 32, lineTotal: 160 };
-  }
-  // 7. Rate dropped decimal (27600 -> 2760.0)
-  if ((qty === 10 || qty === 1 || qty === 1.0) && rate === 27600) {
-    return { quantity: 1, rate: 2760, purchasePrice: 2760, lineTotal: 2760 };
-  }
-
-  // Generalized arithmetic reconciliation and OCR decimal-point / trailing-zero dropout correction.
-  // Invoices frequently print quantities or rates with decimal places (e.g. 20.00, 1975.00),
-  // which OCR scans without decimal points (e.g. 200, 19750).
-  if (qty !== null && rate !== null && total !== null && qty > 0 && rate > 0 && total > 0) {
-    // 1. Direct pre-tax check (qty * rate ≈ total)
-    if (Math.abs(qty * rate - total) <= Math.max(2, total * 0.03)) {
-      return { quantity: qty, rate: rate, purchasePrice: rate, lineTotal: total };
-    }
-
-    // 2. Direct check with tax added as absolute amount
-    if (tVal > 0 && Math.abs(qty * rate + tVal - total) <= Math.max(2, total * 0.03)) {
-      return { quantity: qty, rate: rate, purchasePrice: rate, lineTotal: total };
-    }
-
-    // 3. Direct check with tax as percentage (e.g. 5%, 12%, 18%)
-    if (tVal > 0 && Math.abs(qty * rate * (1 + tVal / 100) - total) <= Math.max(2, total * 0.03)) {
-      return { quantity: qty, rate: rate, purchasePrice: rate, lineTotal: total };
-    }
-
-    // 4. Quantity dropped .0 (e.g. 20.0 read as 200, 20.0 read as 20 where total was for qty=2)
-    if (qty >= 10 && Math.abs((qty / 10) * rate + tVal - total) <= Math.max(2, total * 0.03)) {
-      return { quantity: qty / 10, rate: rate, purchasePrice: rate, lineTotal: total };
-    }
-
-    // 5. Rate dropped .0 (e.g. 2760.0 read as 27600)
-    if (rate >= 10 && Math.abs(qty * (rate / 10) + tVal - total) <= Math.max(2, total * 0.03)) {
-      return { quantity: qty, rate: rate / 10, purchasePrice: rate / 10, lineTotal: total };
-    }
-
-    // 6. Total dropped .0
-    if (total >= 10 && Math.abs(qty * rate + tVal - (total / 10)) <= Math.max(2, (total / 10) * 0.03)) {
-      return { quantity: qty, rate: rate, purchasePrice: rate, lineTotal: total / 10 };
-    }
-
-    // 7. Both rate and total dropped .0
-    if (rate >= 100 && total >= 100 && Math.abs(qty * (rate / 10) + tVal - (total / 10)) <= Math.max(2, (total / 10) * 0.03)) {
-      return { quantity: qty, rate: rate / 10, purchasePrice: rate / 10, lineTotal: total / 10 };
-    }
-
-    // 8. Qty, rate, and total all dropped .0
-    if (qty >= 10 && rate >= 100 && total >= 100 && Math.abs((qty / 10) * (rate / 10) + tVal - (total / 10)) <= Math.max(2, (total / 10) * 0.03)) {
-      return { quantity: qty / 10, rate: rate / 10, purchasePrice: rate / 10, lineTotal: total / 10 };
-    }
-
-    // 9. Total had OCR prefix artifact (e.g. 5320 read as $320 -> 320 where $ was 5)
-    const preTaxTotal = Math.round(qty * rate * 100) / 100;
-    const withTaxTotal = Math.round((qty * rate + tVal) * 100) / 100;
-    if (preTaxTotal > total && String(Math.round(preTaxTotal)).endsWith(String(Math.round(total)))) {
-      return { quantity: qty, rate: rate, purchasePrice: rate, lineTotal: preTaxTotal };
-    }
-    if (withTaxTotal > total && String(Math.round(withTaxTotal)).endsWith(String(Math.round(total)))) {
-      return { quantity: qty, rate: rate, purchasePrice: rate, lineTotal: withTaxTotal };
-    }
-  }
-
-  // Derive missing values
-  if (qty !== null && rate !== null && total === null) {
-    return { quantity: qty, rate: rate, purchasePrice: rate, lineTotal: Math.round((qty * rate + tVal) * 100) / 100 };
-  }
-  if (qty !== null && total !== null && rate === null && qty > 0) {
-    const derivedRate = Math.round(((total - tVal) / qty) * 100) / 100;
-    return { quantity: qty, rate: derivedRate, purchasePrice: derivedRate, lineTotal: total };
-  }
-  if (rate !== null && total !== null && qty === null && rate > 0) {
-    const derivedQty = Math.round(((total - tVal) / rate) * 100) / 100;
-    return { quantity: derivedQty, rate: rate, purchasePrice: rate, lineTotal: total };
-  }
-
-  // If Amount (total) is extracted: lineTotal = total
-  // If Amount is missing: lineTotal = quantity * rate ONLY when both quantity and rate are valid
-  const fallbackTotal = total !== null ? total : (qty !== null && rate !== null ? Math.round(qty * rate * 100) / 100 : null);
-  return { quantity: qty, rate: rate, purchasePrice: rate, lineTotal: fallbackTotal };
+  return { quantity: qty, rate, purchasePrice: rate, lineTotal: total };
 }
 
 // ===========================================================================
@@ -468,6 +362,7 @@ function tryStructuredTableExtraction(
 
   const items: RawExtractedItem[] = [];
   let currentPendingItem: RawExtractedItem | null = null;
+  const hasSerialColumn = detectedColumns.some((c) => c.type === 'serial');
 
   for (let i = headerIndex + 1; i < lines.length; i++) {
     const l = lines[i];
@@ -483,8 +378,11 @@ function tryStructuredTableExtraction(
 
     // Check if line is a summary/total/footer row -> commit and terminate table extraction
     const lower = l.text.toLowerCase();
+    // A TOTAL / Sub Total row closes the item table; its numbers are totals, not a product
+    const isTotalRow = /^\s*(?:sub\s*-?\s*)?total\b/i.test(l.text);
     const isSummaryOrFooter =
-      /grand total|net amount|balance amount|received amount|payment|terms and|hsn\/sac|tax amount|table value|eeceveoamouw/i.test(lower) ||
+      isTotalRow ||
+      /grand total|net amount|balance amount|received amount|payment|terms and|hsn\/sac|tax amount|table value/i.test(lower) ||
       isDisallowedItemLine(l.text);
 
     if (isSummaryOrFooter) {
@@ -492,7 +390,7 @@ function tryStructuredTableExtraction(
         items.push(currentPendingItem);
         currentPendingItem = null;
       }
-      if (/grand total|net amount|balance amount|received amount|payment|terms and|hsn\/sac|tax amount|table value|eeceveoamouw/i.test(lower)) {
+      if (isTotalRow || /grand total|net amount|balance amount|received amount|payment|terms and|hsn\/sac|tax amount|table value/i.test(lower)) {
         break;
       }
       continue;
@@ -579,6 +477,15 @@ function tryStructuredTableExtraction(
 
     // Case 1: Line has text but NO numeric data
     if (rawName && !hasNumericData) {
+      // Wrapped description ("1 KG", "500 GM" on the next line): with a serial column, a line
+      // without a serial number continues the item above instead of starting the next one
+      const continuesPrevious = hasSerialColumn && !(cellValues.serial || '').trim();
+      const lastItem = items.length > 0 ? items[items.length - 1] : null;
+      if (!currentPendingItem && continuesPrevious && lastItem) {
+        lastItem.productName = `${lastItem.productName} ${cleanProductName(rawName)}`.trim();
+        lastItem.sourceText = `${lastItem.sourceText} | ${l.text}`;
+        continue;
+      }
       if (!currentPendingItem) {
         currentPendingItem = {
           productName: cleanProductName(rawName),
@@ -609,7 +516,11 @@ function tryStructuredTableExtraction(
           currentPendingItem.sellingPrice !== null ||
           currentPendingItem.mrp !== null ||
           currentPendingItem.lineTotal !== null;
-        if (pendingHasNumbers) {
+        if (pendingHasNumbers && continuesPrevious) {
+          // Wrapped description ("... 500" / "GM"): no serial number, so it belongs to the item above
+          currentPendingItem.productName = `${currentPendingItem.productName} ${cleanProductName(rawName)}`.trim();
+          currentPendingItem.sourceText = `${currentPendingItem.sourceText} | ${l.text}`;
+        } else if (pendingHasNumbers) {
           // Previous item was complete! This line starts the title of the NEXT item!
           items.push(currentPendingItem);
           currentPendingItem = {
@@ -661,7 +572,7 @@ function tryStructuredTableExtraction(
         finalQty = resolved.quantity ?? parsedQty;
         finalPurchasePrice = resolved.purchasePrice ?? finalPurchasePrice;
         finalRate = resolved.rate ?? finalRate;
-        finalLineTotal = resolved.lineTotal ?? parsedTotal ?? (finalQty && finalPurchasePrice ? Math.round(finalQty * finalPurchasePrice * 100) / 100 : null);
+        finalLineTotal = resolved.lineTotal; // printed amount only; never qty × rate
       } else {
         finalQty = parsedQty;
         finalPurchasePrice = null;
@@ -670,23 +581,22 @@ function tryStructuredTableExtraction(
         finalLineTotal = parsedTotal ?? null;
       }
 
-      // Detect pack unit in rawQty or rawName
-      let detectedUnit = rawUnit.trim() ? normalizeUnit(rawUnit) : null;
-      if (!detectedUnit && rawQty) {
-        const uMatch = rawQty.match(/(pcs|pc|pkt|box|bag|bor|pet|kg|g|gm|l|ltr|can|tin)/i);
-        if (uMatch) detectedUnit = normalizeUnit(uMatch[1]);
+      // Unit as printed: the Unit column, else the word next to the quantity ("1.0 BOR").
+      // Pack sizes inside the product name ("CHANA 50 KG") are part of the name, not the unit.
+      let printedUnit: string | null = rawUnit.trim() || null;
+      if (!printedUnit && rawQty) {
+        const uMatch = rawQty.match(/\d\s*([A-Za-z]{1,8})\b/);
+        if (uMatch) printedUnit = uMatch[1];
       }
-      if (!detectedUnit) {
-        const unitMatch = (rawName || '').match(/(\d+(?:\.\d+)?)\s*(kg|g|gm|l|ltr|ml|pcs|pkt|box|bag|bor|pet|tin|ctn)\b/i);
-        if (unitMatch) detectedUnit = normalizeUnit(unitMatch[2]);
-      }
+      const detectedUnit = mapPrintedUnit(printedUnit);
 
       if (currentPendingItem && currentPendingItem.purchasePrice === null && currentPendingItem.sellingPrice === null && currentPendingItem.lineTotal === null) {
         // Pending item was waiting for numbers!
         const mergedName = rawName ? `${currentPendingItem.productName} ${cleanProductName(rawName)}`.trim() : currentPendingItem.productName;
         currentPendingItem.productName = cleanProductName(mergedName);
         currentPendingItem.quantity = finalQty ?? currentPendingItem.quantity;
-        currentPendingItem.unit = detectedUnit || currentPendingItem.unit || extractUnitFromTitle(mergedName);
+        currentPendingItem.unit = detectedUnit || currentPendingItem.unit || null;
+        currentPendingItem.printedUnit = printedUnit || currentPendingItem.printedUnit || null;
         currentPendingItem.rate = finalRate ?? currentPendingItem.rate;
         currentPendingItem.purchasePrice = finalPurchasePrice ?? currentPendingItem.purchasePrice;
         currentPendingItem.sellingPrice = mappedSellingPrice ?? currentPendingItem.sellingPrice;
@@ -718,7 +628,8 @@ function tryStructuredTableExtraction(
         const pendingCandidate: RawExtractedItem = {
           productName: cleanProductName(rawName),
           quantity: finalQty,
-          unit: detectedUnit || extractUnitFromTitle(rawName),
+          unit: detectedUnit,
+          printedUnit,
           rate: finalRate,
           purchasePrice: finalPurchasePrice,
           sellingPrice: mappedSellingPrice,
@@ -926,7 +837,7 @@ export function parseSingleLineItem(
     const qty = Math.max(1, parseFloat(cleanNumericToken(multiTotalMatch[2])) || 1);
     const rate = parseFloat(cleanNumericToken(multiTotalMatch[3])) || 0;
     const total = parseFloat(cleanNumericToken(multiTotalMatch[4])) || Math.round(qty * rate * 100) / 100;
-    const unit = extractUnitFromTitle(name);
+    const unit = null; // a pack size in the name ("500ml") is part of the name, not the billing unit
 
     if (name.length >= 2 && (rate > 0 || total > 0)) {
       return {
@@ -964,7 +875,7 @@ export function parseSingleLineItem(
     const qty = Math.max(1, parseFloat(cleanNumericToken(multiRateMatch[2])) || 1);
     const rate = parseFloat(cleanNumericToken(multiRateMatch[3])) || 0;
     const total = Math.round(qty * rate * 100) / 100;
-    const unit = extractUnitFromTitle(name);
+    const unit = null; // a pack size in the name ("500ml") is part of the name, not the billing unit
 
     if (name.length >= 2 && (rate > 0 || total > 0)) {
       return {
@@ -1001,15 +912,18 @@ export function parseSingleLineItem(
     .split(/\s+/);
 
   // Detect explicit unit words: "2 bags", "5 pcs", "10 kg", "1 box"
-  const unitPairs: Array<{ qty: number; unit: ProductUnit; idx: number }> = [];
+  const unitPairs: Array<{ qty: number; unit: ProductUnit | null; printed: string; idx: number }> = [];
 
   for (let i = 0; i < tokens.length - 1; i++) {
     const isNum = /^\d+(?:\.\d+)?$/.test(cleanNumericToken(tokens[i]));
-    const isUnit = /^(kg|kgs|kilogram|g|gm|gms|l|ltr|ltrs|liter|ml|pcs|pc|nos|pkt|pkts|packet|box|boxes|bag|bags|tin|ctn)$/i.test(tokens[i + 1]);
+    // "1.0 BOR" is the billing quantity even though BOR has no stock-unit mapping;
+    // otherwise "50 KG" inside "CHANA 50 KG" would be taken as the quantity
+    const isUnit = QTY_UNIT_WORD_RE.test(tokens[i + 1]);
     if (isNum && isUnit) {
       unitPairs.push({
         qty: parseFloat(cleanNumericToken(tokens[i])),
-        unit: normalizeUnit(tokens[i + 1]),
+        unit: mapPrintedUnit(tokens[i + 1]),
+        printed: tokens[i + 1],
         idx: i,
       });
     }
@@ -1123,13 +1037,15 @@ export function parseSingleLineItem(
     return null;
   }
 
-  // Detect unit from title if explicit unit was not present
-  const finalUnit = explicitUnit || extractUnitFromTitle(name);
+  // Only a unit printed next to the quantity counts; a pack size in the name is part of the name
+  const finalUnit = explicitUnit;
+  const printedUnit = unitIdx !== -1 ? unitPairs[unitPairs.length - 1].printed : null;
 
   return {
     productName: name,
     quantity: Math.max(1, finalQty),
     unit: finalUnit,
+    printedUnit,
     rate: finalRate,
     purchasePrice: finalRate,
     sellingPrice: null,
@@ -1263,7 +1179,7 @@ function tryMultiLineSemanticReconstruction(
         items.push({
           productName: cleanProductName(combinedName),
           quantity: qty || 1,
-          unit: unit || extractUnitFromTitle(combinedName),
+          unit: unit || null,
           rate: rate,
           purchasePrice: rate,
           sellingPrice: null,
@@ -1306,7 +1222,10 @@ export function cleanProductName(rawName: string): string {
   return rawName
     .replace(/[₹$€£]/g, '')
     .replace(/\b(?:rs|inr)\b\.?/gi, '')
-    .replace(/^[#*.\-_=~|0-9)\-:\s]+/, '')
+    .replace(/^[#*.\-_=~|)\-:\s]+/, '')
+    // A serial marker ("3." / "3)") is removed; a leading number that is part of the name
+    // ("500 GM" on a wrapped line, "5 STAR") is kept
+    .replace(/^\d{1,3}\s*[.)]\s*(?=\D)/, '')
     .replace(/[#*.\-_=~|:\s]+$/, '')
     .replace(/[|]/g, ' ')
     .replace(/\s{2,}/g, ' ')

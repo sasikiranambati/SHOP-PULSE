@@ -701,6 +701,7 @@ export async function parseInvoiceFile(
   const preferredEngine = getPreferredOcrEngine();
 
   let parsedInvoice: ParsedInvoice | null = null;
+  let geminiFailure: string | null = null;
 
   // Tier 1: Try Gemini Vision if preferred or API key configured
   if (geminiApiKey && preferredEngine !== 'tesseract') {
@@ -716,6 +717,7 @@ export async function parseInvoiceFile(
       );
     } catch (err) {
       console.warn('Gemini AI Vision extraction failed, falling back to local OCR engine:', err);
+      geminiFailure = err instanceof Error ? err.message : String(err);
       if (onProgress) {
         onProgress(30, 'AI Vision unavailable. Switching to Local Multi-Format OCR Engine...');
       }
@@ -729,6 +731,13 @@ export async function parseInvoiceFile(
       onProgress,
       existingProducts
     );
+  }
+
+  if (geminiFailure) {
+    parsedInvoice.notices = [
+      `Gemini could not read this invoice (${geminiFailure}); in-browser Tesseract OCR was used instead.`,
+      ...(parsedInvoice.notices || []),
+    ];
   }
 
   // Attach original image preview for user review

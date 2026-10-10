@@ -582,7 +582,13 @@ describe('Mathematical Validation & Confidence Penalties (Phase 12 & 17)', () =>
 
     expect(normalized.confidenceLevel).toBe('LOW');
     expect(normalized.validationIssues).toBeDefined();
-    expect(normalized.validationIssues?.some(i => i.includes('Arithmetic discrepancy'))).toBe(true);
+    expect(normalized.validationIssues?.some(i => i.includes('does not match quantity × rate'))).toBe(true);
+    // Printed values are kept and the difference is reported, never "corrected"
+    expect(normalized.lineTotal).toBe(900);
+    expect(normalized.quantity).toBe(2);
+    expect(normalized.calculatedAmount).toBe(400);
+    expect(normalized.amountDifference).toBe(500);
+    expect(normalized.arithmeticStatus).toBe('MISMATCH');
   });
 
   it('boosts confidence when unitPrice * quantity precisely matches lineTotal', () => {

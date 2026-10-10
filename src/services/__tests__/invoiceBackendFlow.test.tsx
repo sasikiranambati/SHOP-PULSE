@@ -11,7 +11,7 @@ import {
   type BackendInvoiceExtractResponse,
 } from '../../api/invoice';
 import { validateInvoiceItems } from '../../pages/InvoiceScanner';
-import { recalculateLineTotal, describeMrp } from '../invoiceReview';
+import { recalculateAmounts, describeMrp } from '../invoiceReview';
 import { MrpStatus, LineAmount } from '../../components/InvoiceLineCells';
 import type { InvoiceLineItem } from '../invoiceTypes';
 import type { Product } from '../../types/product';
@@ -105,14 +105,43 @@ describe('review table rules', () => {
 
   it('never overwrites a printed invoice amount when quantity or price is edited', () => {
     const item = { ...base(), purchasePrice: 21 };
-    recalculateLineTotal(item);
+    recalculateAmounts(item);
     expect(item.lineTotal).toBe(528);
+    expect(item.lineTotalSource).toBe('INVOICE');
+    expect(item.calculatedAmount).toBe(504);
+    expect(item.amountDifference).toBe(24);
+    expect(item.arithmeticStatus).toBe('MISMATCH');
+    expect(item.validationWarning).toContain('does not match quantity × rate');
   });
 
-  it('recalculates amounts that were themselves calculated', () => {
+  it('verifies an edit that makes the printed amount add up and clears the old mismatch note', () => {
+    const item = {
+      ...base(),
+      purchasePrice: 21,
+      arithmeticStatus: 'MISMATCH' as const,
+      validationWarning: 'Printed amount ₹528.00 does not match quantity × rate: 24 × ₹21.00 = ₹504.00 (difference ₹24.00). The printed value is kept. Check the invoice.',
+    };
+    item.purchasePrice = 22;
+    recalculateAmounts(item);
+    expect(item.arithmeticStatus).toBe('VERIFIED');
+    expect(item.calculatedAmount).toBe(528);
+    expect(item.amountDifference).toBe(0);
+    expect(item.validationWarning).toBeUndefined();
+  });
+
+  it('includes printed discount and tax in the calculated amount', () => {
+    const item = { ...base(), quantity: 3, purchasePrice: 1378.62, discount: 124.08, taxAmount: 4.01, lineTotal: 4015.8 };
+    recalculateAmounts(item);
+    expect(item.calculatedAmount).toBe(4015.79);
+    expect(item.amountDifference).toBe(0.01);
+    expect(item.arithmeticStatus).toBe('VERIFIED');
+  });
+
+  it('recalculates amounts that were themselves calculated (in-browser engine)', () => {
     const item = { ...base(), lineTotalSource: 'CALCULATED' as const, quantity: 10 };
-    recalculateLineTotal(item);
+    recalculateAmounts(item);
     expect(item.lineTotal).toBe(220);
+    expect(item.calculatedAmount).toBe(220);
   });
 
   it('requires a purchase price, whole quantities and a selling price for new products', () => {

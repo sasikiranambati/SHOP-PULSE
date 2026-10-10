@@ -19,6 +19,7 @@ import type {
 } from './invoiceTypes';
 import type { RawExtractedItem } from './tableLayoutExtractor';
 import type { ExtractedMetadata } from './sectionClassifier';
+import { checkLineArithmetic } from './lineArithmetic';
 
 /**
  * Normalizes a raw extracted item into a canonical invoice item with validation.
@@ -33,6 +34,7 @@ export function normalizeCanonicalItem(
   // An unreadable quantity stays null instead of being assumed to be 1
   const quantity = typeof raw.quantity === 'number' && raw.quantity > 0 ? raw.quantity : null;
   const unit = raw.unit ? String(raw.unit).trim() : null;
+  const printedUnit = raw.printedUnit ? String(raw.printedUnit).trim() : null;
 
   const rawRateVal = typeof raw.rawRate === 'number' ? raw.rawRate : (typeof raw.rate === 'number' ? raw.rate : null);
   const rawPurchaseVal = typeof raw.rawPurchasePrice === 'number' ? raw.rawPurchasePrice : (typeof raw.purchasePrice === 'number' ? raw.purchasePrice : null);
@@ -44,14 +46,10 @@ export function normalizeCanonicalItem(
   const sellingPrice = typeof raw.sellingPrice === 'number' ? raw.sellingPrice : null;
   const mrp = typeof raw.mrp === 'number' ? raw.mrp : null;
 
-  let lineTotal = typeof raw.lineTotal === 'number' ? raw.lineTotal : null;
-  let lineTotalSource: 'INVOICE' | 'CALCULATED' | null = lineTotal !== null ? 'INVOICE' : null;
-
-  // If Amount (lineTotal) is missing: lineTotal = quantity * purchasePrice ONLY when both quantity and purchasePrice are valid
-  if (lineTotal === null && quantity !== null && purchasePrice !== null) {
-    lineTotal = Math.round(quantity * purchasePrice * 100) / 100;
-    lineTotalSource = 'CALCULATED';
-  }
+  // The line amount is only ever the printed one; a missing amount stays null and the
+  // expected amount is reported separately (same rule as the server, lineArithmetic.ts)
+  const lineTotal = typeof raw.lineTotal === 'number' ? raw.lineTotal : null;
+  const lineTotalSource: 'INVOICE' | null = lineTotal !== null ? 'INVOICE' : null;
   if (quantity === null) {
     issues.push('Quantity could not be read; enter it manually.');
   }
@@ -63,32 +61,21 @@ export function normalizeCanonicalItem(
   const gstRate = typeof raw.gstRate === 'number' && raw.gstRate > 0 ? raw.gstRate : null;
   const hsnCode = raw.hsnCode ? String(raw.hsnCode).trim() : null;
 
-  // Arithmetic Validation
+  // Arithmetic validation: printed values are kept; a discrepancy is reported with the difference
   let numericScoreBonus = 0;
-  const priceForCheck = purchasePrice ?? sellingPrice;
-
-  if (priceForCheck !== null && lineTotal !== null && quantity !== null) {
-    const rawExpectedTotal = quantity * priceForCheck;
-    const discountVal = discount || 0;
-    const taxVal = taxAmount || 0;
-
-    // Check relationship with tolerance for rounding (+/- ₹2 or 2%)
-    const diffStandard = Math.abs(rawExpectedTotal - lineTotal);
-    const diffWithDiscount = Math.abs(rawExpectedTotal - discountVal - lineTotal);
-    const diffWithTax = Math.abs(rawExpectedTotal + taxVal - lineTotal);
-    const diffWithBoth = Math.abs(rawExpectedTotal - discountVal + taxVal - lineTotal);
-
-    const matchesDirect = diffStandard < Math.max(2, lineTotal * 0.02);
-    const matchesDiscount = diffWithDiscount < Math.max(2, lineTotal * 0.02);
-    const matchesTax = diffWithTax < Math.max(2, lineTotal * 0.02);
-    const matchesBoth = diffWithBoth < Math.max(2, lineTotal * 0.02);
-
-    if (matchesDirect || matchesDiscount || matchesTax || matchesBoth) {
-      numericScoreBonus = 15; // Math checks out!
-    } else {
-      issues.push(`Arithmetic discrepancy: ${quantity} × ₹${priceForCheck} = ₹${rawExpectedTotal} but Total is ₹${lineTotal}`);
-      numericScoreBonus = -20;
-    }
+  const arithmetic = checkLineArithmetic({
+    quantity,
+    rate: purchasePrice,
+    amount: lineTotal,
+    discount,
+    taxAmount,
+    gstRate,
+  });
+  if (arithmetic.status === 'VERIFIED') {
+    numericScoreBonus = 15;
+  } else if (arithmetic.status === 'MISMATCH') {
+    issues.push(arithmetic.issue as string);
+    numericScoreBonus = -20;
   } else if (purchasePrice === null && sellingPrice === null && lineTotal === null) {
     issues.push('Missing price and line total.');
     numericScoreBonus = -30;
@@ -121,6 +108,7 @@ export function normalizeCanonicalItem(
     productName,
     quantity,
     unit,
+    printedUnit,
     rate,
     purchasePrice,
     sellingPrice, // Preserves null if not present; NEVER invented or defaulted to zero
@@ -136,6 +124,10 @@ export function normalizeCanonicalItem(
     hsnCode,
     lineTotal,
     lineTotalSource,
+    calculatedAmount: arithmetic.calculatedAmount,
+    amountDifference: arithmetic.difference,
+    arithmeticStatus: arithmetic.status,
+    arithmeticExplanation: arithmetic.explanation,
     confidence: finalConfidence,
     confidenceLevel,
     sourceText: raw.sourceText || productName,

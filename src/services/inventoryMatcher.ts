@@ -176,15 +176,13 @@ export function matchCanonicalItemsWithInventory(
     // A quantity that could not be read stays null; the review screen asks for it
     const quantity = item.quantity ?? null;
 
-    // Line total comes from the invoice Amount column when available.
-    // If Amount is missing: lineTotal = quantity * purchasePrice ONLY when both are valid,
-    // and it is labelled CALCULATED. NEVER write 0 for a missing line total.
-    let lineTotal: number | null = item.lineTotal ?? null;
-    let lineTotalSource = item.lineTotalSource ?? (lineTotal !== null ? 'INVOICE' : null);
-    if (lineTotal === null && quantity !== null && purchasePrice !== null && purchasePrice > 0) {
-      lineTotal = Math.round(quantity * purchasePrice * 100) / 100;
-      lineTotalSource = 'CALCULATED';
-    }
+    // The line amount is passed through exactly as extracted: a printed amount stays printed and a
+    // missing one stays null (never 0, never quantity × price). The expected amount is kept separately.
+    const lineTotal: number | null = item.lineTotal ?? null;
+    const lineTotalSource = lineTotal !== null ? item.lineTotalSource ?? 'INVOICE' : null;
+    const calculatedAmount =
+      item.calculatedAmount ??
+      (quantity !== null && purchasePrice !== null ? Math.round(quantity * purchasePrice * 100) / 100 : null);
 
     const inventoryData =
       bestProduct && (matchLevel === 'HIGH' || matchLevel === 'MEDIUM')
@@ -222,6 +220,11 @@ export function matchCanonicalItemsWithInventory(
       mrp,
       lineTotal,
       lineTotalSource,
+      calculatedAmount,
+      amountDifference: item.amountDifference ?? null,
+      arithmeticExplanation: item.arithmeticExplanation ?? null,
+      printedUnit: item.printedUnit ?? null,
+      discountPct: item.discountPct ?? null,
       mrpSource: item.mrpSource ?? (mrp !== null ? 'INVOICE' : null),
       invoiceMrp: item.invoiceMrp ?? item.rawMrp ?? null,
       storeMrp: item.storeMrp ?? (bestProduct && matchLevel === 'HIGH' ? bestProduct.mrp ?? null : null),
@@ -248,7 +251,8 @@ export function matchCanonicalItemsWithInventory(
       currentStock,
       suggestedMatch,
       isMatchConfirmed,
-      validationWarning: item.validationIssues?.join('; '),
+      validationWarning: item.validationIssues?.length ? item.validationIssues.join('; ') : undefined,
+      validationIssues: item.validationIssues ? [...item.validationIssues] : undefined,
       sourceText: item.sourceText,
       extractionMethod: item.extractionMethod,
     };

@@ -147,7 +147,6 @@ export const SUPPLIER_KEYWORDS = [
   'stores',
   'kirana',
   'kiran',
-  'jejani',
   'agencies',
   'agency',
   'pvt ltd',
@@ -373,12 +372,8 @@ export function extractDocumentMetadata(lines: DocumentLine[]): ExtractedMetadat
 
     if (!isDocLabel && !isMetadata && hasEnoughLetters && !isGarbled) {
       if (SUPPLIER_KEYWORDS.some((kw) => lower.includes(kw))) {
-        // Specific normalization for Jejani Kirana when OCR reads 'deja Kiran'
-        if (/\b(?:deja|jeja|jejani)\b.*\b(?:kiran|kirana)\b/i.test(candidateText)) {
-          supplierName = 'Jejani Kirana';
-        } else {
-          supplierName = candidateText;
-        }
+        // The name is reported as read; it is never replaced by a known supplier's name
+        supplierName = candidateText;
         supplierConfidence = Math.max(85, l.confidence || 80);
         break;
       } else if (!supplierName && i <= 3) {

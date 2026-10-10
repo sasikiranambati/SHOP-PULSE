@@ -10,7 +10,8 @@ function autoBackendPlugin(): Plugin {
 
   return {
     name: 'auto-start-backend',
-    apply: 'serve',
+    // Dev server only: unit tests (Vitest also runs a Vite server) must not start the backend
+    apply: (_config, env) => env.command === 'serve' && !process.env.VITEST,
     configureServer() {
       // Check if backend is already alive on port 8000
       const req = http.get('http://127.0.0.1:8000/api/v1/health', (res) => {

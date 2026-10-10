@@ -126,6 +126,25 @@ export function normalizeUnit(rawUnit: string): ProductUnit {
 }
 
 /**
+ * Maps a unit printed on an invoice through an explicit table. Unlike normalizeUnit it
+ * never defaults: units without a verified mapping (BOR, PET, ...) return null so the
+ * stock unit is chosen by the user instead of being guessed.
+ */
+export function mapPrintedUnit(rawUnit: string | null | undefined): ProductUnit | null {
+  const u = (rawUnit || '').toLowerCase().replace(/[^a-z]/g, '');
+  if (!u) return null;
+  if (/^(kg|kgs|kilogram|kilograms|g|gm|gms|gram|grams|l|ltr|ltrs|liter|liters|litre|litres|ml|mls|pkt|pkts|packet|packets|bag|bags|box|boxes)$/.test(u)) {
+    return normalizeUnit(u);
+  }
+  if (/^(pcs|pc|piece|pieces|nos|no|ea)$/.test(u)) return 'pcs';
+  return null;
+}
+
+/** Unit words accepted next to a quantity ("1.0 BOR", "2 bags"); includes units with no stock mapping. */
+export const QTY_UNIT_WORD_RE =
+  /^(kg|kgs|kilogram|g|gm|gms|l|ltr|ltrs|liter|ml|pcs|pc|nos|pkt|pkts|packet|box|boxes|bag|bags|tin|tins|ctn|bor|bori|pet|can|cans|jar|btl|bottle|bottles|doz|dozen|case|cs|bdl|roll|set|pair)$/i;
+
+/**
  * Splits merged words such as "25kg", "5L", "500ml", "10pcs", "3pkt", "2box", "1bag".
  */
 export function splitMergedUnits(text: string): string {

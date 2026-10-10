@@ -9,6 +9,7 @@ import type {
   CanonicalInvoiceItem,
   ConfidenceLevel,
   ExtractionMethod,
+  InvoiceTotals,
   LineTotalSource,
   MrpLookupInfo,
   MrpSource,
@@ -34,7 +35,10 @@ export interface BackendCanonicalInvoiceItem {
   id: string;
   product_name: string;
   quantity?: number | null;
+  /** Unit exactly as printed on the invoice */
   unit?: string | null;
+  /** Unit mapped through the server's explicit unit table; null for units such as BOR or PET */
+  unit_normalized?: string | null;
   rate?: number | null;
   purchase_price?: number | null;
   selling_price?: number | null;
@@ -53,7 +57,11 @@ export interface BackendCanonicalInvoiceItem {
   line_total?: number | null;
   amount?: number | null;
   line_total_source?: LineTotalSource | null;
+  calculated_amount?: number | null;
+  amount_difference?: number | null;
   arithmetic_status?: 'VERIFIED' | 'MISMATCH' | 'INSUFFICIENT_DATA';
+  arithmetic_rule?: string | null;
+  arithmetic_explanation?: string | null;
   confidence?: number;
   confidence_level?: string;
   needs_review?: boolean;
@@ -77,6 +85,35 @@ export interface BackendDiagnostics {
   rows?: Array<{ row_index: number; text: string; cells: Record<string, string>; is_item: boolean }>;
   warnings?: string[];
   mrp_provider?: string | null;
+  deskew_angle?: number | null;
+}
+
+export interface BackendTotalCheck {
+  field: string;
+  printed?: number | null;
+  calculated?: number | null;
+  difference?: number | null;
+  status: string;
+  message: string;
+}
+
+export interface BackendInvoiceTotals {
+  printed_quantity?: number | null;
+  printed_discount?: number | null;
+  printed_tax?: number | null;
+  printed_taxable?: number | null;
+  printed_amount?: number | null;
+  sub_total?: number | null;
+  round_off?: number | null;
+  grand_total?: number | null;
+  received?: number | null;
+  balance?: number | null;
+  lines_quantity?: number | null;
+  lines_discount?: number | null;
+  lines_tax?: number | null;
+  lines_amount?: number | null;
+  lines_without_amount?: number;
+  checks?: BackendTotalCheck[];
 }
 
 export interface BackendInvoiceExtractResponse {
@@ -97,6 +134,7 @@ export interface BackendInvoiceExtractResponse {
   engine_used?: string;
   extraction_method?: string;
   items: BackendCanonicalInvoiceItem[];
+  totals?: BackendInvoiceTotals | null;
   status?: string;
   reason?: string | null;
   diagnostics?: BackendDiagnostics | null;
@@ -154,10 +192,39 @@ function mapMrpLookup(l: BackendMrpLookup | null | undefined): MrpLookupInfo | n
   };
 }
 
+export function mapBackendTotals(t: BackendInvoiceTotals | null | undefined): InvoiceTotals | null {
+  if (!t) return null;
+  return {
+    printedQuantity: toNum(t.printed_quantity),
+    printedDiscount: toNum(t.printed_discount),
+    printedTax: toNum(t.printed_tax),
+    printedAmount: toNum(t.printed_amount),
+    subTotal: toNum(t.sub_total),
+    roundOff: toNum(t.round_off),
+    grandTotal: toNum(t.grand_total),
+    received: toNum(t.received),
+    balance: toNum(t.balance),
+    linesQuantity: toNum(t.lines_quantity),
+    linesDiscount: toNum(t.lines_discount),
+    linesTax: toNum(t.lines_tax),
+    linesAmount: toNum(t.lines_amount),
+    linesWithoutAmount: t.lines_without_amount ?? 0,
+    checks: (t.checks || []).map((c) => ({
+      field: c.field,
+      printed: toNum(c.printed),
+      calculated: toNum(c.calculated),
+      difference: toNum(c.difference),
+      status: c.status,
+      message: c.message,
+    })),
+  };
+}
+
 /**
  * Explicit mapping between the backend response and the frontend canonical item.
  * Values the backend could not read stay null here too: no default quantity,
- * no default prices, no default confidence.
+ * no default prices, no default confidence. `lineTotal` is only ever the printed
+ * amount; the backend's calculation goes to `calculatedAmount`.
  */
 export function mapBackendItemToCanonical(item: BackendCanonicalInvoiceItem): CanonicalInvoiceItem {
   const rate = toNum(item.rate);
@@ -166,12 +233,16 @@ export function mapBackendItemToCanonical(item: BackendCanonicalInvoiceItem): Ca
   const quantity = rawQty !== null && rawQty > 0 ? rawQty : null;
   const lineTotal = toNum(item.line_total) ?? toNum(item.amount);
   const level = (item.confidence_level || 'LOW').toUpperCase();
+  // Stock unit only through the server's explicit mapping (PCS -> pcs, KGS -> kg);
+  // a unit such as BOR or PET is shown as printed and the stock unit is left for the user.
+  const stockUnit = item.unit_normalized !== undefined ? item.unit_normalized : item.unit;
 
   return {
     id: item.id || `item_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
     productName: item.product_name || 'Unlabeled Item',
     quantity,
-    unit: item.unit ?? null,
+    unit: stockUnit ?? null,
+    printedUnit: item.unit ?? null,
     rate,
     purchasePrice,
     sellingPrice: toNum(item.selling_price),
@@ -185,13 +256,17 @@ export function mapBackendItemToCanonical(item: BackendCanonicalInvoiceItem): Ca
     rawSellingPrice: toNum(item.selling_price),
     rawMrp: toNum(item.invoice_mrp),
     discount: toNum(item.discount),
+    discountPct: toNum(item.discount_pct),
     taxableAmount: toNum(item.taxable_amount),
     taxAmount: toNum(item.tax_amount),
     gstRate: toNum(item.gst_rate),
     hsnCode: item.hsn_code ?? null,
     lineTotal,
-    lineTotalSource: item.line_total_source ?? (lineTotal !== null ? 'INVOICE' : null),
+    lineTotalSource: lineTotal !== null ? item.line_total_source ?? 'INVOICE' : null,
+    calculatedAmount: toNum(item.calculated_amount),
+    amountDifference: toNum(item.amount_difference),
     arithmeticStatus: item.arithmetic_status,
+    arithmeticExplanation: item.arithmetic_explanation ?? null,
     needsReview: item.needs_review ?? true,
     suggestions: item.suggestions || [],
     suggestedRate: toNum(item.suggested_rate),
@@ -235,7 +310,7 @@ export function mapBackendResponseToParsedInvoice(
   });
 
   const totalUnits = matchedItems.reduce((acc, it) => acc + (it.quantity || 0), 0);
-  const lineSum = matchedItems.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
+  const lineSum = matchedItems.reduce((acc, it) => acc + (it.lineTotal ?? it.calculatedAmount ?? 0), 0);
   const diag = res.diagnostics || undefined;
 
   return {
@@ -286,7 +361,9 @@ export function mapBackendResponseToParsedInvoice(
       rawApiResponse: res,
       mrpProvider: diag?.mrp_provider ?? null,
     },
-    notices: diag?.warnings || [],
+    // Totals mismatches are shown in the totals check; list every other warning once
+    notices: (diag?.warnings || []).filter((w) => !(res.totals?.checks || []).some((c) => c.message === w)),
+    totals: mapBackendTotals(res.totals),
   };
 }
 

@@ -24,7 +24,8 @@ class CanonicalInvoiceItemSchema(BaseModel):
     id: str
     product_name: str = Field(..., description="Detected product or item name")
     quantity: Optional[float] = Field(None, description="Purchased quantity; null when it could not be read")
-    unit: Optional[str] = Field(None, description="Unit from the invoice Unit column; null when not printed")
+    unit: Optional[str] = Field(None, description="Unit exactly as printed (Unit column or next to the quantity); null when not printed")
+    unit_normalized: Optional[str] = Field(None, description="Unit mapped through the explicit unit table; null for units such as BOR or PET")
     rate: Optional[float] = Field(None, description="Value read from the Rate / Unit Price column")
     purchase_price: Optional[float] = Field(None, description="Unit purchase price (Purchase Price column, else Rate column)")
     selling_price: Optional[float] = Field(None, description="Selling price column, only if printed on the invoice")
@@ -44,10 +45,14 @@ class CanonicalInvoiceItemSchema(BaseModel):
     gst_rate: Optional[float] = Field(None, description="GST rate percentage")
     hsn_code: Optional[str] = Field(None, description="HSN / SAC code")
     barcode: Optional[str] = Field(None, description="Barcode / GTIN printed on the invoice")
-    line_total: Optional[float] = Field(None, description="Line amount")
+    line_total: Optional[float] = Field(None, description="Line amount printed on the invoice; null when not printed")
     amount: Optional[float] = Field(None, description="Alias of line_total")
-    line_total_source: Optional[str] = Field(None, description="INVOICE (printed) | CALCULATED (qty × rate) | null")
+    line_total_source: Optional[str] = Field(None, description="INVOICE (printed) | null")
+    calculated_amount: Optional[float] = Field(None, description="Expected amount from arithmetic_rule (never replaces the printed amount)")
+    amount_difference: Optional[float] = Field(None, description="Printed line amount minus calculated amount")
     arithmetic_status: str = Field("INSUFFICIENT_DATA", description="VERIFIED | MISMATCH | INSUFFICIENT_DATA")
+    arithmetic_rule: Optional[str] = Field(None, description="Rule used to calculate the expected amount")
+    arithmetic_explanation: Optional[str] = Field(None, description="Plain-language result of the arithmetic check")
     purchasePrice: Optional[float] = Field(None, description="camelCase alias of purchase_price")
     confidence: float = Field(0.0, description="Extraction confidence (0-100)")
     confidence_level: str = Field("LOW", description="HIGH | MEDIUM | LOW")
@@ -70,6 +75,35 @@ class DetectedColumnSchema(BaseModel):
     x_end: Optional[float] = None
 
 
+class TotalCheckSchema(BaseModel):
+    field: str = Field(..., description="quantity | discount | tax | amount | balance")
+    printed: Optional[float] = None
+    calculated: Optional[float] = None
+    difference: Optional[float] = Field(None, description="printed - calculated")
+    status: str = Field(..., description="MATCH | ROUNDING | MISMATCH | NOT_PRINTED")
+    message: str
+
+
+class InvoiceTotalsSchema(BaseModel):
+    """Totals as printed on the invoice next to the sums of the extracted lines. Printed values are never changed."""
+    printed_quantity: Optional[float] = Field(None, description="Quantity in the TOTAL row")
+    printed_discount: Optional[float] = Field(None, description="Discount in the TOTAL row")
+    printed_tax: Optional[float] = Field(None, description="Tax in the TOTAL row")
+    printed_taxable: Optional[float] = Field(None, description="Taxable value in the TOTAL row")
+    printed_amount: Optional[float] = Field(None, description="Amount in the TOTAL row")
+    sub_total: Optional[float] = None
+    round_off: Optional[float] = None
+    grand_total: Optional[float] = None
+    received: Optional[float] = None
+    balance: Optional[float] = None
+    lines_quantity: Optional[float] = Field(None, description="Sum of extracted line quantities")
+    lines_discount: Optional[float] = Field(None, description="Sum of extracted line discounts")
+    lines_tax: Optional[float] = Field(None, description="Sum of extracted line tax amounts")
+    lines_amount: Optional[float] = Field(None, description="Sum of printed line amounts")
+    lines_without_amount: int = Field(0, description="Lines whose amount was not printed or not readable")
+    checks: List[TotalCheckSchema] = Field(default_factory=list)
+
+
 class DiagnosticInfo(BaseModel):
     document_type: str = "image"
     engine_used: str = "backend_tesseract"
@@ -83,6 +117,7 @@ class DiagnosticInfo(BaseModel):
     detected_sections: List[str] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
     ocr_psm: Optional[str] = None
+    deskew_angle: Optional[float] = Field(None, description="Rotation applied to straighten the scan (degrees)")
     ocr_language_data: Optional[str] = None
     pages_processed: int = 0
     mrp_provider: Optional[str] = None
@@ -106,6 +141,7 @@ class InvoiceExtractResponse(BaseModel):
     engine_used: str = "backend_engine"
     extraction_method: str = "TABLE_STRUCTURED"
     items: List[CanonicalInvoiceItemSchema] = Field(default_factory=list)
+    totals: Optional[InvoiceTotalsSchema] = None
     status: str = Field("success", description="Status: 'success', 'needs_review', or 'error'")
     reason: Optional[str] = None
     diagnostics: Optional[DiagnosticInfo] = None

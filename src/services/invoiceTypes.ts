@@ -91,8 +91,41 @@ export interface DocumentLine {
 /** Where a line's MRP came from. */
 export type MrpSource = 'INVOICE' | 'API' | 'MANUAL' | 'STORE';
 
-/** Where a line's amount came from: printed on the invoice, calculated (qty × rate) or typed in. */
+/**
+ * Where a line's amount came from: printed on the invoice, typed in by the user, or
+ * (in-browser engine only) calculated. Server results keep the calculation separately
+ * in `calculatedAmount` and never put it in `lineTotal`.
+ */
 export type LineTotalSource = 'INVOICE' | 'CALCULATED' | 'MANUAL';
+
+/** One comparison between a printed invoice total and the sum of the extracted lines. */
+export interface InvoiceTotalCheck {
+  field: 'quantity' | 'discount' | 'tax' | 'amount' | 'balance' | string;
+  printed: number | null;
+  calculated: number | null;
+  difference: number | null;
+  status: 'MATCH' | 'ROUNDING' | 'MISMATCH' | 'NOT_PRINTED' | string;
+  message: string;
+}
+
+/** Totals printed on the invoice next to the sums of the extracted lines (server results). */
+export interface InvoiceTotals {
+  printedQuantity: number | null;
+  printedDiscount: number | null;
+  printedTax: number | null;
+  printedAmount: number | null;
+  subTotal: number | null;
+  roundOff: number | null;
+  grandTotal: number | null;
+  received: number | null;
+  balance: number | null;
+  linesQuantity: number | null;
+  linesDiscount: number | null;
+  linesTax: number | null;
+  linesAmount: number | null;
+  linesWithoutAmount: number;
+  checks: InvoiceTotalCheck[];
+}
 
 /** Result of the backend's external MRP lookup for one line. */
 export interface MrpLookupInfo {
@@ -123,7 +156,16 @@ export interface LineEvidence {
   storeMrp?: number | null;
   mrpLookup?: MrpLookupInfo | null;
   lineTotalSource?: LineTotalSource | null;
+  /** Expected amount from the arithmetic rule; never replaces the printed amount */
+  calculatedAmount?: number | null;
+  /** Printed amount minus calculated amount */
+  amountDifference?: number | null;
   arithmeticStatus?: 'VERIFIED' | 'MISMATCH' | 'INSUFFICIENT_DATA';
+  /** Plain-language result of the arithmetic check */
+  arithmeticExplanation?: string | null;
+  /** Unit exactly as printed on the invoice (e.g. BOR, PET); `unit` is the stock unit */
+  printedUnit?: string | null;
+  discountPct?: number | null;
   needsReview?: boolean;
   suggestions?: string[];
   suggestedRate?: number | null;
@@ -205,7 +247,9 @@ export interface InvoiceLineItem extends LineEvidence {
     sellingPrice?: number;
   };
   isMatchConfirmed?: boolean;
+  /** Review notes joined for tooltips; `validationIssues` holds them one by one */
   validationWarning?: string;
+  validationIssues?: string[];
   sourceText?: string;
   extractionMethod?: ExtractionMethod;
   rawRate?: number | null;
@@ -325,4 +369,6 @@ export interface ParsedInvoice {
   };
   /** Shown above the review table, e.g. when the server could not be used */
   notices?: string[];
+  /** Printed totals and their comparison with the lines (server results) */
+  totals?: InvoiceTotals | null;
 }

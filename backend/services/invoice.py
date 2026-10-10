@@ -14,6 +14,7 @@ import re
 import uuid
 import zlib
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
@@ -35,7 +36,9 @@ from schemas.invoice import (
     InvoiceConfirmRequest,
     InvoiceConfirmResponse,
     InvoiceExtractResponse,
+    InvoiceTotalsSchema,
     MrpLookupSchema,
+    TotalCheckSchema,
 )
 
 logger = logging.getLogger(__name__)
@@ -58,15 +61,20 @@ class InvoiceValidationError(ValueError):
 # --------------------------------------------------------------------------
 
 
+def _f(value: Optional[Decimal]) -> Optional[float]:
+    """Decimal -> float at the API boundary (all arithmetic is done in Decimal before this)."""
+    return None if value is None else float(value)
+
+
 def parse_smart_price_py(tok: Optional[str], allow_zero: bool = False) -> Optional[float]:
     value = table.parse_number(tok).value
     if value is None:
         return None
     if value < 0:
-        return value
+        return _f(value)
     if not allow_zero and value == 0:
         return None
-    return value
+    return _f(value)
 
 
 def resolve_item_arithmetic_py(
@@ -78,12 +86,14 @@ def resolve_item_arithmetic_py(
         "quantity": qty,
         "rate": rate,
         "purchase_price": rate,
-        "line_total": rec.line_total,
+        "line_total": _f(rec.line_total),
         "line_total_source": rec.line_total_source,
+        "calculated_amount": _f(rec.calculated_amount),
+        "amount_difference": _f(rec.amount_difference),
         "status": rec.status,
         "issues": rec.issues,
         "suggestions": rec.suggestions,
-        "suggested_rate": rec.suggested_rate,
+        "suggested_rate": _f(rec.suggested_rate),
     }
 
 
@@ -186,13 +196,19 @@ class _Extraction:
         self.rows: List[Dict[str, Any]] = []
         self.warnings: List[str] = []
         self.text_lines: List[str] = []
+        self.layout_lines: List[str] = []  # rows rebuilt from word positions (one visual line each)
         self.ocr_confidence: Optional[float] = None
         self.ocr_psm: Optional[str] = None
         self.language_data: Optional[str] = None
+        self.deskew_angle: Optional[float] = None
         self.pages = 0
+        self.totals_row: Dict[str, Decimal] = {}
 
     def add(self, res: table.TableResult) -> None:
         self.items.extend(res.items)
+        # A multi-page invoice prints its TOTAL row on the last page
+        if res.totals_row:
+            self.totals_row = dict(res.totals_row)
         if res.columns:
             self.columns = res.columns
         self.header_text = self.header_text or res.header_text
@@ -206,7 +222,9 @@ def _extract_from_rows(ext: _Extraction, rows: List[table.Row], text_mode: bool,
 
 
 def _ocr_image(ext: _Extraction, image_bytes: bytes) -> None:
-    png = ocr_service.validate_and_preprocess_image(image_bytes)
+    png, prep = ocr_service.preprocess_image(image_bytes)
+    if prep.get("deskew_angle"):
+        ext.deskew_angle = prep["deskew_angle"]
     best: Optional[table.TableResult] = None
     best_ocr: Optional[Dict[str, Any]] = None
     # Automatic page segmentation first; a single-block pass often keeps table rows together better
@@ -227,6 +245,7 @@ def _ocr_image(ext: _Extraction, image_bytes: bytes) -> None:
                                  best.rows + fallback.rows, best.warnings + fallback.warnings)
     ext.add(best)
     ext.text_lines.extend(l for l in best_ocr["text"].splitlines() if l.strip())
+    ext.layout_lines.extend(r.text for r in table.group_words_into_rows(table.words_from_ocr(best_ocr["words"])))
     ext.ocr_confidence = best_ocr["confidence"] if ext.ocr_confidence is None else min(ext.ocr_confidence, best_ocr["confidence"])
     ext.ocr_psm = best_ocr.get("psm")
     ext.language_data = best_ocr.get("language_data")
@@ -242,6 +261,7 @@ def _extract_text(ext: _Extraction, text: str) -> None:
                                 res.rows + fb.rows, res.warnings + fb.warnings)
     ext.add(res)
     ext.text_lines.extend(r.text for r in rows)
+    ext.layout_lines.extend(r.text for r in rows)
     ext.pages += 1
 
 
@@ -341,6 +361,128 @@ def extract_metadata(lines: List[str], header_text: Optional[str]) -> Dict[str, 
 
 
 # --------------------------------------------------------------------------
+# Invoice totals (printed values are reported, compared and never changed)
+# --------------------------------------------------------------------------
+
+# Label, optional ':', optional currency mark (OCR often turns ₹ into ®, ¥ or K), optional sign, number
+_MONEY_AFTER_LABEL = (r"\s*:?\s*(?:₹|rs\.?|inr|[^\w\s\-−+.(]|[A-Z](?=\d))?\s*(?P<sign>\(\s*-\s*\)|[-−])?\s*"
+                      r"(?:₹|rs\.?|inr)?\s*(?P<num>\d[\d,]*(?:\.\d+)?)")
+_SUMMARY_LABELS = [
+    ("sub_total", r"sub\s*-?\s*total"),
+    ("round_off", r"round(?:ed)?\s*-?\s*off"),
+    ("grand_total", r"grand\s*total|net\s*(?:amount|payable)|invoice\s*(?:total|value)|total\s*payable|amount\s*payable"),
+    ("received", r"(?:amount\s*)?(?:received|paid)(?:\s*(?:amount|amt))?"),
+    ("balance", r"balance\s*due|balance(?:\s*(?:amount|amt))?|amount\s*due"),
+]
+_SUMMARY_RES = [(key, re.compile(rf"\b(?:{label})\b{_MONEY_AFTER_LABEL}", re.I)) for key, label in _SUMMARY_LABELS]
+
+
+def extract_summary_amounts(lines: List[str]) -> Dict[str, Decimal]:
+    """Label-based amounts printed below the table: Sub Total, Round Off, Grand Total, Received, Balance."""
+    found: Dict[str, Decimal] = {}
+    for line in lines:
+        for key, pattern in _SUMMARY_RES:
+            m = pattern.search(line)
+            if not m:
+                continue
+            value = table.parse_number(m.group("num")).value
+            if value is None:
+                continue
+            found[key] = -value if m.group("sign") else value  # the last printed occurrence wins
+    return found
+
+
+def _sum(values: List[Optional[Decimal]]) -> Optional[Decimal]:
+    present = [v for v in values if v is not None]
+    return sum(present, Decimal(0)) if present else None
+
+
+def _total_check(field_name: str, label: str, printed: Optional[Decimal], calculated: Optional[Decimal],
+                 tolerance: Decimal, calc_label: str) -> TotalCheckSchema:
+    if printed is None:
+        return TotalCheckSchema(field=field_name, printed=None, calculated=_f(calculated), status="NOT_PRINTED",
+                                message=f"{label}: no printed total to compare with ({calc_label} {table._money(calculated)})"
+                                if calculated is not None else f"{label}: no printed total")
+    if calculated is None:
+        return TotalCheckSchema(field=field_name, printed=_f(printed), status="NOT_PRINTED",
+                                message=f"{label}: printed total {table._money(printed)}; no line values to compare")
+    diff = printed - calculated
+    if diff == 0:
+        status, note = "MATCH", "matches"
+    elif abs(diff) <= tolerance:
+        status, note = "ROUNDING", f"differs by {table._money(diff)}, within per-line paise rounding"
+    elif field_name == "balance":
+        status, note = "MISMATCH", f"differs by {table._money(diff)}; the Received or Balance amount may be misread"
+    else:
+        status, note = "MISMATCH", f"differs by {table._money(diff)}; a line may be misread or missing"
+    if field_name == "quantity":
+        printed_txt, calc_txt = table._fmt(printed), table._fmt(calculated)
+    else:
+        printed_txt, calc_txt = table._money(printed), table._money(calculated)
+    return TotalCheckSchema(
+        field=field_name, printed=_f(printed), calculated=_f(calculated), difference=_f(diff), status=status,
+        message=f"{label}: printed total {printed_txt}, {calc_label} {calc_txt} — {note}. Printed values are kept.",
+    )
+
+
+def build_totals(lines: List[table.ExtractedLine], totals_row: Dict[str, Decimal],
+                 summary: Dict[str, Decimal]) -> InvoiceTotalsSchema:
+    n = len(lines)
+    rounding = Decimal("0.005") * max(n, 1)
+    qty_sum = _sum([l.quantity for l in lines])
+    disc_sum = _sum([l.discount for l in lines])
+    tax_sum = _sum([l.tax_amount for l in lines])
+    amount_sum = _sum([l.line_total for l in lines])
+    without_amount = sum(1 for l in lines if l.line_total is None)
+
+    printed_amount = totals_row.get("total")
+    checks = [
+        _total_check("quantity", "Quantity", totals_row.get("qty"), qty_sum, Decimal(0), "lines add up to"),
+        _total_check("discount", "Discount", totals_row.get("discount"), disc_sum, rounding, "lines add up to"),
+        _total_check("tax", "Tax", totals_row.get("tax_amount"), tax_sum, rounding, "lines add up to"),
+    ]
+    # Amount: the TOTAL row, else Sub Total, else Grand Total less its printed round-off
+    amount_label, amount_printed = "Amount", printed_amount
+    if amount_printed is None and "sub_total" in summary:
+        amount_label, amount_printed = "Sub total", summary["sub_total"]
+    elif amount_printed is None and "grand_total" in summary:
+        amount_label = "Grand total" + (" before round-off" if "round_off" in summary else "")
+        amount_printed = summary["grand_total"] - summary.get("round_off", Decimal(0))
+    amount_check = _total_check("amount", amount_label, amount_printed, amount_sum, rounding, "printed line amounts add up to")
+    if without_amount and amount_check.status != "NOT_PRINTED":
+        amount_check.message += f" {without_amount} line(s) had no readable amount."
+    checks.append(amount_check)
+
+    payable = summary.get("grand_total", printed_amount)
+    if "balance" in summary and payable is not None:
+        if "received" in summary:
+            checks.append(_total_check("balance", "Balance", summary["balance"], payable - summary["received"],
+                                       Decimal(0), "total − received ="))
+        else:
+            checks.append(_total_check("balance", "Balance", summary["balance"], payable, Decimal(0),
+                                       "total (no received amount printed) ="))
+
+    return InvoiceTotalsSchema(
+        printed_quantity=_f(totals_row.get("qty")),
+        printed_discount=_f(totals_row.get("discount")),
+        printed_tax=_f(totals_row.get("tax_amount")),
+        printed_taxable=_f(totals_row.get("taxable")),
+        printed_amount=_f(printed_amount),
+        sub_total=_f(summary.get("sub_total")),
+        round_off=_f(summary.get("round_off")),
+        grand_total=_f(summary.get("grand_total")),
+        received=_f(summary.get("received")),
+        balance=_f(summary.get("balance")),
+        lines_quantity=_f(qty_sum),
+        lines_discount=_f(disc_sum),
+        lines_tax=_f(tax_sum),
+        lines_amount=_f(amount_sum),
+        lines_without_amount=without_amount,
+        checks=checks,
+    )
+
+
+# --------------------------------------------------------------------------
 # Inventory matching
 # --------------------------------------------------------------------------
 
@@ -387,6 +529,7 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
                 rows = table.group_words_into_rows(words)
                 ext.add(_extract_from_rows(ext, rows, False, "DIGITAL_PDF"))
                 ext.text_lines.extend(r.text for r in rows)
+                ext.layout_lines.extend(r.text for r in rows)
                 ext.pages += 1
         elif scanned_pages:
             engine_used = "backend_pdf_ocr_scanned"
@@ -429,9 +572,8 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
     items: List[CanonicalInvoiceItemSchema] = []
     for it, (prod, score, method), lookup in zip(ext.items, matches, lookups):
         store_mrp = prod.mrp if prod is not None else None
-        mrp, mrp_source, mrp_issues, mrp_review = mrp_lookup.resolve_line_mrp(it.invoice_mrp, lookup, store_mrp)
+        mrp, mrp_source, mrp_issues, mrp_review = mrp_lookup.resolve_line_mrp(_f(it.invoice_mrp), lookup, store_mrp)
         issues = list(it.issues) + mrp_issues
-        unit = it.unit or (prod.unit if prod is not None and prod.unit else None)
         needs_review = (
             bool(issues) or mrp_review or it.arithmetic_status != "VERIFIED"
             or it.purchase_price is None or it.quantity is None or it.confidence < 85
@@ -440,32 +582,37 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
         items.append(CanonicalInvoiceItemSchema(
             id=f"item_{uuid.uuid4().hex[:8]}",
             product_name=it.product_name,
-            quantity=it.quantity,
-            unit=unit,
-            rate=it.rate,
-            purchase_price=it.purchase_price,
-            selling_price=it.selling_price,
+            quantity=_f(it.quantity),
+            unit=it.unit,  # as printed; never replaced by the inventory unit
+            unit_normalized=it.unit_normalized,
+            rate=_f(it.rate),
+            purchase_price=_f(it.purchase_price),
+            selling_price=_f(it.selling_price),
             mrp=mrp,
             mrp_source=mrp_source,
-            invoice_mrp=it.invoice_mrp,
+            invoice_mrp=_f(it.invoice_mrp),
             store_mrp=store_mrp,
             mrp_lookup=MrpLookupSchema(**lookup.to_dict()),
-            raw_rate=it.rate,
-            raw_purchase_price=it.purchase_price,
-            raw_selling_price=it.selling_price,
-            raw_mrp=it.invoice_mrp,
-            discount=it.discount,
-            discount_pct=it.discount_pct,
-            taxable_amount=it.taxable_amount,
-            tax_amount=it.tax_amount,
-            gst_rate=it.gst_rate,
+            raw_rate=_f(it.rate),
+            raw_purchase_price=_f(it.purchase_price),
+            raw_selling_price=_f(it.selling_price),
+            raw_mrp=_f(it.invoice_mrp),
+            discount=_f(it.discount),
+            discount_pct=_f(it.discount_pct),
+            taxable_amount=_f(it.taxable_amount),
+            tax_amount=_f(it.tax_amount),
+            gst_rate=_f(it.gst_rate),
             hsn_code=it.hsn_code,
             barcode=it.barcode,
-            line_total=it.line_total,
-            amount=it.line_total,
+            line_total=_f(it.line_total),
+            amount=_f(it.line_total),
             line_total_source=it.line_total_source,
+            calculated_amount=_f(it.calculated_amount),
+            amount_difference=_f(it.amount_difference),
             arithmetic_status=it.arithmetic_status,
-            purchasePrice=it.purchase_price,
+            arithmetic_rule=it.arithmetic_rule,
+            arithmetic_explanation=it.arithmetic_explanation,
+            purchasePrice=_f(it.purchase_price),
             confidence=it.confidence,
             confidence_level=level,
             needs_review=needs_review,
@@ -474,20 +621,26 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
             extraction_method=it.extraction_method,
             validation_issues=issues,
             suggestions=it.suggestions,
-            suggested_rate=it.suggested_rate,
+            suggested_rate=_f(it.suggested_rate),
             matched_product_id=prod.id if prod is not None else None,
             matched_product_name=prod.name if prod is not None else None,
             match_score=round(score, 3) if prod is not None else None,
         ))
 
-    total_amount = round(sum(i.line_total for i in items if i.line_total is not None), 2)
-    total_units = round(sum(i.quantity for i in items if i.quantity is not None), 2)
+    summary = extract_summary_amounts(ext.layout_lines or ext.text_lines)
+    totals = build_totals(ext.items, ext.totals_row, summary) if ext.items else None
+    total_amount = _f(_sum([it.line_total for it in ext.items])) or 0.0
+    total_units = _f(_sum([it.quantity for it in ext.items])) or 0.0
     warnings = list(dict.fromkeys(ext.warnings))
-    if meta["invoice_total"] is not None and items and abs(meta["invoice_total"] - total_amount) > max(1.0, total_amount * 0.005):
-        warnings.append(
-            f"Sum of line amounts ₹{total_amount:,.2f} differs from the invoice total ₹{meta['invoice_total']:,.2f} "
-            "(tax, discount, round-off or a missed line)"
-        )
+    if totals is not None:
+        warnings.extend(c.message for c in totals.checks if c.status == "MISMATCH")
+    # Invoice total: printed Grand Total, else the TOTAL row amount, else the best labelled total line
+    if "grand_total" in summary:
+        invoice_total = _f(summary["grand_total"])
+    elif totals is not None and totals.printed_amount is not None:
+        invoice_total = totals.printed_amount
+    else:
+        invoice_total = _f(meta["invoice_total"])
 
     if items:
         confidence = sum(i.confidence for i in items) / len(items)
@@ -514,6 +667,7 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
         detected_sections=["HEADER", "LINE_ITEMS"] if ext.header_text else [],
         warnings=warnings,
         ocr_psm=ext.ocr_psm,
+        deskew_angle=ext.deskew_angle,
         ocr_language_data=ext.language_data,
         pages_processed=ext.pages,
         mrp_provider=provider.name,
@@ -528,7 +682,7 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
         invoice_date=meta["invoice_date"],
         date_confidence=meta["date_confidence"],
         gstin=meta["gstin"],
-        invoice_total=meta["invoice_total"],
+        invoice_total=invoice_total,
         total_amount=total_amount,
         total_units=total_units,
         total_items=len(items),
@@ -537,6 +691,7 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
         engine_used=engine_used,
         extraction_method="TABLE_STRUCTURED" if ext.header_text else ("TEXT_LINE_ITEM" if items else "NONE"),
         items=items,
+        totals=totals,
         status=status,
         reason=reason,
         diagnostics=diag,

@@ -1,11 +1,16 @@
 """Unit tests for invoice table reconstruction and purchase-price extraction (services/invoice_table.py)."""
 
+from decimal import Decimal
+
 from services.invoice_table import (
     Word,
     extract_headerless_lines,
     extract_table,
     group_words_into_rows,
+    normalize_unit,
+    parse_hsn,
     parse_number,
+    parse_quantity,
     reconcile_line,
     rows_from_text,
 )
@@ -208,11 +213,14 @@ def test_mismatch_keeps_printed_amount_and_offers_suggestion():
     assert any("Rate may be ₹22" in s for s in item.suggestions)
 
 
-def test_missing_amount_is_calculated_and_labelled():
+def test_missing_amount_is_calculated_but_never_reported_as_printed():
     res = text_table("Item | Qty | Rate\nMaggi 70g | 48 | 12.50\n")
     item = res.items[0]
-    assert item.line_total == 600.0
-    assert item.line_total_source == "CALCULATED"
+    assert item.line_total is None            # nothing printed, nothing invented
+    assert item.line_total_source is None
+    assert item.calculated_amount == Decimal("600.00")
+    assert item.arithmetic_status == "INSUFFICIENT_DATA"
+    assert any("not printed" in i for i in item.issues)
 
 
 def test_low_confidence_numbers_are_flagged():
@@ -267,3 +275,66 @@ def test_headerless_receipt_accepts_only_verifiable_lines():
     milk = res.items[0]
     assert (milk.quantity, milk.purchase_price, milk.line_total) == (2.0, 27.0, 54.0)
     assert all(it.issues for it in res.items)  # always flagged for review
+
+
+# --------------------------------------------------------------------------
+# Field parsers (quantity + printed unit, OCR repairs, percentages, HSN)
+# --------------------------------------------------------------------------
+
+
+def test_quantity_and_printed_unit_are_read_together():
+    cases = {
+        "1.0 BOR": (Decimal("1.0"), "BOR"), "2.0BOR": (Decimal("2.0"), "BOR"), "3.0PET": (Decimal("3.0"), "PET"),
+        "25.0 KGS": (Decimal("25.0"), "KGS"), "10 Nos": (Decimal("10"), "Nos"), "12": (Decimal("12"), None),
+        "10ltr": (Decimal("10"), "ltr"), "5lbs": (Decimal("5"), "lbs"),
+    }
+    for text, (value, unit) in cases.items():
+        p = parse_quantity(text)
+        assert (p.value, p.unit) == (value, unit), text
+        assert not p.corrected, text
+
+
+def test_quantity_letters_that_only_make_sense_as_digits_are_repaired_and_flagged():
+    p = parse_quantity("1O")
+    assert (p.value, p.unit, p.corrected) == (Decimal("10"), None, True)
+    p = parse_quantity("2OOml")
+    assert (p.value, p.unit, p.corrected) == (Decimal("200"), "ml", True)
+
+
+def test_units_are_normalized_only_through_the_explicit_table():
+    assert normalize_unit("PCS") == "pcs" and normalize_unit("KGS") == "kg" and normalize_unit("Bag") == "bag"
+    assert normalize_unit("BOR") is None and normalize_unit("PET") is None  # never guessed as kg / pieces
+
+
+def test_number_cells_with_percentages_and_misread_rupee_signs():
+    p = parse_number("124.08 (3%)")
+    assert (p.value, p.percent) == (Decimal("124.08"), Decimal("3"))
+    p = parse_number("(3%)")
+    assert (p.value, p.percent) == (None, Decimal("3"))  # a percentage, never a negative number
+    p = parse_number("K215.76")
+    assert (p.value, p.symbol_stripped) == (Decimal("215.76"), True)  # never 8215.76
+    p = parse_number("1:12")
+    assert (p.value, p.corrected) == (Decimal("1.12"), True)
+    assert parse_number("05/10/2026").value is None
+    assert parse_number("SBW1021").value is None
+
+
+def test_hsn_codes():
+    assert parse_hsn("-") == (None, None)
+    assert parse_hsn("") == (None, None)
+    assert parse_hsn("30") == ("30", None)
+    assert parse_hsn("1101 0000") == ("11010000", None)
+    code, issue = parse_hsn("3O")
+    assert code is None and "not a valid HSN" in issue
+
+
+def test_arithmetic_uses_decimal_and_a_documented_tolerance():
+    # 25 × 44.96 + 1.12 = 1125.12; printed 1125.00 is within ₹0.005 × 25 + ₹0.02 = ₹0.145
+    ok = reconcile_line(Decimal("25"), Decimal("44.96"), Decimal("1125.00"), tax_amount=Decimal("1.12"))
+    assert ok.status == "VERIFIED"
+    assert (ok.calculated_amount, ok.amount_difference) == (Decimal("1125.12"), Decimal("-0.12"))
+    bad = reconcile_line(Decimal("25"), Decimal("44.96"), Decimal("1126.00"), tax_amount=Decimal("1.12"))
+    assert bad.status == "MISMATCH" and bad.amount_difference == Decimal("0.88")
+    assert bad.line_total == Decimal("1126.00")  # printed amount kept
+    # 0.1 + 0.2 style float error cannot creep in
+    assert reconcile_line(Decimal("3"), Decimal("0.10"), Decimal("0.30")).amount_difference == Decimal("0.00")

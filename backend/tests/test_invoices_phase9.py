@@ -116,9 +116,11 @@ def test_arithmetic_reconciliation_and_missing_values():
     assert res1["purchase_price"] == 250.0
     assert res1["line_total"] == 2500.0
 
-    # 2. Derive missing total from Qty and Rate
+    # 2. Missing total: the calculation is reported separately; the printed amount stays empty
     res2 = resolve_item_arithmetic_py(10.0, 250.0, None)
-    assert res2["line_total"] == 2500.0
+    assert res2["line_total"] is None
+    assert res2["calculated_amount"] == 2500.0
+    assert res2["status"] == "INSUFFICIENT_DATA"
 
     # 3. Missing rate is NOT silently derived: amount ÷ qty is only a suggestion for review
     res3 = resolve_item_arithmetic_py(10.0, None, 2500.0)
@@ -166,7 +168,8 @@ def test_extract_invoice_different_column_positions():
     item0 = data["items"][0]
     assert "rice bag" in item0["product_name"].lower()
     assert item0["quantity"] == 10.0
-    assert item0["unit"] == "bag"
+    assert item0["unit"] == "BAG"             # as printed
+    assert item0["unit_normalized"] == "bag"  # via the explicit unit table
     assert item0["purchase_price"] == 250.0
     assert item0["line_total"] == 2500.0
     # MRP and Selling Price MUST be None, not fabricated or equal to purchase price

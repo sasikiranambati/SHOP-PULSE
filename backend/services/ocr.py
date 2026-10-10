@@ -21,10 +21,39 @@ class OcrUnavailableError(RuntimeError):
     """
 
 
-def validate_and_preprocess_image(file_bytes: bytes) -> bytes:
+MAX_SKEW_DEGREES = 8.0
+MIN_SKEW_CORRECTION = 0.3
+
+
+def estimate_skew_angle(gray: Image.Image, max_angle: float = MAX_SKEW_DEGREES) -> float:
     """
-    Validates image bytes using Pillow, corrects EXIF orientation, converts to
-    grayscale, stretches contrast and rescales to a size Tesseract reads well.
+    Estimates page skew by projection profile: text lines and table rules are
+    horizontal when the row-darkness profile is sharpest. Returns the angle (degrees,
+    counter-clockwise) that makes the page level. Uses Pillow only.
+    """
+    small = gray.copy()
+    small.thumbnail((900, 900))
+    ink = small.point(lambda p: 255 if p < 150 else 0)  # dark pixels -> white
+
+    def sharpness(angle: float) -> float:
+        rotated = ink.rotate(angle, resample=Image.Resampling.BILINEAR, fillcolor=0)
+        profile = list(rotated.resize((1, rotated.height), Image.Resampling.BOX).getdata())
+        return float(sum((b - a) ** 2 for a, b in zip(profile, profile[1:])))
+
+    def best(candidates):
+        return max(candidates, key=sharpness)
+
+    steps = int(max_angle / 0.5)
+    coarse = best([i * 0.5 for i in range(-steps, steps + 1)])
+    fine = best([round(coarse + i * 0.1, 2) for i in range(-5, 6)])
+    return fine
+
+
+def preprocess_image(file_bytes: bytes) -> Tuple[bytes, Dict[str, Any]]:
+    """
+    Validates image bytes, corrects EXIF orientation and skew, converts to grayscale,
+    stretches contrast and rescales to a size Tesseract reads well. The uploaded file
+    itself is never modified. Returns (png_bytes, info).
     """
     if not file_bytes:
         raise ValueError("Image file is empty.")
@@ -33,7 +62,9 @@ def validate_and_preprocess_image(file_bytes: bytes) -> bytes:
         img = Image.open(io.BytesIO(file_bytes))
         img.load()
     except (UnidentifiedImageError, OSError) as e:
-        raise ValueError(f"Invalid or unreadable image file: {str(e)}")
+        logger.info(f"Unreadable image upload: {e}")
+        raise ValueError("Invalid or unreadable image file: the file is not a PNG, JPG, WEBP, BMP or TIFF image, "
+                         "or it is damaged. Upload the original photo or PDF of the invoice.")
 
     # Smartphones often store portrait photos rotated with an EXIF orientation flag
     try:
@@ -47,6 +78,17 @@ def validate_and_preprocess_image(file_bytes: bytes) -> bytes:
         background = Image.new("RGBA", img.size, (255, 255, 255, 255))
         img = Image.alpha_composite(background, img)
     img = img.convert("L")
+    info: Dict[str, Any] = {"deskew_angle": 0.0}
+
+    # Phone photos are rarely level; even ~1.5 degrees moves the right end of a table row
+    # onto the next row. Rotating the page level keeps every row on one baseline.
+    try:
+        angle = estimate_skew_angle(img)
+        if abs(angle) >= MIN_SKEW_CORRECTION:
+            img = img.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True, fillcolor=255)
+            info["deskew_angle"] = angle
+    except Exception as e:
+        logger.warning(f"Skew estimation skipped: {e}")
 
     w, h = img.size
     max_dim = max(w, h)
@@ -68,7 +110,12 @@ def validate_and_preprocess_image(file_bytes: bytes) -> bytes:
 
     out_buf = io.BytesIO()
     img.save(out_buf, format="PNG")
-    return out_buf.getvalue()
+    return out_buf.getvalue(), info
+
+
+def validate_and_preprocess_image(file_bytes: bytes) -> bytes:
+    """Backward-compatible wrapper returning only the preprocessed PNG bytes."""
+    return preprocess_image(file_bytes)[0]
 
 
 def _worker_env() -> Dict[str, str]:

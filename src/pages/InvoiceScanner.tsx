@@ -47,8 +47,16 @@ import { db } from '../services/firebase';
 import { collection, addDoc } from 'firebase/firestore';
 import { invoiceApi, mapBackendResponseToParsedInvoice } from '../api/invoice';
 import { getAccessToken } from '../api/client';
-import { recalculateLineTotal } from '../services/invoiceReview';
-import { MrpStatus, LineAmount, LineReviewNotes } from '../components/InvoiceLineCells';
+import { recalculateAmounts, effectiveLineAmount } from '../services/invoiceReview';
+import {
+  MrpStatus,
+  LineAmount,
+  CalculatedAmount,
+  PrintedValue,
+  PrintedUnit,
+  LineReviewNotes,
+  InvoiceTotalsCheck,
+} from '../components/InvoiceLineCells';
 
 const ENGINE_LABELS: Record<string, string> = {
   backend_ocr_pipeline: 'Server OCR',
@@ -191,6 +199,8 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
   const [stockSuccessData, setStockSuccessData] = useState<StockSuccessStats | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [scanWarning, setScanWarning] = useState<string | null>(null);
+  // Server extraction failed: shown with Retry / manual entry / explicit in-browser reading
+  const [scanFailure, setScanFailure] = useState<{ message: string; file: File } | null>(null);
 
   // Review, Validation & Editing state
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
@@ -281,37 +291,41 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
     }
   };
 
-  const processUploadedFile = async (file: File) => {
+  /**
+   * Signed in: the ShopPulse server is the only extraction engine. It reads word positions,
+   * keeps printed values, checks qty × rate and looks up MRPs. If it fails, the reason is
+   * shown with Retry, manual entry and an explicit in-browser option; nothing runs silently.
+   * Offline demo (no server session) and the explicit option use the in-browser engine.
+   */
+  const processUploadedFile = async (file: File, engine: 'server' | 'browser' = 'server') => {
     setIsScanning(true);
     setScanProgress(10);
-    setScanStatusText('Preparing image for OCR recognition...');
+    setScanStatusText('Preparing the invoice...');
     setSuccessMessage(null);
     setScanWarning(null);
+    setScanFailure(null);
 
     try {
-      // The server pipeline is the primary path: it reads word positions, validates
-      // qty × rate and performs the MRP lookup. Its failures are shown, not hidden.
-      let serverNotice: string | null = null;
-      if (getAccessToken()) {
+      if (engine === 'server' && getAccessToken()) {
         try {
           setScanProgress(25);
           setScanStatusText('Reading the invoice on the ShopPulse server...');
           const backendResp = await invoiceApi.extractInvoice(file);
-          if (backendResp && backendResp.items && backendResp.items.length > 0) {
-            setScanProgress(90);
-            setScanStatusText('Matching items with your inventory...');
-            const parsed = mapBackendResponseToParsedInvoice(backendResp, products);
-            setInvoiceData(parsed);
-            setIsScanning(false);
-            return;
+          setScanProgress(90);
+          setScanStatusText('Matching items with your inventory...');
+          const parsed = mapBackendResponseToParsedInvoice(backendResp, products);
+          setInvoiceData(parsed);
+          if (parsed.items.length === 0) {
+            setScanWarning(
+              `The server found no product rows: ${backendResp?.reason || 'no item table was detected'}. ` +
+                'Add the lines with "+ Add Item" or check the extracted text.'
+            );
           }
-          serverNotice = `The server found no product rows (${backendResp?.reason || 'no table detected'}).`;
         } catch (apiErr: any) {
           console.warn('Backend invoice extraction failed:', apiErr);
-          serverNotice = `Server extraction failed: ${apiErr?.message || 'unknown error'}.`;
+          setScanFailure({ message: apiErr?.message || 'Unknown server error', file });
         }
-      } else {
-        serverNotice = 'Not signed in to the ShopPulse server.';
+        return;
       }
 
       const parsed = await parseInvoiceFile(file, products, (progress, statusText) => {
@@ -319,10 +333,11 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
         setScanStatusText(statusText);
       });
       parsed.notices = [
-        `${serverNotice} This invoice was read with in-browser OCR instead; no MRP lookup was performed. Check every value.`,
+        engine === 'browser'
+          ? 'Read in this browser at your request: no server price checks and no MRP lookup were performed. Check every value.'
+          : 'Offline demo: this invoice was read in the browser without the ShopPulse server, so no server price checks or MRP lookup were performed. Check every value.',
         ...(parsed.notices || []),
       ];
-      parsed.diagnostics = { ...(parsed.diagnostics || {}), backendError: serverNotice };
       setInvoiceData(parsed);
       if (parsed.items.length === 0) {
         setScanWarning(
@@ -331,10 +346,27 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
       }
     } catch (err: any) {
       console.error('Failed to parse invoice:', err);
-      alert('Failed to parse invoice: ' + (err?.message || 'Unknown error. Please try a clearer photo.'));
+      setScanFailure({ message: err?.message || 'Unknown error. Please try a clearer photo.', file });
     } finally {
       setIsScanning(false);
     }
+  };
+
+  /** Starts an empty review so the user can type the invoice lines in. */
+  const startManualEntry = () => {
+    setScanFailure(null);
+    setInvoiceData({
+      id: 'inv_' + Date.now().toString(36),
+      supplierName: '',
+      invoiceNumber: '',
+      invoiceDate: '',
+      items: [],
+      totalAmount: 0,
+      confidenceScore: 0,
+      status: 'needs_review',
+      reason: 'Manual entry: add each invoice line with "+ Add Item".',
+      notices: [],
+    });
   };
 
   const loadSampleInvoice = (sampleIndex: number) => {
@@ -413,7 +445,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
           updated.mrpSource = value === null ? null : 'MANUAL';
         }
         if (field === 'quantity' || field === 'purchasePrice') {
-          recalculateLineTotal(updated);
+          recalculateAmounts(updated);
         }
         return updated;
       }),
@@ -435,11 +467,17 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
     }
     if (original && finalItem.lineTotal !== original.lineTotal) {
       finalItem.lineTotalSource = finalItem.lineTotal === null ? null : 'MANUAL';
-    } else if (
+    }
+    if (
       original &&
-      (finalItem.quantity !== original.quantity || finalItem.purchasePrice !== original.purchasePrice)
+      (finalItem.lineTotal !== original.lineTotal ||
+        finalItem.quantity !== original.quantity ||
+        finalItem.purchasePrice !== original.purchasePrice ||
+        finalItem.discount !== original.discount ||
+        finalItem.taxAmount !== original.taxAmount ||
+        finalItem.gstRate !== original.gstRate)
     ) {
-      recalculateLineTotal(finalItem);
+      recalculateAmounts(finalItem);
     }
     setInvoiceData({
       ...invoiceData,
@@ -463,7 +501,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
         if (inv.storePurchasePrice != null) {
           updated.purchasePrice = inv.storePurchasePrice;
           updated.rate = inv.storePurchasePrice;
-          recalculateLineTotal(updated);
+          recalculateAmounts(updated);
         }
         if (inv.storeSellingPrice != null) updated.sellingPrice = inv.storeSellingPrice;
         if (inv.storeMrp != null) {
@@ -550,8 +588,9 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
     });
   };
 
-  // Calculate live total
-  const calculatedTotal = invoiceData?.items.reduce((acc, item) => acc + (item.lineTotal || 0), 0) || 0;
+  // Purchase value: printed (or typed) line amounts, else the calculated amount for lines without one
+  const calculatedTotal =
+    Math.round((invoiceData?.items.reduce((acc, item) => acc + (effectiveLineAmount(item) ?? 0), 0) || 0) * 100) / 100;
   const totalUnits = invoiceData?.items.reduce((acc, item) => acc + (item.quantity || 0), 0) || 0;
 
   // Step 1: Validate items and trigger confirmation modal
@@ -735,7 +774,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto pb-12">
+    <div className={`space-y-6 mx-auto pb-12 ${invoiceData ? 'max-w-7xl' : 'max-w-5xl'}`}>
       
       {/* Hidden File & Camera Inputs */}
       <input 
@@ -774,8 +813,8 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
             </p>
             <p className="text-xs text-slate-500">
               {getAccessToken()
-                ? 'Falls back to in-browser OCR if the server is unavailable. Every value can be reviewed before stock is updated.'
-                : 'Sign in with your ShopPulse account for server-side extraction and MRP lookup.'}
+                ? 'If the server cannot read a file you will see why, and can retry, enter lines manually or choose in-browser reading. Every value can be reviewed before stock is updated.'
+                : 'Offline demo: invoices are read in the browser. Sign in with your ShopPulse account for server-side extraction, price checks and MRP lookup.'}
             </p>
           </div>
         </div>
@@ -811,6 +850,46 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
           <div className="text-xs sm:text-sm">
             <p className="font-extrabold">{scanWarning}</p>
             <p className="text-slate-600 mt-0.5">Tip: Flatten the paper bill, ensure bright ambient light, avoid shadows, and keep the phone camera parallel to the invoice.</p>
+          </div>
+        </div>
+      )}
+
+      {scanFailure && (
+        <div
+          role="alert"
+          className="p-4 bg-rose-50 rounded-2xl border-2 border-rose-300 text-rose-950 shadow-sm space-y-3 animate-in fade-in"
+        >
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div className="text-xs sm:text-sm">
+              <p className="font-extrabold">The ShopPulse server could not read this invoice.</p>
+              <p className="mt-0.5 text-rose-900">{scanFailure.message}</p>
+              <p className="mt-1 text-slate-600">Nothing was read automatically in its place.</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => processUploadedFile(scanFailure.file)}
+              icon={<RefreshCw className="w-4 h-4" />}
+              className="font-bold text-xs"
+            >
+              Retry
+            </Button>
+            <Button variant="outline" size="sm" onClick={startManualEntry} icon={<Plus className="w-4 h-4" />} className="font-bold text-xs bg-white">
+              Enter items manually
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => processUploadedFile(scanFailure.file, 'browser')}
+              icon={<ScanLine className="w-4 h-4" />}
+              className="font-bold text-xs bg-white"
+              title="Less accurate: no server price checks and no MRP lookup"
+            >
+              Read in this browser instead
+            </Button>
           </div>
         </div>
       )}
@@ -1129,8 +1208,11 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
             </div>
           </div>
 
-          {/* Total Validation Warning */}
-          {Boolean(
+          {/* Printed invoice totals compared with the extracted lines (server results) */}
+          {invoiceData.totals && <InvoiceTotalsCheck totals={invoiceData.totals} />}
+
+          {/* Total Validation Warning (in-browser results) */}
+          {!invoiceData.totals && Boolean(
             (invoiceData.canonical?.totalAmount || invoiceData.totalAmount) &&
             Math.abs(calculatedTotal - (invoiceData.canonical?.totalAmount || invoiceData.totalAmount)) > 2
           ) && (
@@ -1336,6 +1418,28 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                             <option value={item.unit}>{item.unit}</option>
                           )}
                         </select>
+                        <PrintedUnit item={item} />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-2 text-right text-xs">
+                      <div className="text-left">
+                        <span className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">HSN</span>
+                        <span className={item.hsnCode ? 'font-mono text-slate-700' : 'text-slate-400'} title={item.hsnCode ? undefined : 'No HSN printed'}>
+                          {item.hsnCode || '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Discount</span>
+                        <PrintedValue value={item.discount} pct={item.discountPct} emptyTitle="No discount printed" />
+                      </div>
+                      <div>
+                        <span className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Tax</span>
+                        <PrintedValue value={item.taxAmount} pct={item.gstRate} emptyTitle="No tax printed" />
+                      </div>
+                      <div>
+                        <span className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Calculated</span>
+                        <CalculatedAmount item={item} />
                       </div>
                     </div>
 
@@ -1393,7 +1497,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                         <MrpStatus item={item} />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5 text-right">Line Amount</label>
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5 text-right">Printed Amount</label>
                         <div className="min-h-[38px] flex items-center justify-end px-2 text-sm">
                           <LineAmount item={item} />
                         </div>
@@ -1433,13 +1537,17 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                 <thead className="bg-slate-50 text-slate-700 font-extrabold uppercase text-[11px] border-b border-slate-200 select-none">
                   <tr>
                     <th className="py-3 px-3 sm:px-4">Product Name</th>
-                    <th className="py-3 px-2">Category</th>
+                    <th className="py-3 px-2 text-center">HSN</th>
                     <th className="py-3 px-2 text-center">Qty</th>
                     <th className="py-3 px-2 text-center">Unit</th>
                     <th className="py-3 px-2 text-right">Purchase Price (₹)</th>
-                    <th className="py-3 px-2 text-right">Selling Price (₹)</th>
+                    <th className="py-3 px-2 text-right">Disc. (₹)</th>
+                    <th className="py-3 px-2 text-right">Tax (₹)</th>
+                    <th className="py-3 px-2 text-right" title="Line amount printed on the invoice">Printed Amount (₹)</th>
+                    <th className="py-3 px-2 text-right" title="Quantity × rate − discount + tax">Calculated (₹)</th>
                     <th className="py-3 px-2 text-right">MRP (₹)</th>
-                    <th className="py-3 px-2 text-right">Line Amount (₹)</th>
+                    <th className="py-3 px-2 text-right">Selling Price (₹)</th>
+                    <th className="py-3 px-2">Category</th>
                     <th className="py-3 px-2 text-center">Store Status</th>
                     <th className="py-3 px-2 text-center">Actions</th>
                   </tr>
@@ -1460,12 +1568,13 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                       }`}
                     >
                       <td className="py-2.5 px-3 sm:px-4 min-w-[15rem]">
-                        <input
-                          type="text"
+                        {/* Wraps instead of cutting off: pack sizes at the end of a name ("... 500 GM") stay visible */}
+                        <textarea
                           value={item.name}
+                          rows={Math.min(3, Math.max(1, Math.ceil((item.name || '').length / 26)))}
                           onChange={(e) => handleItemChange(item.id, 'name', e.target.value)}
                           placeholder="e.g. Tata Salt 1 kg"
-                          className="w-full min-w-0 font-bold text-slate-900 bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none"
+                          className="w-full min-w-0 resize-none leading-snug font-bold text-slate-900 bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none"
                         />
                         {(itemError || isUncertain || item.arithmeticStatus === 'MISMATCH') && (
                           <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -1519,13 +1628,10 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                         )}
                         <LineReviewNotes item={item} onApplyRate={() => applySuggestedRate(item)} />
                       </td>
-                      <td className="py-2.5 px-2 text-slate-600">
-                        <input
-                          type="text"
-                          value={item.category}
-                          onChange={(e) => handleItemChange(item.id, 'category', e.target.value)}
-                          className="w-16 sm:w-20 text-xs font-semibold bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none"
-                        />
+                      <td className="py-2.5 px-2 text-center text-xs">
+                        <span className={item.hsnCode ? 'font-mono text-slate-700' : 'text-slate-400'} title={item.hsnCode ? undefined : 'No HSN printed'}>
+                          {item.hsnCode || '—'}
+                        </span>
                       </td>
                       <td className="py-2.5 px-2 text-center">
                         <input
@@ -1551,6 +1657,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                             <option value={item.unit}>{item.unit}</option>
                           )}
                         </select>
+                        <PrintedUnit item={item} />
                       </td>
                       <td className="py-2.5 px-2 text-right">
                         <input
@@ -1563,22 +1670,20 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                             const val = e.target.value.trim();
                             handleItemChange(item.id, 'purchasePrice', val === '' ? null : Number(val));
                           }}
-                          className="w-16 sm:w-20 text-right font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-400"
+                          className="w-24 text-right font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-400"
                         />
                       </td>
+                      <td className="py-2.5 px-2 text-right text-xs">
+                        <PrintedValue value={item.discount} pct={item.discountPct} emptyTitle="No discount printed" />
+                      </td>
+                      <td className="py-2.5 px-2 text-right text-xs">
+                        <PrintedValue value={item.taxAmount} pct={item.gstRate} emptyTitle="No tax printed" />
+                      </td>
                       <td className="py-2.5 px-2 text-right">
-                        <input
-                          type="number"
-                          step="0.5"
-                          value={item.sellingPrice ?? ''}
-                          placeholder="—"
-                          title={item.sellingPrice === null ? 'Selling price not provided in invoice' : undefined}
-                          onChange={(e) => {
-                            const val = e.target.value.trim();
-                            handleItemChange(item.id, 'sellingPrice', val === '' ? null : Number(val));
-                          }}
-                          className="w-16 sm:w-20 text-right font-bold text-emerald-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-400"
-                        />
+                        <LineAmount item={item} />
+                      </td>
+                      <td className="py-2.5 px-2 text-right text-xs">
+                        <CalculatedAmount item={item} />
                       </td>
                       <td className="py-2.5 px-2 text-right">
                         <input
@@ -1598,7 +1703,26 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                         </div>
                       </td>
                       <td className="py-2.5 px-2 text-right">
-                        <LineAmount item={item} />
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={item.sellingPrice ?? ''}
+                          placeholder="—"
+                          title={item.sellingPrice === null ? 'Selling price not provided in invoice' : undefined}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            handleItemChange(item.id, 'sellingPrice', val === '' ? null : Number(val));
+                          }}
+                          className="w-16 sm:w-20 text-right font-bold text-emerald-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-400"
+                        />
+                      </td>
+                      <td className="py-2.5 px-2 text-slate-600">
+                        <input
+                          type="text"
+                          value={item.category}
+                          onChange={(e) => handleItemChange(item.id, 'category', e.target.value)}
+                          className="w-16 sm:w-20 text-xs font-semibold bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none"
+                        />
                       </td>
                       <td className="py-2.5 px-2 text-center">
                         <button
@@ -1930,6 +2054,11 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                       <option value={editingItem.unit}>{editingItem.unit}</option>
                     )}
                   </select>
+                  {editingItem.printedUnit && (
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Printed on invoice: <span className="font-bold">{editingItem.printedUnit}</span>. Choose the unit you stock it in.
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -1992,8 +2121,8 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                 </div>
               </div>
 
-              {/* Discount, GST Rate, HSN Code */}
-              <div className="grid grid-cols-3 gap-3">
+              {/* Discount, Tax, GST Rate, HSN Code */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
                   <label className="font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
                     Discount (₹)
@@ -2008,6 +2137,25 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                       setEditingItem({
                         ...editingItem,
                         discount: val === '' ? null : Number(val),
+                      });
+                    }}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-800 focus:outline-none focus:border-emerald-600 focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                    Tax (₹)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editingItem.taxAmount ?? ''}
+                    placeholder="—"
+                    onChange={(e) => {
+                      const val = e.target.value.trim();
+                      setEditingItem({
+                        ...editingItem,
+                        taxAmount: val === '' ? null : Number(val),
                       });
                     }}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-800 focus:outline-none focus:border-emerald-600 focus:bg-white"
@@ -2058,6 +2206,9 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                   Line Amount (₹)
                   {editingItem.lineTotalSource === 'INVOICE' && (
                     <span className="ml-2 normal-case font-semibold text-slate-500">printed on invoice</span>
+                  )}
+                  {editingItem.lineTotal == null && (
+                    <span className="ml-2 normal-case font-semibold text-slate-500">not printed on invoice</span>
                   )}
                 </label>
                 <div className="flex items-center gap-2">
@@ -2348,8 +2499,12 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
             <div className="space-y-4 text-xs">
               <div>
                 <label className="font-extrabold text-slate-800 block mb-1.5 uppercase tracking-wider text-[11px]">
-                  Recognition Engine Mode
+                  In-browser Engine Mode
                 </label>
+                <p className="text-[11px] text-slate-500 mb-1.5">
+                  Signed-in scans are always read by the ShopPulse server. These settings apply only to the offline demo
+                  and to &quot;Read in this browser instead&quot;.
+                </p>
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
@@ -2386,7 +2541,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1.5">
-                  {selectedEngine === 'auto' && 'Uses Gemini Vision if API key is provided, otherwise falls back to fast in-browser Tesseract OCR.'}
+                  {selectedEngine === 'auto' && 'Uses Gemini Vision for images if an API key is provided, otherwise in-browser Tesseract OCR. If Gemini fails, the review screen says so.'}
                   {selectedEngine === 'gemini' && 'Multimodal AI Vision for complex receipts, multi-lingual bills, and thermal printouts.'}
                   {selectedEngine === 'tesseract' && 'Runs 100% in your browser using Tesseract.js. No internet API required.'}
                 </p>
