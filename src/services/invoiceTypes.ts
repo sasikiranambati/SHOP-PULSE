@@ -28,7 +28,49 @@ export type ExtractionMethod =
   | 'SEMANTIC_RECONSTRUCTION'
   | 'DIGITAL_PDF'
   | 'OCR_TABLE'
+  | 'PRODUCT_TABLE_ONLY'
   | 'MANUAL_FALLBACK';
+
+/**
+ * Validation states for table row verification.
+ */
+export type TableValidationStatus =
+  | 'EXACT_MATCH'
+  | 'MATCH_WITH_ROUNDING'
+  | 'MISMATCH'
+  | 'INSUFFICIENT_DATA'
+  | 'NEEDS_REVIEW';
+
+export interface FieldConfidence {
+  productName: number;
+  quantity: number;
+  unit: number;
+  rate: number;
+  lineTotal: number;
+}
+
+export interface StructuredProductRow {
+  productName: string;
+  purchasedQuantity: number | null;
+  purchaseUnit: string | null;
+  packSize: number | null;
+  packSizeUnit: string | null;
+  mrp: number | null;
+  purchaseRate: number | null;
+  sellingPrice: number | null;
+  discount: number | null;
+  taxRate: number | null;
+  taxAmount?: number | null;
+  lineTotal: number | null;
+  confidence: FieldConfidence;
+  validationStatus: TableValidationStatus;
+  reviewReasons: string[];
+  sourceRowText?: string;
+  sourceText?: string;
+  hsnCode?: string | null;
+  matchedProductId?: string;
+  isMatchConfirmed?: boolean;
+}
 
 /**
  * Semantic column roles detected in an invoice table or row.
@@ -139,6 +181,10 @@ export interface CanonicalInvoiceItem extends LineEvidence {
   productName: string;
   quantity: number | null;
   unit: string | null;
+  purchasedQuantity?: number | null;
+  purchaseUnit?: string | null;
+  packSize?: number | null;
+  packSizeUnit?: string | null;
   rate: number | null;
   purchasePrice: number | null;
   sellingPrice: number | null;
@@ -159,6 +205,9 @@ export interface CanonicalInvoiceItem extends LineEvidence {
   rawPurchasePrice?: number | null;
   rawSellingPrice?: number | null;
   rawMrp?: number | null;
+  validationStatus?: TableValidationStatus;
+  reviewReasons?: string[];
+  fieldConfidence?: FieldConfidence;
 }
 
 /**
@@ -183,6 +232,10 @@ export interface InvoiceLineItem extends LineEvidence {
   category: string;
   quantity: number | null;
   unit: string;
+  purchasedQuantity?: number | null;
+  purchaseUnit?: string | null;
+  packSize?: number | null;
+  packSizeUnit?: string | null;
   rate?: number | null;
   purchasePrice: number | null;
   sellingPrice: number | null;
@@ -212,6 +265,9 @@ export interface InvoiceLineItem extends LineEvidence {
   rawPurchasePrice?: number | null;
   rawSellingPrice?: number | null;
   rawMrp?: number | null;
+  validationStatus?: TableValidationStatus;
+  reviewReasons?: string[];
+  fieldConfidence?: FieldConfidence;
   inventoryData?: {
     id?: string;
     name?: string;

@@ -48,7 +48,10 @@ import { collection, addDoc } from 'firebase/firestore';
 import { invoiceApi, mapBackendResponseToParsedInvoice } from '../api/invoice';
 import { getAccessToken } from '../api/client';
 import { recalculateLineTotal } from '../services/invoiceReview';
-import { MrpStatus, LineAmount, LineReviewNotes } from '../components/InvoiceLineCells';
+import { MrpStatus, LineAmount, LineReviewNotes, ValidationStatusBadge } from '../components/InvoiceLineCells';
+import { ImageTableCropper } from '../components/ImageTableCropper';
+import { parseProductTableFromImage } from '../services/productTableScanner';
+import type { CropRegion } from '../services/imagePreprocessor';
 
 const ENGINE_LABELS: Record<string, string> = {
   backend_ocr_pipeline: 'Server OCR',
@@ -58,6 +61,7 @@ const ENGINE_LABELS: Record<string, string> = {
   gemini: 'In-browser Gemini',
   tesseract: 'In-browser OCR',
   pdf_direct: 'In-browser PDF text',
+  product_table_only: 'Table-Only Scan',
   sample: 'Sample bill',
 };
 
@@ -192,6 +196,11 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [scanWarning, setScanWarning] = useState<string | null>(null);
 
+  // Workflow mode: Table Crop V2 vs Full Invoice
+  const [scanWorkflow, setScanWorkflow] = useState<'table' | 'full'>('table');
+  const [cropperImageUrl, setCropperImageUrl] = useState<string | null>(null);
+  const [isCroppingOpen, setIsCroppingOpen] = useState(false);
+
   // Review, Validation & Editing state
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
@@ -271,13 +280,52 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const file = new File([blob], 'camera_invoice.jpg', { type: 'image/jpeg' });
-          closeCamera();
-          processUploadedFile(file);
-        }
-      }, 'image/jpeg');
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+      closeCamera();
+      if (scanWorkflow === 'table') {
+        setCropperImageUrl(dataUrl);
+        setIsCroppingOpen(true);
+      } else {
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const file = new File([blob], 'camera_invoice.jpg', { type: 'image/jpeg' });
+            processUploadedFile(file);
+          }
+        }, 'image/jpeg');
+      }
+    }
+  };
+
+  const handleConfirmCropAndScan = async (cropRegion: CropRegion) => {
+    if (!cropperImageUrl) return;
+    setIsCroppingOpen(false);
+    setIsScanning(true);
+    setScanProgress(20);
+    setScanStatusText('Cropping table region with high resolution...');
+    setSuccessMessage(null);
+    setScanWarning(null);
+
+    try {
+      const parsed = await parseProductTableFromImage(
+        cropperImageUrl,
+        cropRegion,
+        (progress, statusText) => {
+          setScanProgress(progress);
+          setScanStatusText(statusText);
+        },
+        products
+      );
+      setInvoiceData(parsed);
+      if (parsed.items.length === 0) {
+        setScanWarning(
+          'No product rows could be detected in the cropped table area. Try clicking "Recrop Table" or add items manually.'
+        );
+      }
+    } catch (err: any) {
+      console.error('Failed to parse product table:', err);
+      alert('Failed to parse product table: ' + (err?.message || 'Unknown error.'));
+    } finally {
+      setIsScanning(false);
     }
   };
 
@@ -289,8 +337,6 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
     setScanWarning(null);
 
     try {
-      // The server pipeline is the primary path: it reads word positions, validates
-      // qty × rate and performs the MRP lookup. Its failures are shown, not hidden.
       let serverNotice: string | null = null;
       if (getAccessToken()) {
         try {
@@ -361,10 +407,23 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
     }, 600);
   };
 
+  const handleUploadedFile = (file: File) => {
+    if (scanWorkflow === 'table') {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setCropperImageUrl(reader.result as string);
+        setIsCroppingOpen(true);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      processUploadedFile(file);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      processUploadedFile(file);
+      handleUploadedFile(file);
     }
     e.target.value = '';
   };
@@ -374,7 +433,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
     setIsDragging(false);
     const file = e.dataTransfer.files?.[0];
     if (file) {
-      processUploadedFile(file);
+      handleUploadedFile(file);
     }
   };
 
@@ -919,6 +978,50 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
         </div>
       )}
 
+      {/* Interactive Product Table Cropper Modal */}
+      {isCroppingOpen && cropperImageUrl && (
+        <ImageTableCropper
+          imageUrl={cropperImageUrl}
+          onConfirmCrop={handleConfirmCropAndScan}
+          onCancel={() => setIsCroppingOpen(false)}
+          onRetake={() => {
+            setIsCroppingOpen(false);
+            setCropperImageUrl(null);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+          }}
+        />
+      )}
+
+      {/* Workflow Mode Selector */}
+      {!invoiceData && (
+        <div className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-2xl w-fit mb-2">
+          <button
+            type="button"
+            onClick={() => setScanWorkflow('table')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+              scanWorkflow === 'table'
+                ? 'bg-white text-emerald-700 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <ScanLine className="w-4 h-4 text-emerald-600" />
+            Scan Product Table (Recommended)
+          </button>
+          <button
+            type="button"
+            onClick={() => setScanWorkflow('full')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+              scanWorkflow === 'full'
+                ? 'bg-white text-blue-700 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <FileText className="w-4 h-4 text-blue-600" />
+            Full Invoice Scan
+          </button>
+        </div>
+      )}
+
       {/* Main Upload Dropzone & Controls (When no invoice parsed) */}
       {!invoiceData && (
         <Card className="text-center p-6 sm:p-10 border-2 border-dashed border-emerald-300 bg-emerald-50/20">
@@ -934,10 +1037,12 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
 
             <div>
               <h2 className="text-2xl font-black text-slate-900">
-                {t('scanner.heading')}
+                {scanWorkflow === 'table' ? 'Scan & Crop Product Table' : t('scanner.heading')}
               </h2>
               <p className="text-xs sm:text-sm text-slate-600 mt-2 leading-relaxed font-semibold">
-                {t('scanner.subheading')}
+                {scanWorkflow === 'table'
+                  ? 'Take a photo or upload an invoice, then crop ONLY the line-items table. Eliminates header/footer OCR errors.'
+                  : t('scanner.subheading')}
               </p>
             </div>
 
@@ -1086,6 +1191,17 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
+              {cropperImageUrl && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsCroppingOpen(true)}
+                  icon={<ScanLine className="w-4 h-4 text-emerald-600" />}
+                  className="font-bold text-xs text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-300"
+                >
+                  Recrop Table
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -1244,9 +1360,12 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
                           <label className="text-[10px] font-bold uppercase text-slate-500">Product Name</label>
-                          {isUncertain && (
-                            <span className="text-[9px] font-black text-amber-800 bg-amber-200 px-1 rounded">⚠️ Review</span>
-                          )}
+                          <div className="flex items-center gap-1.5">
+                            {item.validationStatus && <ValidationStatusBadge status={item.validationStatus} />}
+                            {isUncertain && (
+                              <span className="text-[9px] font-black text-amber-800 bg-amber-200 px-1 rounded">⚠️ Review</span>
+                            )}
+                          </div>
                         </div>
                         <input
                           type="text"
@@ -1300,7 +1419,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       <div>
                         <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Category</label>
                         <input
@@ -1336,6 +1455,16 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                             <option value={item.unit}>{item.unit}</option>
                           )}
                         </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Pack Size</label>
+                        <input
+                          type="text"
+                          value={item.packSize ? `${item.packSize}${item.packSizeUnit ? ' ' + item.packSizeUnit : ''}` : ''}
+                          placeholder="e.g. 400g"
+                          onChange={(e) => handleItemChange(item.id, 'packSize' as any, e.target.value)}
+                          className="w-full text-xs font-medium text-slate-700 bg-white px-2 py-1.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none"
+                        />
                       </div>
                     </div>
 
@@ -1436,10 +1565,12 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                     <th className="py-3 px-2">Category</th>
                     <th className="py-3 px-2 text-center">Qty</th>
                     <th className="py-3 px-2 text-center">Unit</th>
+                    <th className="py-3 px-2 text-center">Pack</th>
                     <th className="py-3 px-2 text-right">Purchase Price (₹)</th>
                     <th className="py-3 px-2 text-right">Selling Price (₹)</th>
                     <th className="py-3 px-2 text-right">MRP (₹)</th>
                     <th className="py-3 px-2 text-right">Line Amount (₹)</th>
+                    <th className="py-3 px-2 text-center">Validation</th>
                     <th className="py-3 px-2 text-center">Store Status</th>
                     <th className="py-3 px-2 text-center">Actions</th>
                   </tr>
@@ -1552,6 +1683,16 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                           )}
                         </select>
                       </td>
+                      <td className="py-2.5 px-2 text-center">
+                        <input
+                          type="text"
+                          value={item.packSize ? `${item.packSize}${item.packSizeUnit ? ' ' + item.packSizeUnit : ''}` : ''}
+                          placeholder="—"
+                          title="Packaging size printed on product (e.g. 400g, 1L, 25kg)"
+                          onChange={(e) => handleItemChange(item.id, 'packSize' as any, e.target.value)}
+                          className="w-16 text-center text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg py-1 px-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-300"
+                        />
+                      </td>
                       <td className="py-2.5 px-2 text-right">
                         <input
                           type="number"
@@ -1599,6 +1740,9 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                       </td>
                       <td className="py-2.5 px-2 text-right">
                         <LineAmount item={item} />
+                      </td>
+                      <td className="py-2.5 px-2 text-center">
+                        <ValidationStatusBadge status={item.validationStatus} />
                       </td>
                       <td className="py-2.5 px-2 text-center">
                         <button
@@ -1895,8 +2039,8 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                 />
               </div>
 
-              {/* Quantity & Unit */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Quantity, Unit & Pack Size */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
                     Quantity *
@@ -1930,6 +2074,18 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                       <option value={editingItem.unit}>{editingItem.unit}</option>
                     )}
                   </select>
+                </div>
+                <div>
+                  <label className="font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                    Pack Size
+                  </label>
+                  <input
+                    type="text"
+                    value={editingItem.packSize ? `${editingItem.packSize}${editingItem.packSizeUnit ? ' ' + editingItem.packSizeUnit : ''}` : ''}
+                    placeholder="e.g. 400g / 1L"
+                    onChange={(e) => setEditingItem({ ...editingItem, packSize: e.target.value as any })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white"
+                  />
                 </div>
               </div>
 

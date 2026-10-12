@@ -380,3 +380,154 @@ export async function preprocessInvoiceImage(file: File): Promise<PreprocessedIm
     skewAngle,
   };
 }
+
+export interface CropRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  unit?: 'px' | 'percent';
+}
+
+/**
+ * Loads an image from either a File or data URL string.
+ */
+export function loadImageFromSource(source: File | string): Promise<HTMLImageElement> {
+  if (typeof source === 'string') {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onerror = reject;
+      img.onload = () => resolve(img);
+      img.src = source;
+    });
+  }
+  return loadImageFromFile(source);
+}
+
+/**
+ * Crops a selected table region from full resolution image and applies conservative OCR enhancement.
+ * Preserves text resolution, avoids destroying decimal points or thin borders, and allows recropping.
+ */
+export async function cropAndPreprocessTableImage(
+  source: File | string,
+  cropRegion?: CropRegion
+): Promise<PreprocessedImageResult> {
+  const img = await loadImageFromSource(source);
+  const naturalW = img.naturalWidth || img.width;
+  const naturalH = img.naturalHeight || img.height;
+
+  let srcX = 0;
+  let srcY = 0;
+  let srcW = naturalW;
+  let srcH = naturalH;
+
+  if (cropRegion && cropRegion.width > 0 && cropRegion.height > 0) {
+    if (cropRegion.unit === 'percent') {
+      srcX = Math.max(0, Math.round((cropRegion.x / 100) * naturalW));
+      srcY = Math.max(0, Math.round((cropRegion.y / 100) * naturalH));
+      srcW = Math.min(naturalW - srcX, Math.round((cropRegion.width / 100) * naturalW));
+      srcH = Math.min(naturalH - srcY, Math.round((cropRegion.height / 100) * naturalH));
+    } else {
+      srcX = Math.max(0, Math.min(naturalW - 1, Math.round(cropRegion.x)));
+      srcY = Math.max(0, Math.min(naturalH - 1, Math.round(cropRegion.y)));
+      srcW = Math.min(naturalW - srcX, Math.round(cropRegion.width));
+      srcH = Math.min(naturalH - srcY, Math.round(cropRegion.height));
+    }
+  }
+
+  // Fallback guards
+  srcW = Math.max(20, Math.min(srcW, naturalW - srcX));
+  srcH = Math.max(20, Math.min(srcH, naturalH - srcY));
+
+  // Determine scaling for optimal OCR recognition (characters should have ~24-30px height)
+  const { width: targetW, height: targetH } = getScaledDimensions(srcW, srcH);
+
+  const initialCanvas = document.createElement('canvas');
+  initialCanvas.width = targetW;
+  initialCanvas.height = targetH;
+  const initialCtx = initialCanvas.getContext('2d', { willReadFrequently: true });
+  if (!initialCtx) {
+    throw new Error('Canvas 2D context unavailable.');
+  }
+
+  initialCtx.imageSmoothingEnabled = true;
+  initialCtx.imageSmoothingQuality = 'high';
+  // Draw ONLY the cropped sub-rectangle to preserve resolution without distortion
+  initialCtx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, targetW, targetH);
+  const originalDataUrl = initialCanvas.toDataURL('image/jpeg', 0.95);
+
+  const imgData = initialCtx.getImageData(0, 0, targetW, targetH);
+  let gray = toGrayscale(imgData.data, targetW, targetH);
+
+  // 1. Conservative median filter (removes speckles while preserving decimal points & font strokes)
+  gray = denoiseGrayscale(gray, targetW, targetH);
+
+  // 2. Deskew detection
+  const skewAngle = detectSkewAngle(gray, targetW, targetH);
+
+  let finalCanvas = initialCanvas;
+  let finalCtx = initialCtx;
+  let curW = targetW;
+  let curH = targetH;
+
+  // Rotate only when skew is meaningful
+  if (Math.abs(skewAngle) > 0.6 && Math.abs(skewAngle) < 12) {
+    const rad = (-skewAngle * Math.PI) / 180;
+    const rotCanvas = document.createElement('canvas');
+    rotCanvas.width = targetW;
+    rotCanvas.height = targetH;
+    const rotCtx = rotCanvas.getContext('2d', { willReadFrequently: true });
+    if (rotCtx) {
+      rotCtx.imageSmoothingEnabled = true;
+      rotCtx.imageSmoothingQuality = 'high';
+      rotCtx.fillStyle = '#FFFFFF';
+      rotCtx.fillRect(0, 0, targetW, targetH);
+      rotCtx.translate(targetW / 2, targetH / 2);
+      rotCtx.rotate(rad);
+      rotCtx.drawImage(initialCanvas, -targetW / 2, -targetH / 2);
+      finalCanvas = rotCanvas;
+      finalCtx = rotCtx;
+
+      const rotData = finalCtx.getImageData(0, 0, targetW, targetH);
+      gray = toGrayscale(rotData.data, targetW, targetH);
+    }
+  }
+
+  // 3. Conservative dynamic range contrast enhancement (retains decimal points and thin fonts)
+  let minVal = 255;
+  let maxVal = 0;
+  for (let i = 0; i < gray.length; i += 2) {
+    if (gray[i] < minVal) minVal = gray[i];
+    if (gray[i] > maxVal) maxVal = gray[i];
+  }
+  const range = Math.max(30, maxVal - minVal);
+  const enhanced = new Uint8Array(curW * curH);
+  for (let i = 0; i < gray.length; i++) {
+    const norm = (gray[i] - minVal) / range;
+    enhanced[i] = Math.max(0, Math.min(255, Math.round(norm * 255)));
+  }
+
+  const outputImgData = finalCtx.createImageData(curW, curH);
+  const outData = outputImgData.data;
+  for (let i = 0, p = 0; i < outData.length; i += 4, p++) {
+    const v = enhanced[p];
+    outData[i] = v;
+    outData[i + 1] = v;
+    outData[i + 2] = v;
+    outData[i + 3] = 255;
+  }
+  finalCtx.putImageData(outputImgData, 0, 0);
+
+  const processedDataUrl = finalCanvas.toDataURL('image/png');
+  const base64Raw = processedDataUrl.split(',')[1] || '';
+
+  return {
+    processedDataUrl,
+    originalDataUrl,
+    base64Raw,
+    width: curW,
+    height: curH,
+    skewAngle,
+  };
+}

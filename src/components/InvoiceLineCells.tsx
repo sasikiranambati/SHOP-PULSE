@@ -44,13 +44,18 @@ export const LineAmount: React.FC<{ item: InvoiceLineItem }> = ({ item }) => (
 );
 
 export const LineReviewNotes: React.FC<{ item: InvoiceLineItem; onApplyRate: () => void }> = ({ item, onApplyRate }) => {
-  const notes = [...(item.validationWarning ? item.validationWarning.split('; ') : []), ...(item.suggestions || [])];
+  const notes = [
+    ...(item.validationWarning ? item.validationWarning.split('; ') : []),
+    ...(item.reviewReasons || []),
+    ...(item.suggestions || []),
+  ];
+  const uniqueNotes = Array.from(new Set(notes.map((n) => n.trim()).filter(Boolean)));
   const showRate = item.suggestedRate != null && (item.purchasePrice === null || item.purchasePrice === undefined);
-  if (notes.length === 0 && !showRate) return null;
+  if (uniqueNotes.length === 0 && !showRate) return null;
   return (
     <div className="mt-1 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 space-y-0.5">
-      {notes.map((n, i) => (
-        <p key={i}>{n}</p>
+      {uniqueNotes.map((n, i) => (
+        <p key={i}>• {n}</p>
       ))}
       {showRate && (
         <button
@@ -63,4 +68,56 @@ export const LineReviewNotes: React.FC<{ item: InvoiceLineItem; onApplyRate: () 
       )}
     </div>
   );
+};
+
+export const ValidationStatusBadge: React.FC<{ status?: string | null }> = ({ status }) => {
+  if (!status) return null;
+  switch (status) {
+    case 'EXACT_MATCH':
+      return (
+        <span
+          className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 whitespace-nowrap"
+          title="Exact Match: Quantity × Rate equals Line Total"
+        >
+          ✓ Exact
+        </span>
+      );
+    case 'MATCH_WITH_ROUNDING':
+      return (
+        <span
+          className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-teal-100 text-teal-800 border border-teal-300 whitespace-nowrap"
+          title="Match with rounding (±₹1)"
+        >
+          ~ Rounding
+        </span>
+      );
+    case 'MISMATCH':
+      return (
+        <span
+          className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-800 border border-rose-300 whitespace-nowrap"
+          title="Arithmetic Mismatch: Quantity × Rate ≠ Line Total"
+        >
+          ⚠ Mismatch
+        </span>
+      );
+    case 'INSUFFICIENT_DATA':
+      return (
+        <span
+          className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-300 whitespace-nowrap"
+          title="Missing values: Cannot verify line calculation"
+        >
+          ? Incomplete
+        </span>
+      );
+    case 'NEEDS_REVIEW':
+    default:
+      return (
+        <span
+          className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300 whitespace-nowrap"
+          title="Flagged for user review"
+        >
+          ⚡ Review
+        </span>
+      );
+  }
 };
