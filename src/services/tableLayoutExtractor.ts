@@ -50,7 +50,8 @@ export function extractProductSizeAndTitle(
   const existingMatch = title.match(sizeRegex);
   if (existingMatch) {
     const val = parseFloat(existingMatch[1]);
-    const u = existingMatch[2].toLowerCase();
+    const rawU = existingMatch[2].toLowerCase();
+    const u = (rawU === 'gm' || rawU === 'gms') ? 'g' : (rawU === 'kgs') ? 'kg' : (rawU === 'ltr' || rawU === 'ltrs' || rawU === 'liter' || rawU === 'litres') ? 'l' : rawU;
     return {
       title,
       unitSize: `${existingMatch[1]} ${existingMatch[2]}`,
@@ -64,7 +65,8 @@ export function extractProductSizeAndTitle(
     if (lineMatch) {
       const sizeStr = `${lineMatch[1]} ${lineMatch[2]}`;
       const val = parseFloat(lineMatch[1]);
-      const u = lineMatch[2].toLowerCase();
+      const rawU = lineMatch[2].toLowerCase();
+      const u = (rawU === 'gm' || rawU === 'gms') ? 'g' : (rawU === 'kgs') ? 'kg' : (rawU === 'ltr' || rawU === 'ltrs' || rawU === 'liter' || rawU === 'litres') ? 'l' : rawU;
       if (!title.toLowerCase().includes(sizeStr.toLowerCase())) {
         title = `${title} ${sizeStr}`.trim();
       }
@@ -867,12 +869,16 @@ function tryStructuredTableExtraction(
         if (currentPendingItem) {
           items.push(currentPendingItem);
         }
+        let candidateUnit = detectedUnit || extractUnitFromTitle(cleanTitle);
+        if (candidateUnit && packSizeUnit && candidateUnit.toLowerCase() === packSizeUnit.toLowerCase()) {
+          candidateUnit = null;
+        }
         const pendingCandidate: RawExtractedItem = {
           productName: cleanTitle,
           quantity: finalQty,
-          unit: detectedUnit || extractUnitFromTitle(cleanTitle),
+          unit: candidateUnit,
           purchasedQuantity: finalQty,
-          purchaseUnit: detectedUnit || extractUnitFromTitle(cleanTitle),
+          purchaseUnit: candidateUnit,
           packSize: packSize ?? null,
           packSizeUnit: packSizeUnit ?? null,
           reviewReasons: rowReviewReasons.length > 0 ? rowReviewReasons : undefined,
@@ -1015,7 +1021,10 @@ function trySpatialLayoutExtraction(
           qty = null;
         }
 
-        const effectiveUnit = unitToken || extractUnitFromTitle(candidateName);
+        let effectiveUnit = unitToken || extractUnitFromTitle(candidateName);
+        if (effectiveUnit && packSizeUnit && effectiveUnit.toLowerCase() === packSizeUnit.toLowerCase()) {
+          effectiveUnit = null;
+        }
 
         items.push({
           productName: candidateName,
@@ -1310,7 +1319,10 @@ export function parseSingleLineItem(
     return null;
   }
 
-  const finalUnit = explicitUnit || extractUnitFromTitle(name);
+  let finalUnit = explicitUnit || extractUnitFromTitle(name);
+  if (finalUnit && packSizeUnit && finalUnit.toLowerCase() === packSizeUnit.toLowerCase()) {
+    finalUnit = null;
+  }
 
   return {
     productName: name,
@@ -1459,7 +1471,10 @@ function tryMultiLineSemanticReconstruction(
       const { title: enrichedCombinedName, packSize, packSizeUnit } = extractProductSizeAndTitle(combinedName, combinedSource);
 
       if (isPlausibleProductName(enrichedCombinedName) && (rate !== null || total !== null)) {
-        const effectiveUnit = unit || extractUnitFromTitle(enrichedCombinedName);
+        let effectiveUnit = unit || extractUnitFromTitle(enrichedCombinedName);
+        if (effectiveUnit && packSizeUnit && effectiveUnit.toLowerCase() === packSizeUnit.toLowerCase()) {
+          effectiveUnit = null;
+        }
         items.push({
           productName: enrichedCombinedName,
           quantity: qty,
@@ -1504,17 +1519,14 @@ function tryMultiLineSemanticReconstruction(
 
 /**
  * Extracts a normalized product unit from product title keywords.
+ * Only explicit container/count units (e.g. pcs, box, bag, tin, pkt) are extracted.
+ * Weight/volume sizes (500 GM, 240 GM, 1 L, 5 kg) are PACK SIZES, never billing units.
  */
 export function extractUnitFromTitle(name: string): ProductUnit | null {
-  const isPackagedFmcg = /soap|shampoo|paste|colgate|brush|cream|lotion|dettol|face|hair|perfume|deo|powder|talc|oil\s*hair|surf|detergent|rin|vim|dish|cleaner|phenyl|harpic|biscuit|cookie|chips|maggi|noodle|pasta|kurkure|lays|chocolate|candy|wafer|snack/i.test(name);
-  if (isPackagedFmcg) {
-    const containerMatch = name.match(/\b(pcs|pc|pkt|packet|box|bag|tin|ctn|bottle|pouch)\b/i);
-    if (containerMatch) return normalizeUnit(containerMatch[1]);
-    return 'pcs';
-  }
-  const match = name.match(/(\d+(?:\.\d+)?)\s*(kg|kgs|g|gm|gms|l|ltr|ltrs|liter|ml|pcs|pkt|packet|box|bag|tin|ctn)\b/i);
-  if (match && match[2]) {
-    return normalizeUnit(match[2]);
+  const containerMatch = name.match(/\b(pcs|pc|nos|pkt|packet|box|boxes|bag|bags|tin|tins|ctn|ctns|bottle|bottles|pouch|pouches)\b/i);
+  if (containerMatch) {
+    return normalizeUnit(containerMatch[1]);
   }
   return null;
 }
+

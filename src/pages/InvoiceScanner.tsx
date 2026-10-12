@@ -14,8 +14,6 @@ import {
   Receipt,
   ScanLine,
   Settings,
-  Eye,
-  EyeOff,
   FileText,
   AlertTriangle,
   AlertCircle,
@@ -33,8 +31,6 @@ import {
   parseInvoiceFile, 
   SAMPLE_INVOICES, 
   matchItemsWithInventory,
-  getGeminiApiKey,
-  setGeminiApiKey,
   getPreferredOcrEngine,
   setPreferredOcrEngine,
   type ParsedInvoice, 
@@ -203,8 +199,6 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
   
   // Settings & Engine state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState(() => getGeminiApiKey());
-  const [showApiKey, setShowApiKey] = useState(false);
   const [selectedEngine, setSelectedEngine] = useState<'auto' | 'gemini' | 'tesseract'>(() => getPreferredOcrEngine());
   const [isRawTextOpen, setIsRawTextOpen] = useState(false);
   const [isDebugOpen, setIsDebugOpen] = useState(false);
@@ -767,10 +761,10 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
           <div>
             <p className="font-bold text-slate-900">
               {getAccessToken()
-                ? 'Server OCR with price checks and MRP lookup'
-                : apiKeyInput && selectedEngine !== 'tesseract'
-                ? 'In-browser scanning (Gemini)'
-                : 'In-browser scanning (Tesseract)'}
+                ? 'Server Hybrid Vision & OCR with price checks and MRP lookup'
+                : selectedEngine === 'gemini'
+                ? 'Server Vision Scanning (Gemini)'
+                : 'In-browser scanning (Tesseract fallback)'}
             </p>
             <p className="text-xs text-slate-500">
               {getAccessToken()
@@ -2371,7 +2365,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                         : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                     }`}
                   >
-                    Gemini AI
+                    Hybrid AI
                   </button>
                   <button
                     type="button"
@@ -2386,44 +2380,19 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1.5">
-                  {selectedEngine === 'auto' && 'Uses Gemini Vision if API key is provided, otherwise falls back to fast in-browser Tesseract OCR.'}
-                  {selectedEngine === 'gemini' && 'Multimodal AI Vision for complex receipts, multi-lingual bills, and thermal printouts.'}
-                  {selectedEngine === 'tesseract' && 'Runs 100% in your browser using Tesseract.js. No internet API required.'}
+                  {selectedEngine === 'auto' && 'Uses Server Hybrid AI (Gemini Vision + OCR verification) when connected, falling back to local OCR.'}
+                  {selectedEngine === 'gemini' && 'Server Hybrid AI: Multimodal Gemini Vision cross-verified against spatial OCR tables.'}
+                  {selectedEngine === 'tesseract' && 'Runs 100% in your browser using Tesseract.js offline. No server API required.'}
                 </p>
               </div>
 
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <div className="flex items-center justify-between">
-                  <label className="font-extrabold text-slate-800 uppercase tracking-wider text-[11px]">
-                    Google Gemini API Key (Optional)
-                  </label>
-                  <a
-                    href="https://aistudio.google.com/app/apikey"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[11px] font-black text-emerald-600 hover:underline"
-                  >
-                    Get Free Key ↗
-                  </a>
+              <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1">
+                <div className="flex items-center gap-1.5 text-emerald-900 font-extrabold text-xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  Server-Side Gemini Vision Engine
                 </div>
-                <div className="relative">
-                  <input
-                    type={showApiKey ? 'text' : 'password'}
-                    value={apiKeyInput}
-                    onChange={(e) => setApiKeyInput(e.target.value)}
-                    placeholder="AIzaSy..."
-                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono text-xs pr-10 focus:outline-none focus:border-emerald-600 focus:bg-white transition-colors"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowApiKey(!showApiKey)}
-                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-700 cursor-pointer"
-                  >
-                    {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Key is saved locally in your browser only. Free Google AI Studio tier includes generous daily quota.
+                <p className="text-[11px] text-emerald-800 leading-relaxed">
+                  Gemini API credentials are managed securely on your backend server (<code className="bg-emerald-100 px-1 py-0.5 rounded font-mono text-[10px]">GEMINI_API_KEY</code>) and never exposed in browser requests or client source code.
                 </p>
               </div>
             </div>
@@ -2441,7 +2410,6 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                 variant="primary"
                 size="sm"
                 onClick={() => {
-                  setGeminiApiKey(apiKeyInput);
                   setPreferredOcrEngine(selectedEngine);
                   setIsSettingsOpen(false);
                 }}
@@ -2651,11 +2619,15 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                           const expectedTotal = (it.quantity !== null && (it.purchasePrice !== null || it.rate !== null))
                             ? Math.round((it.quantity * (it.purchasePrice ?? it.rate ?? 0)) * 100) / 100
                             : null;
-                          const state = it.validationState || (
-                            (it.quantity === null || (it.purchasePrice === null && (it.rate === null || it.rate === undefined)) || it.lineTotal === null)
-                              ? 'INSUFFICIENT_DATA'
-                              : (it.validationWarning ? 'MISMATCH' : 'EXACT_MATCH')
-                          );
+                          const isMissingRequired = it.quantity === null || (it.purchasePrice === null && (it.rate === null || it.rate === undefined)) || it.lineTotal === null;
+                          const hasReviewIssues = Boolean(it.reviewReasons && it.reviewReasons.length > 0);
+                          const state = isMissingRequired
+                            ? 'INSUFFICIENT_DATA'
+                            : (it.validationWarning || it.validationState === 'MISMATCH' || it.arithmeticStatus === 'MISMATCH')
+                              ? 'MISMATCH'
+                              : (hasReviewIssues || it.validationState === 'NEEDS_REVIEW' || it.needsReview)
+                                ? 'NEEDS_REVIEW'
+                                : (it.validationState || 'EXACT_MATCH');
                           const confColor = it.confidence >= 80 ? 'text-emerald-300' : it.confidence >= 60 ? 'text-amber-300' : 'text-rose-300';
                           return (
                             <tr key={it.id} className="hover:bg-slate-700/30">
@@ -2668,7 +2640,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                                 )}
                               </td>
                               <td className="p-2 text-center">
-                                <div>{it.quantity !== null ? it.quantity : '—'} {it.unit || ''}</div>
+                                <div>{it.purchasedQuantity ?? (it.quantity !== null ? it.quantity : '—')} {it.purchaseUnit || it.unit || ''}</div>
                                 {it.packSize ? (
                                   <span className="text-[10px] text-slate-400 font-normal block">
                                     Pack: {it.packSize} {it.packSizeUnit || ''}

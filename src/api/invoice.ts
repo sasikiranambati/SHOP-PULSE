@@ -66,6 +66,24 @@ export interface BackendCanonicalInvoiceItem {
   matched_product_id?: string | null;
   matched_product_name?: string | null;
   match_score?: number | null;
+  source_row_text?: string | null;
+  sourceRowText?: string | null;
+  purchased_quantity?: number | null;
+  purchasedQuantity?: number | null;
+  purchase_unit?: string | null;
+  purchaseUnit?: string | null;
+  pack_size?: number | null;
+  packSize?: number | null;
+  pack_size_unit?: string | null;
+  packSizeUnit?: string | null;
+  unit_rate?: number | null;
+  unitRate?: number | null;
+  validation_status?: string | null;
+  validationStatus?: string | null;
+  review_reasons?: string[];
+  reviewReasons?: string[];
+  field_confidence?: Record<string, number> | null;
+  fieldConfidence?: Record<string, number> | null;
 }
 
 export interface BackendDiagnostics {
@@ -88,6 +106,9 @@ export interface BackendInvoiceExtractResponse {
   invoice_date?: string | null;
   date_confidence?: number;
   gstin?: string | null;
+  subtotal?: number | null;
+  tax_amount?: number | null;
+  grand_total?: number | null;
   invoice_total?: number | null;
   total_amount?: number;
   total_units?: number;
@@ -99,6 +120,8 @@ export interface BackendInvoiceExtractResponse {
   items: BackendCanonicalInvoiceItem[];
   status?: string;
   reason?: string | null;
+  review_reasons?: string[];
+  vision_available?: boolean;
   diagnostics?: BackendDiagnostics | null;
 }
 
@@ -160,18 +183,20 @@ function mapMrpLookup(l: BackendMrpLookup | null | undefined): MrpLookupInfo | n
  * no default prices, no default confidence.
  */
 export function mapBackendItemToCanonical(item: BackendCanonicalInvoiceItem): CanonicalInvoiceItem {
-  const rate = toNum(item.rate);
+  const rate = toNum(item.unit_rate ?? item.unitRate ?? item.rate);
   const purchasePrice = toNum(item.purchase_price) ?? rate;
-  const rawQty = toNum(item.quantity);
+  const rawQty = toNum(item.purchased_quantity ?? item.purchasedQuantity ?? item.quantity);
   const quantity = rawQty !== null && rawQty > 0 ? rawQty : null;
   const lineTotal = toNum(item.line_total) ?? toNum(item.amount);
   const level = (item.confidence_level || 'LOW').toUpperCase();
+  const rawReasons = item.review_reasons ?? item.reviewReasons ?? item.validation_issues ?? [];
+  const valState = (item.validation_status ?? item.validationStatus ?? item.arithmetic_status) as any;
 
   return {
     id: item.id || `item_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
     productName: item.product_name || 'Unlabeled Item',
     quantity,
-    unit: item.unit ?? null,
+    unit: item.purchase_unit ?? item.purchaseUnit ?? item.unit ?? null,
     rate,
     purchasePrice,
     sellingPrice: toNum(item.selling_price),
@@ -192,15 +217,22 @@ export function mapBackendItemToCanonical(item: BackendCanonicalInvoiceItem): Ca
     lineTotal,
     lineTotalSource: item.line_total_source ?? (lineTotal !== null ? 'INVOICE' : null),
     arithmeticStatus: item.arithmetic_status,
-    needsReview: item.needs_review ?? true,
+    validationState: valState,
+    purchasedQuantity: quantity,
+    purchaseUnit: item.purchase_unit ?? item.purchaseUnit ?? item.unit ?? null,
+    packSize: toNum(item.pack_size ?? item.packSize),
+    packSizeUnit: item.pack_size_unit ?? item.packSizeUnit ?? null,
+    reviewReasons: rawReasons,
+    fieldConfidence: (item.field_confidence ?? item.fieldConfidence ?? undefined) as any,
+    needsReview: item.needs_review ?? (rawReasons.length > 0 || valState !== 'EXACT_MATCH'),
     suggestions: item.suggestions || [],
     suggestedRate: toNum(item.suggested_rate),
     rawCells: item.raw_cells || {},
     confidence: typeof item.confidence === 'number' ? item.confidence : 0,
     confidenceLevel: (['HIGH', 'MEDIUM', 'LOW'].includes(level) ? level : 'LOW') as ConfidenceLevel,
-    sourceText: item.source_text || '',
+    sourceText: item.source_row_text ?? item.sourceRowText ?? item.source_text ?? '',
     extractionMethod: (item.extraction_method || 'TABLE_STRUCTURED') as ExtractionMethod,
-    validationIssues: item.validation_issues || [],
+    validationIssues: rawReasons,
   };
 }
 
@@ -217,10 +249,11 @@ export function mapBackendResponseToParsedInvoice(
     const backendId = res.items[idx]?.matched_product_id;
     const prod = backendId ? existingProducts.find((p) => p.id === backendId) : undefined;
     if (!prod) return it;
+    const hasValidNumbers = Boolean(it.purchasePrice !== null && it.purchasePrice > 0 && it.quantity !== null && it.quantity > 0);
     return {
       ...it,
       matchedProductId: prod.id,
-      isMatchConfirmed: true,
+      isMatchConfirmed: hasValidNumbers,
       currentStock: prod.stock,
       unit: it.unit || prod.unit || '',
       inventoryData: {

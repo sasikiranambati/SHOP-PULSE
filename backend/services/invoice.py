@@ -23,6 +23,9 @@ from sqlalchemy.orm import Session
 from services import ocr as ocr_service
 from services import invoice_table as table
 from services import mrp_lookup
+from services import gemini_vision
+from services import hybrid_extractor
+from core.config import settings
 from services.product_matching import best_name_match, normalize_gtin, normalize_name
 from db.models.product import Product
 from db.models.purchase import Purchase
@@ -416,65 +419,155 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
 
     meta = extract_metadata(ext.text_lines, ext.header_text)
 
-    # Inventory matching, then MRP lookups using the strongest identifier available
-    matches = [match_inventory(it.product_name, it.barcode, shop_products) for it in ext.items]
+    # --------------------------------------------------------------------------
+    # Hybrid Vision Extraction & Cross-Verification (Gemini + Local OCR)
+    # --------------------------------------------------------------------------
+    ocr_item_dicts = []
+    for it in ext.items:
+        ocr_item_dicts.append({
+            "product_name": it.product_name,
+            "source_text": it.source_text,
+            "quantity": it.quantity,
+            "unit": it.unit,
+            "rate": it.rate,
+            "purchase_price": it.purchase_price,
+            "selling_price": it.selling_price,
+            "invoice_mrp": it.invoice_mrp,
+            "line_total": it.line_total,
+            "discount": it.discount,
+            "gst_rate": it.gst_rate,
+            "tax_amount": it.tax_amount,
+            "taxable_amount": it.taxable_amount,
+            "hsn_code": it.hsn_code,
+            "barcode": it.barcode,
+            "confidence": it.confidence,
+            "issues": it.issues,
+            "suggestions": it.suggestions,
+            "suggested_rate": it.suggested_rate,
+            "raw_cells": it.raw_cells,
+        })
+
+    vision_data = None
+    vision_available = False
+    img_for_vision = None
+    if doc_type == "image":
+        img_for_vision = file_bytes
+    elif doc_type == "pdf" and scanned_pages:
+        img_for_vision = scanned_pages[0]
+
+    api_key = getattr(settings, "GEMINI_API_KEY", None)
+    if img_for_vision and api_key:
+        try:
+            v_res = gemini_vision.extract_invoice_with_gemini_sync(img_for_vision)
+            vision_available = bool(v_res.get("available", False))
+            if v_res.get("success"):
+                vision_data = v_res.get("data")
+            elif v_res.get("error"):
+                ext.warnings.append(f"Online Vision service error: {v_res.get('error')}; fell back to verified OCR")
+        except Exception as ve:
+            logger.warning("Online Gemini Vision extraction failed: %s; falling back to local OCR", ve)
+            ext.warnings.append(f"Online Vision extraction failed: {ve}; fell back to verified OCR")
+            vision_data = None
+
+    # Reconcile vision with local OCR via independent cross-verification
+    reconciled = hybrid_extractor.reconcile_hybrid_extraction(vision_data, ocr_item_dicts, meta)
+    reconciled_items = reconciled.get("items", [])
+    if vision_data and reconciled.get("engine_used"):
+        engine_used = reconciled["engine_used"]
+
+    # Inventory matching and MRP lookups
+    matches = [match_inventory(it["product_name"], it.get("barcode"), shop_products) for it in reconciled_items]
     queries = []
-    for it, (prod, _, _) in zip(ext.items, matches):
-        gtin = normalize_gtin(it.barcode) or (normalize_gtin(prod.sku) if prod is not None else None)
-        queries.append(mrp_lookup.LookupQuery(product_name=it.product_name, gtin=gtin,
+    for it, (prod, _, _) in zip(reconciled_items, matches):
+        gtin = normalize_gtin(it.get("barcode")) or (normalize_gtin(prod.sku) if prod is not None else None)
+        queries.append(mrp_lookup.LookupQuery(product_name=it["product_name"], gtin=gtin,
                                               sku=prod.sku if prod is not None else None))
     provider = mrp_lookup.get_provider()
     lookups = mrp_lookup.lookup_mrp_batch(queries, provider) if queries else []
 
     items: List[CanonicalInvoiceItemSchema] = []
-    for it, (prod, score, method), lookup in zip(ext.items, matches, lookups):
+    for it, (prod, score, method), lookup in zip(reconciled_items, matches, lookups):
         store_mrp = prod.mrp if prod is not None else None
-        mrp, mrp_source, mrp_issues, mrp_review = mrp_lookup.resolve_line_mrp(it.invoice_mrp, lookup, store_mrp)
-        issues = list(it.issues) + mrp_issues
-        unit = it.unit or (prod.unit if prod is not None and prod.unit else None)
+        mrp, mrp_source, mrp_issues, mrp_review = mrp_lookup.resolve_line_mrp(it.get("invoice_mrp"), lookup, store_mrp)
+        val_issues = list(it.get("validation_issues") or it.get("issues") or []) + mrp_issues
+        review_reasons = list(it.get("review_reasons") or it.get("validation_issues") or []) + mrp_issues
+        unit = it.get("purchase_unit") or (prod.unit if prod is not None and prod.unit else None)
+        has_rate = it.get("unit_rate") is not None
+        has_qty = it.get("purchased_quantity") is not None
+        raw_val_status = it.get("validation_status") or "NEEDS_REVIEW"
+
+        arith_status = it.get("arithmetic_status")
+        if not arith_status:
+            if raw_val_status in ("EXACT_MATCH", "MATCH_WITH_ROUNDING"):
+                arith_status = "VERIFIED"
+            elif raw_val_status == "MISMATCH":
+                arith_status = "MISMATCH"
+            else:
+                arith_status = "INSUFFICIENT_DATA"
+
+        conf = float(it.get("confidence") or 75.0)
         needs_review = (
-            bool(issues) or mrp_review or it.arithmetic_status != "VERIFIED"
-            or it.purchase_price is None or it.quantity is None or it.confidence < 85
+            bool(val_issues) or mrp_review or arith_status != "VERIFIED"
+            or not has_rate or not has_qty or conf < 85
         )
-        level = "HIGH" if it.confidence >= 85 and not needs_review else ("MEDIUM" if it.confidence >= 60 else "LOW")
+        level = "HIGH" if conf >= 85 and not needs_review else ("MEDIUM" if conf >= 60 else "LOW")
+
         items.append(CanonicalInvoiceItemSchema(
             id=f"item_{uuid.uuid4().hex[:8]}",
-            product_name=it.product_name,
-            quantity=it.quantity,
+            product_name=it["product_name"],
+            source_row_text=it.get("source_row_text", it["product_name"]),
+            sourceRowText=it.get("source_row_text", it["product_name"]),
+            purchased_quantity=it.get("purchased_quantity"),
+            purchasedQuantity=it.get("purchased_quantity"),
+            quantity=it.get("purchased_quantity"),
+            purchase_unit=it.get("purchase_unit"),
+            purchaseUnit=it.get("purchase_unit"),
             unit=unit,
-            rate=it.rate,
-            purchase_price=it.purchase_price,
-            selling_price=it.selling_price,
+            pack_size=it.get("pack_size"),
+            packSize=it.get("pack_size"),
+            pack_size_unit=it.get("pack_size_unit"),
+            packSizeUnit=it.get("pack_size_unit"),
+            unit_rate=it.get("unit_rate"),
+            unitRate=it.get("unit_rate"),
+            rate=it.get("unit_rate"),
+            purchase_price=it.get("unit_rate"),
+            purchasePrice=it.get("unit_rate"),
+            selling_price=it.get("selling_price"),
             mrp=mrp,
             mrp_source=mrp_source,
-            invoice_mrp=it.invoice_mrp,
+            invoice_mrp=it.get("invoice_mrp"),
             store_mrp=store_mrp,
             mrp_lookup=MrpLookupSchema(**lookup.to_dict()),
-            raw_rate=it.rate,
-            raw_purchase_price=it.purchase_price,
-            raw_selling_price=it.selling_price,
-            raw_mrp=it.invoice_mrp,
-            discount=it.discount,
-            discount_pct=it.discount_pct,
-            taxable_amount=it.taxable_amount,
-            tax_amount=it.tax_amount,
-            gst_rate=it.gst_rate,
-            hsn_code=it.hsn_code,
-            barcode=it.barcode,
-            line_total=it.line_total,
-            amount=it.line_total,
-            line_total_source=it.line_total_source,
-            arithmetic_status=it.arithmetic_status,
-            purchasePrice=it.purchase_price,
-            confidence=it.confidence,
+            raw_rate=it.get("unit_rate"),
+            raw_purchase_price=it.get("unit_rate"),
+            raw_selling_price=it.get("selling_price"),
+            raw_mrp=it.get("invoice_mrp"),
+            discount=it.get("discount"),
+            discount_pct=it.get("discount_pct"),
+            taxable_amount=it.get("taxable_amount"),
+            tax_amount=it.get("tax_amount"),
+            gst_rate=it.get("tax_rate") or it.get("gst_rate"),
+            hsn_code=it.get("hsn_code"),
+            barcode=it.get("barcode"),
+            line_total=it.get("line_total"),
+            amount=it.get("line_total"),
+            line_total_source="INVOICE" if it.get("line_total") is not None else None,
+            arithmetic_status=arith_status,
+            validation_status=raw_val_status,
+            validationStatus=raw_val_status,
+            confidence=conf,
             confidence_level=level,
             needs_review=needs_review,
-            source_text=it.source_text,
-            raw_cells=it.raw_cells,
-            extraction_method=it.extraction_method,
-            validation_issues=issues,
-            suggestions=it.suggestions,
-            suggested_rate=it.suggested_rate,
+            source_text=it.get("source_row_text", it["product_name"]),
+            raw_cells=it.get("raw_cells", {}),
+            extraction_method=engine_used,
+            validation_issues=val_issues,
+            review_reasons=review_reasons,
+            reviewReasons=review_reasons,
+            field_confidence=it.get("field_confidence"),
+            fieldConfidence=it.get("field_confidence"),
+            suggestions=it.get("engine_disagreements", []),
+            suggested_rate=it.get("suggested_rate"),
             matched_product_id=prod.id if prod is not None else None,
             matched_product_name=prod.name if prod is not None else None,
             match_score=round(score, 3) if prod is not None else None,
@@ -482,7 +575,7 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
 
     total_amount = round(sum(i.line_total for i in items if i.line_total is not None), 2)
     total_units = round(sum(i.quantity for i in items if i.quantity is not None), 2)
-    warnings = list(dict.fromkeys(ext.warnings))
+    warnings = list(dict.fromkeys(ext.warnings + reconciled.get("review_reasons", [])))
     if meta["invoice_total"] is not None and items and abs(meta["invoice_total"] - total_amount) > max(1.0, total_amount * 0.005):
         warnings.append(
             f"Sum of line amounts ₹{total_amount:,.2f} differs from the invoice total ₹{meta['invoice_total']:,.2f} "
@@ -519,16 +612,22 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
         mrp_provider=provider.name,
     )
 
+    subtotal_val = reconciled.get("subtotal") or meta.get("invoice_total")
+    grand_total_val = reconciled.get("grand_total") or meta.get("invoice_total")
+
     return InvoiceExtractResponse(
         id=f"inv_{uuid.uuid4().hex[:10]}",
-        supplier_name=meta["supplier_name"],
+        supplier_name=reconciled.get("supplier_name") or meta["supplier_name"],
         supplier_confidence=meta["supplier_confidence"],
-        invoice_number=meta["invoice_number"],
+        invoice_number=reconciled.get("invoice_number") or meta["invoice_number"],
         invoice_no_confidence=meta["invoice_no_confidence"],
-        invoice_date=meta["invoice_date"],
+        invoice_date=reconciled.get("invoice_date") or meta["invoice_date"],
         date_confidence=meta["date_confidence"],
         gstin=meta["gstin"],
-        invoice_total=meta["invoice_total"],
+        subtotal=subtotal_val,
+        tax_amount=reconciled.get("tax_amount"),
+        grand_total=grand_total_val,
+        invoice_total=grand_total_val,
         total_amount=total_amount,
         total_units=total_units,
         total_items=len(items),
@@ -539,6 +638,8 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
         items=items,
         status=status,
         reason=reason,
+        review_reasons=warnings,
+        vision_available=vision_available,
         diagnostics=diag,
     )
 

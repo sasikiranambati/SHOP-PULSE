@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     VOICE_MODE: str = "mock"  # "mock" or "sarvam"
     SARVAM_API_KEY: Optional[str] = None
 
+    # Server-Side Gemini Multimodal Vision Settings (Never exposed to frontend)
+    GEMINI_API_KEY: Optional[str] = None
+    GEMINI_MODEL: str = "gemini-1.5-flash"
+    GEMINI_VISION_TIMEOUT_SECONDS: float = 25.0
+
     # OpenMRP Settings (Material Requirements Planning platform — not Maximum Retail Price)
     OPENMRP_API_KEY: Optional[str] = None
     OPENMRP_ACCOUNT_ID: Optional[str] = None

@@ -152,11 +152,20 @@ export function matchCanonicalItemsWithInventory(
     let suggestedMatch: InvoiceLineItem['suggestedMatch'] = undefined;
     let isMatchConfirmed = false;
 
+    // Extracted invoice values are preserved as primary; do NOT overwrite them with inventory catalog prices
+    const rate = item.rate ?? item.purchasePrice ?? null;
+    const purchasePrice = item.purchasePrice ?? item.rate ?? null;
+    const sellingPrice = item.sellingPrice ?? null;
+    const mrp = item.mrp ?? null;
+    // A quantity that could not be read stays null; the review screen asks for it
+    const quantity = item.quantity ?? null;
+
     if (highestScore >= 0.85 && bestProduct) {
       matchLevel = 'HIGH';
       matchedProductId = bestProduct.id;
       currentStock = bestProduct.stock;
-      isMatchConfirmed = true;
+      // Never automatically confirm match when rate or quantity is missing
+      isMatchConfirmed = Boolean(purchasePrice !== null && purchasePrice > 0 && quantity !== null && quantity > 0);
     } else if (highestScore >= 0.55 && bestProduct) {
       matchLevel = 'MEDIUM';
       suggestedMatch = {
@@ -167,14 +176,6 @@ export function matchCanonicalItemsWithInventory(
       };
       isMatchConfirmed = false; // User review required!
     }
-
-    // Extracted invoice values are preserved as primary; do NOT overwrite them with inventory catalog prices
-    const rate = item.rate ?? item.purchasePrice ?? null;
-    const purchasePrice = item.purchasePrice ?? item.rate ?? null;
-    const sellingPrice = item.sellingPrice ?? null;
-    const mrp = item.mrp ?? null;
-    // A quantity that could not be read stays null; the review screen asks for it
-    const quantity = item.quantity ?? null;
 
     // Line total comes from the invoice Amount column when available.
     // If Amount is missing: lineTotal = quantity * purchasePrice ONLY when both are valid,

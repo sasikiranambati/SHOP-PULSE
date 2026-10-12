@@ -110,11 +110,12 @@ export function computeFieldConfidence(
   rate: number | null,
   lineTotal: number | null,
   validationState: ValidationState,
-  isLiquidOrPersonalCare: boolean = false
+  isLiquidOrPersonalCare: boolean = false,
+  packSize: number | null = null
 ): FieldConfidence & { overall: number; level: ConfidenceLevel } {
   const nameConfidence = !productName || productName.length < 2 ? 0 : isPlausibleProductName(productName) ? 95 : 40;
   const quantityConfidence = quantity === null || quantity <= 0 ? 0 : 92;
-  const unitConfidence = !unit || (isLiquidOrPersonalCare && unit === 'kg') ? 40 : 90;
+  const unitConfidence = (!unit && !packSize) || (isLiquidOrPersonalCare && unit === 'kg') ? 40 : (unit ? 90 : 80);
   const rateConfidence = rate === null ? 0 : validationState === 'EXACT_MATCH' ? 95 : validationState === 'MATCH_WITH_ROUNDING' ? 90 : 50;
   const lineTotalConfidence = lineTotal === null ? 0 : validationState === 'EXACT_MATCH' ? 95 : validationState === 'MATCH_WITH_ROUNDING' ? 90 : 50;
 
@@ -160,7 +161,7 @@ export function normalizeCanonicalItem(
   }
   // An unreadable quantity stays null instead of being assumed to be 1
   const quantity = typeof raw.quantity === 'number' && raw.quantity > 0 ? raw.quantity : null;
-  const unit = raw.unit ? String(raw.unit).trim() : (extractUnitFromTitle(productName) || null);
+  let unit = raw.unit ? String(raw.unit).trim() : (extractUnitFromTitle(productName) || null);
 
   const rawRateVal = typeof raw.rawRate === 'number' ? raw.rawRate : (typeof raw.rate === 'number' ? raw.rate : null);
   const rawPurchaseVal = typeof raw.rawPurchasePrice === 'number' ? raw.rawPurchasePrice : (typeof raw.purchasePrice === 'number' ? raw.purchasePrice : null);
@@ -208,6 +209,12 @@ export function normalizeCanonicalItem(
     packSizeUnit = sizeInfo.packSizeUnit ?? null;
   }
 
+  // Enforce packaging separation:
+  // If pack size unit is present (e.g. 'g', 'ml', 'kg', 'l'), purchase unit must NEVER equal packSizeUnit!
+  if (packSizeUnit && unit && unit.toLowerCase() === packSizeUnit.toLowerCase()) {
+    unit = null;
+  }
+
   const isLiquidOrPersonalCare = /soap|shampoo|paste|colgate|brush|cream|lotion|dettol|face|hair|surf|detergent|rin|vim|dish/i.test(productName);
   if (isLiquidOrPersonalCare && unit === 'kg') {
     issues.push('Packaging unit (kg) assigned to personal care/liquid product; please verify unit and count.');
@@ -217,7 +224,27 @@ export function normalizeCanonicalItem(
   }
 
   const purchasedQuantity = raw.purchasedQuantity ?? quantity;
-  const purchaseUnit = raw.purchaseUnit ?? unit;
+  let purchaseUnit = raw.purchaseUnit ?? unit;
+  if (packSizeUnit && purchaseUnit && purchaseUnit.toLowerCase() === packSizeUnit.toLowerCase()) {
+    purchaseUnit = null;
+  }
+
+  // If the document does not establish the quantity unit for a packaged item, record review reason:
+  const reviewReasons: string[] = [...(raw.reviewReasons || [])];
+  if (!purchaseUnit && packSize !== null) {
+    reviewReasons.push('Quantity unit not established on invoice; please confirm if pieces or packs.');
+  }
+
+  // Missing rate or price must be flagged and never treated as exact match:
+  if (purchasePrice === null && rate === null) {
+    issues.push('Unit rate/price missing from invoice; enter it manually.');
+    validationState = 'INSUFFICIENT_DATA';
+  }
+
+  // Never allow EXACT_MATCH if there are validation issues
+  if (issues.length > 0 && (validationState === 'EXACT_MATCH' || validationState === 'MATCH_WITH_ROUNDING')) {
+    validationState = 'NEEDS_REVIEW';
+  }
 
   // Field-level honest confidence scoring
   const confResult = computeFieldConfidence(
@@ -227,7 +254,8 @@ export function normalizeCanonicalItem(
     priceForCheck,
     lineTotal,
     validationState,
-    isLiquidOrPersonalCare
+    isLiquidOrPersonalCare,
+    packSize
   );
 
   const fieldConfidence: FieldConfidence = {
@@ -244,7 +272,7 @@ export function normalizeCanonicalItem(
     confidenceLevel = 'MEDIUM';
   }
 
-  const combinedReviewReasons = Array.from(new Set([...(raw.reviewReasons || []), ...issues]));
+  const combinedReviewReasons = Array.from(new Set([...reviewReasons, ...issues]));
 
   return {
     id: `canon_item_${Date.now().toString(36)}_${index}`,
@@ -280,7 +308,7 @@ export function normalizeCanonicalItem(
     confidenceLevel,
     sourceText: raw.sourceText || productName,
     extractionMethod: raw.extractionMethod,
-    validationIssues: combinedReviewReasons.length > 0 ? combinedReviewReasons : undefined,
+    validationIssues: issues.length > 0 ? issues : undefined,
     rawLineIndex: raw.lineIndex,
   };
 }

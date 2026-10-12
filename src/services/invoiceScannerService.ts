@@ -228,26 +228,19 @@ export const SAMPLE_INVOICES: Array<{ label: string; supplier: string; invoice: 
 
 // --- Engine and API Key Utilities ---
 
-const GEMINI_KEY_STORAGE = 'shoppulse_gemini_api_key';
 const OCR_ENGINE_STORAGE = 'shoppulse_ocr_engine';
 
 /**
- * The optional Gemini key is the user's own key, typed into Engine Settings and kept in
- * this browser only. It is deliberately not read from a VITE_* variable, because Vite
- * inlines those into the public JavaScript bundle.
+/**
+ * Gemini API credentials are now strictly managed server-side on the backend
+ * to eliminate frontend exposure, client leakages, and proxy logging.
  */
 export function getGeminiApiKey(): string {
-  const localKey = (typeof localStorage !== 'undefined' && localStorage.getItem(GEMINI_KEY_STORAGE)) || '';
-  return localKey.trim();
+  return '';
 }
 
-export function setGeminiApiKey(key: string): void {
-  if (typeof localStorage === 'undefined') return;
-  if (key.trim()) {
-    localStorage.setItem(GEMINI_KEY_STORAGE, key.trim());
-  } else {
-    localStorage.removeItem(GEMINI_KEY_STORAGE);
-  }
+export function setGeminiApiKey(_key: string): void {
+  // Deprecated: API keys are securely managed server-side via GEMINI_API_KEY
 }
 
 export function getPreferredOcrEngine(): 'auto' | 'gemini' | 'tesseract' {
@@ -697,39 +690,13 @@ export async function parseInvoiceFile(
   }
 
   const preprocessed = await preprocessInvoiceImage(file);
-  const geminiApiKey = getGeminiApiKey();
-  const preferredEngine = getPreferredOcrEngine();
-
-  let parsedInvoice: ParsedInvoice | null = null;
-
-  // Tier 1: Try Gemini Vision if preferred or API key configured
-  if (geminiApiKey && preferredEngine !== 'tesseract') {
-    try {
-      if (onProgress) {
-        onProgress(35, 'Connecting to Gemini Multimodal AI Vision...');
-      }
-      parsedInvoice = await parseInvoiceWithGemini(
-        preprocessed.base64Raw,
-        'image/png',
-        geminiApiKey,
-        existingProducts
-      );
-    } catch (err) {
-      console.warn('Gemini AI Vision extraction failed, falling back to local OCR engine:', err);
-      if (onProgress) {
-        onProgress(30, 'AI Vision unavailable. Switching to Local Multi-Format OCR Engine...');
-      }
-    }
-  }
-
   // Tier 2: In-browser local Tesseract OCR with spatial table extraction
-  if (!parsedInvoice) {
-    parsedInvoice = await parseInvoiceWithTesseract(
-      preprocessed.processedDataUrl,
-      onProgress,
-      existingProducts
-    );
-  }
+  // (Online Vision extraction is handled securely server-side via /api/v1/invoices/extract)
+  const parsedInvoice = await parseInvoiceWithTesseract(
+    preprocessed.processedDataUrl,
+    onProgress,
+    existingProducts
+  );
 
   // Attach original image preview for user review
   parsedInvoice.imagePreviewUrl = preprocessed.originalDataUrl;

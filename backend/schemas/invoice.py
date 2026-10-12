@@ -60,7 +60,24 @@ class CanonicalInvoiceItemSchema(BaseModel):
     suggested_rate: Optional[float] = Field(None, description="Amount ÷ quantity when no rate was printed (not applied)")
     matched_product_id: Optional[UUID] = Field(None, description="ID of matched existing product")
     matched_product_name: Optional[str] = Field(None, description="Name of matched existing product")
-    match_score: Optional[float] = Field(None, description="Inventory similarity score (0-1)")
+    source_row_text: Optional[str] = None
+    sourceRowText: Optional[str] = None
+    purchased_quantity: Optional[float] = None
+    purchasedQuantity: Optional[float] = None
+    purchase_unit: Optional[str] = None
+    purchaseUnit: Optional[str] = None
+    pack_size: Optional[float] = None
+    packSize: Optional[float] = None
+    pack_size_unit: Optional[str] = None
+    packSizeUnit: Optional[str] = None
+    unit_rate: Optional[float] = None
+    unitRate: Optional[float] = None
+    validation_status: Optional[str] = None
+    validationStatus: Optional[str] = None
+    review_reasons: List[str] = Field(default_factory=list)
+    reviewReasons: List[str] = Field(default_factory=list)
+    field_confidence: Optional[Dict[str, float]] = None
+    fieldConfidence: Optional[Dict[str, float]] = None
 
 
 class DetectedColumnSchema(BaseModel):
@@ -97,6 +114,9 @@ class InvoiceExtractResponse(BaseModel):
     invoice_date: Optional[str] = None
     date_confidence: float = 0.0
     gstin: Optional[str] = None
+    subtotal: Optional[float] = None
+    tax_amount: Optional[float] = None
+    grand_total: Optional[float] = None
     invoice_total: Optional[float] = Field(None, description="Grand total printed on the invoice")
     total_amount: float = 0.0
     total_units: float = 0.0
@@ -108,6 +128,8 @@ class InvoiceExtractResponse(BaseModel):
     items: List[CanonicalInvoiceItemSchema] = Field(default_factory=list)
     status: str = Field("success", description="Status: 'success', 'needs_review', or 'error'")
     reason: Optional[str] = None
+    review_reasons: List[str] = Field(default_factory=list)
+    vision_available: bool = False
     diagnostics: Optional[DiagnosticInfo] = None
 
     model_config = ConfigDict(from_attributes=True)
