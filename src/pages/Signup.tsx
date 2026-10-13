@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Activity, UserPlus, ArrowLeft, Globe, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '../components/Button';
+import { PasswordInput } from '../components/PasswordInput';
 import type { PageRoute, BusinessType } from '../types';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useAuth } from '../hooks/useAuth';
@@ -132,7 +133,7 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
         </div>
 
         {error && (
-          <div className="p-3.5 mb-5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs sm:text-sm font-semibold flex items-center gap-2.5">
+          <div role="alert" className="p-3.5 mb-5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs sm:text-sm font-semibold flex items-center gap-2.5">
             <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
             <span>{error}</span>
           </div>
@@ -148,10 +149,11 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
+              <label htmlFor="signup-owner" className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
                 {t('auth.ownerName')}
               </label>
               <input
+                id="signup-owner"
                 type="text"
                 required
                 disabled={loading}
@@ -164,10 +166,11 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
             </div>
 
             <div>
-              <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
+              <label htmlFor="signup-shop" className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
                 {t('auth.shopName')}
               </label>
               <input
+                id="signup-shop"
                 type="text"
                 required
                 disabled={loading}
@@ -181,10 +184,11 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
           </div>
 
           <div>
-            <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
+            <label htmlFor="signup-business" className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
               {t('auth.businessType')}
             </label>
             <select
+              id="signup-business"
               value={businessType}
               disabled={loading}
               onChange={(e) => setBusinessType(e.target.value as BusinessType)}
@@ -199,10 +203,11 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
           </div>
 
           <div>
-            <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
+            <label htmlFor="signup-contact" className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
               {t('auth.phoneOrEmail')}
             </label>
             <input
+              id="signup-contact"
               type="text"
               required
               disabled={loading}
@@ -216,11 +221,11 @@ export const Signup: React.FC<SignupProps> = ({ setActivePage, onSignupSuccess }
           </div>
 
           <div>
-            <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
+            <label htmlFor="signup-password" className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
               {t('auth.createPassword')}
             </label>
-            <input
-              type="password"
+            <PasswordInput
+              id="signup-password"
               required
               disabled={loading}
               autoComplete="new-password"

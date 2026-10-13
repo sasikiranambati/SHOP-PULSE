@@ -29,9 +29,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
   ];
 
   return (
-    <aside className="w-64 bg-white border-r border-slate-200/90 shrink-0 hidden md:flex flex-col justify-between p-4 min-h-[calc(100vh-4rem)] sticky top-16 select-none">
-      <div className="space-y-1.5">
-        <p className="px-3 text-[11px] font-black text-slate-400 uppercase tracking-wider mb-2">
+    <aside className="no-print w-64 bg-white border-r border-slate-200/90 shrink-0 hidden md:flex flex-col justify-between p-4 min-h-[calc(100vh-4rem)] sticky top-16 select-none">
+      <nav aria-label="Main" className="space-y-1.5">
+        <p className="px-3 text-[11px] font-black text-slate-400 uppercase tracking-wider mb-2" aria-hidden="true">
           Navigation Menu
         </p>
         
@@ -41,7 +41,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
           return (
             <button
               key={item.id}
+              type="button"
               onClick={() => setActivePage(item.id)}
+              aria-current={isActive ? 'page' : undefined}
               className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl font-extrabold text-sm transition-all cursor-pointer ${
                 isActive
                   ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
@@ -53,7 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
             </button>
           );
         })}
-      </div>
+      </nav>
 
       {/* Support Info Banner */}
       <div className="pt-4 border-t border-slate-200/80 space-y-2">

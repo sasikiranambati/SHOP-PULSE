@@ -21,3 +21,8 @@ class Purchase(Base):
     shop = relationship("Shop", back_populates="purchases")
     supplier = relationship("Supplier")
     items = relationship("PurchaseItem", back_populates="purchase", cascade="all, delete-orphan")
+
+    @property
+    def supplier_name(self):
+        """Supplier name for API responses (read-only; not a database column)."""
+        return self.supplier.supplier_name if self.supplier else None

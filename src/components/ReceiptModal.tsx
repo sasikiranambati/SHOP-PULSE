@@ -1,6 +1,9 @@
-import React from 'react';
+import React, { useId } from 'react';
 import { X, Printer, Share2, Receipt as ReceiptIcon } from 'lucide-react';
 import { Button } from './Button';
+import { PrintPortal } from './PrintPortal';
+import { SaleReceiptDocument } from './PrintDocuments';
+import { useDialog } from '../hooks/useDialog';
 import type { Sale } from '../types/sale';
 import { generateReceipt, generateReceiptWhatsAppUrl } from '../utils/receiptGenerator';
 
@@ -17,10 +20,14 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   sale,
   shopName = 'Kiran General Store'
 }) => {
+  const titleId = useId();
+  const panelRef = useDialog<HTMLDivElement>({ isOpen: isOpen && Boolean(sale), onClose });
+
   if (!isOpen || !sale) return null;
 
   const receipt = generateReceipt(sale, shopName);
 
+  // While this dialog is open, printing outputs only the receipt document below.
   const handlePrint = () => {
     window.print();
   };
@@ -31,19 +38,25 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60" onClick={onClose}>
       <div 
-        className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 flex flex-col max-h-[90dvh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2 text-slate-900 font-extrabold text-base">
             <ReceiptIcon className="w-5 h-5 text-emerald-600" />
-            <span>Digital Receipt</span>
+            <h2 id={titleId}>Digital Receipt</h2>
           </div>
           <button 
+            type="button"
             onClick={onClose}
+            aria-label="Close receipt"
             className="p-1 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -135,6 +148,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           </Button>
         </div>
       </div>
+
+      <PrintPortal label="Receipt print view">
+        <SaleReceiptDocument sale={sale} shopName={shopName} />
+      </PrintPortal>
     </div>
   );
 };

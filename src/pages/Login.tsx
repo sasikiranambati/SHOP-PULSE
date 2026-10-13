@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Activity, LogIn, ArrowLeft, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '../components/Button';
+import { PasswordInput } from '../components/PasswordInput';
 import type { PageRoute } from '../types';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useAuth } from '../hooks/useAuth';
@@ -96,7 +97,7 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
         </div>
 
         {error && (
-          <div className="p-3.5 mb-5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm font-semibold space-y-2.5">
+          <div role="alert" className="p-3.5 mb-5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm font-semibold space-y-2.5">
             <div className="flex items-start gap-2.5">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
               <span>{error}</span>
@@ -118,10 +119,11 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1.5">
+            <label htmlFor="login-identifier" className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1.5">
               {t('auth.mobileOrEmail')}
             </label>
             <input
+              id="login-identifier"
               type="text"
               required
               disabled={loading}
@@ -135,11 +137,11 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
           </div>
 
           <div>
-            <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1.5">
+            <label htmlFor="login-password" className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1.5">
               {t('auth.password')}
             </label>
-            <input
-              type="password"
+            <PasswordInput
+              id="login-password"
               required
               disabled={loading}
               autoComplete="current-password"

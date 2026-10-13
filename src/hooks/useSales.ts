@@ -23,6 +23,8 @@ export interface UseSalesResult {
   dashboardStats: DashboardSalesStats | null;
   loading: boolean;
   error: string | null;
+  /** Set when the sales history could not be loaded (distinct from "no sales yet"). */
+  loadError: string | null;
   recordSale: (input: CreateSaleInput, cashierId?: string, shopName?: string) => Promise<{ sale: Sale; receipt: ReceiptData }>;
   createSale: (input: CreateSaleInput, cashierId?: string, shopName?: string) => Promise<{ sale: Sale; receipt: ReceiptData }>;
   deleteSale: (saleId: string, restoreInventory?: boolean) => Promise<void>;
@@ -64,6 +66,7 @@ export function useSales(initialLimit: number = 50): UseSalesResult {
 
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Compute live dashboard metrics from sales list
   const updateMetrics = useCallback(async () => {
@@ -124,9 +127,13 @@ export function useSales(initialLimit: number = 50): UseSalesResult {
         }
       }
       setSales(deduplicated);
+      setLoadError(null);
       setLoading(false);
       updateMetrics();
-    }, initialLimit);
+    }, initialLimit, (err: any) => {
+      setLoadError(err?.message || 'Sales history could not be loaded.');
+      setLoading(false);
+    });
 
     const handleAuthChange = () => {
       setSales([]);
@@ -144,7 +151,7 @@ export function useSales(initialLimit: number = 50): UseSalesResult {
   const refreshSales = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await salesService.getSales({ limit: initialLimit });
+      const data = await salesService.fetchSales(initialLimit);
       const seen = new Set<string>();
       const deduplicated: Sale[] = [];
       for (const s of data) {
@@ -155,9 +162,10 @@ export function useSales(initialLimit: number = 50): UseSalesResult {
         }
       }
       setSales(deduplicated);
+      setLoadError(null);
       await updateMetrics();
     } catch (err: any) {
-      setError(err.message || 'Failed to refresh sales data.');
+      setLoadError(err?.message || 'Sales history could not be loaded.');
     } finally {
       setLoading(false);
     }
@@ -225,6 +233,7 @@ export function useSales(initialLimit: number = 50): UseSalesResult {
     dashboardStats,
     loading,
     error,
+    loadError,
     recordSale,
     createSale: recordSale,
     deleteSale,

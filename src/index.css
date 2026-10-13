@@ -47,6 +47,13 @@
   a {
     touch-action: manipulation;
   }
+
+  /* Consistent disabled state for controls that do not style it themselves */
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
 }
 
 /* Custom scrollbar utility for horizontal pill scrolling */
@@ -104,7 +111,211 @@
 }
 
 /* Accessibility focus ring */
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible, summary:focus-visible, [role="button"]:focus-visible,
+[role="option"]:focus-visible, [tabindex]:focus-visible {
   outline: 2px solid #059669;
   outline-offset: 2px;
+}
+
+/* Invalid fields: unlayered so it wins over border utilities. The message next to the field
+   (with an icon) carries the meaning; the colour is only a supporting cue. */
+input[aria-invalid="true"],
+select[aria-invalid="true"],
+textarea[aria-invalid="true"] {
+  border-color: #e11d48;
+  background-color: #fff1f2;
+}
+
+/* Respect the operating system's reduced-motion preference */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* =====================================================================
+   Printing
+   - Documents rendered through <PrintPortal> (.print-root) are hidden on
+     screen. While one is mounted, printing outputs only that document.
+   - Otherwise a page prints without navigation, menus and buttons marked
+     .no-print.
+   ===================================================================== */
+@media screen {
+  .print-root {
+    display: none !important;
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm 10mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    min-height: 0 !important;
+  }
+
+  body {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  /* A print document is active: hide the whole app (including open dialogs) */
+  body.print-document-active > *:not(.print-root) {
+    display: none !important;
+  }
+
+  .print-root {
+    display: block !important;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-size: 10pt;
+    line-height: 1.35;
+    color: #000;
+  }
+
+  .print-doc {
+    max-width: 180mm;
+    margin: 0 auto;
+  }
+
+  .print-doc--receipt {
+    max-width: 120mm;
+  }
+
+  .print-doc--wide {
+    max-width: none;
+  }
+
+  .print-doc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8mm;
+    padding-bottom: 3mm;
+    margin-bottom: 4mm;
+    border-bottom: 1.5pt solid #000;
+    break-inside: avoid;
+  }
+
+  .print-shop {
+    font-size: 13pt;
+    font-weight: 800;
+    margin: 0;
+  }
+
+  .print-title {
+    font-size: 11pt;
+    font-weight: 700;
+    margin: 1mm 0 0;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .print-meta dl {
+    margin: 0;
+    display: grid;
+    grid-template-columns: auto auto;
+    column-gap: 3mm;
+    row-gap: 0.5mm;
+    font-size: 9pt;
+  }
+
+  .print-meta dl > div {
+    display: contents;
+  }
+
+  .print-meta dt {
+    font-weight: 700;
+    text-align: right;
+  }
+
+  .print-meta dd {
+    margin: 0;
+  }
+
+  .print-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+  }
+
+  /* Repeat the header row on every printed page */
+  .print-table thead {
+    display: table-header-group;
+  }
+
+  .print-table tfoot {
+    display: table-row-group;
+  }
+
+  .print-table th,
+  .print-table td {
+    border-bottom: 0.5pt solid #999;
+    padding: 1.4mm 1.6mm;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .print-table thead th {
+    border-bottom: 1pt solid #000;
+    font-weight: 700;
+    font-size: 8.5pt;
+    text-transform: uppercase;
+  }
+
+  .print-table tr {
+    break-inside: avoid;
+  }
+
+  /* Money and quantities: right-aligned, aligned digits, never wrapped or clipped */
+  .print-table .num {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .print-table .wrap {
+    overflow-wrap: anywhere;
+  }
+
+  .print-table tfoot th,
+  .print-table tfoot td {
+    border-bottom: none;
+  }
+
+  .print-table tfoot .grand th,
+  .print-table tfoot .grand td {
+    border-top: 1pt solid #000;
+    font-weight: 800;
+    font-size: 11pt;
+  }
+
+  .print-note {
+    margin-top: 4mm;
+    font-size: 8.5pt;
+  }
+
+  .print-footer {
+    margin-top: 6mm;
+    font-size: 8pt;
+    color: #444;
+  }
 }

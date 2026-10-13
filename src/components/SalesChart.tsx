@@ -15,15 +15,6 @@ interface SalesChartProps {
   peakText?: string;
 }
 
-const DEFAULT_DATA: SalesChartDataPoint[] = [
-  { day: 'Mon', amount: 6200, height: '55%' },
-  { day: 'Tue', amount: 7400, height: '68%' },
-  { day: 'Wed', amount: 5800, height: '50%' },
-  { day: 'Thu', amount: 8100, height: '78%' },
-  { day: 'Fri', amount: 9500, height: '90%' },
-  { day: 'Sat', amount: 11200, height: '100%' },
-  { day: 'Sun (Today)', amount: 8450, height: '76%', isToday: true },
-];
 
 export const SalesChart: React.FC<SalesChartProps> = ({ 
   className = '', 
@@ -32,12 +23,14 @@ export const SalesChart: React.FC<SalesChartProps> = ({
 }) => {
   const { weeklyTrend } = useAnalytics();
 
-  const chartData = propData || (weeklyTrend?.points && weeklyTrend.points.length > 0 ? weeklyTrend.points : DEFAULT_DATA);
+  // No sample bars are drawn: without real sales points the chart shows an empty state.
+  const chartData: SalesChartDataPoint[] = propData || weeklyTrend?.points || [];
+  const hasData = chartData.length > 0;
 
   // Derive peak text
   const peak = propPeakText || (weeklyTrend?.peakDay ? `Peak: ${weeklyTrend.peakDay.day} (₹${(weeklyTrend.peakDay.amount / 1000).toFixed(1)}k)` : (() => {
     const highest = chartData.reduce((prev, curr) => (curr.amount > prev.amount ? curr : prev), chartData[0]);
-    return highest ? `Peak: ${highest.day.split(' ')[0]} (₹${(highest.amount / 1000).toFixed(1)}k)` : 'Peak: Sat (₹11.2k)';
+    return highest ? `Peak: ${highest.day.split(' ')[0]} (₹${(highest.amount / 1000).toFixed(1)}k)` : '';
   })());
 
   return (
@@ -50,12 +43,20 @@ export const SalesChart: React.FC<SalesChartProps> = ({
           </h3>
           <p className="text-xs text-slate-500 font-medium">Daily revenue past 7 days</p>
         </div>
-        <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-          {peak}
-        </span>
+        {peak && (
+          <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+            {peak}
+          </span>
+        )}
       </div>
 
-      <div className="h-44 sm:h-48 flex items-end justify-between gap-2 pt-4 px-1">
+      {!hasData && (
+        <div className="h-44 sm:h-48 flex items-center justify-center text-center text-xs font-bold text-slate-500 px-4">
+          No sales data for the past 7 days yet.
+        </div>
+      )}
+
+      <div className={`h-44 sm:h-48 flex items-end justify-between gap-2 pt-4 px-1 ${hasData ? '' : 'hidden'}`}>
         {chartData.map((item, idx) => (
           <div key={idx} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end group">
             {/* Amount label on hover or today */}

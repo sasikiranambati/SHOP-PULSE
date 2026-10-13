@@ -29,17 +29,25 @@ export const Insights: React.FC = () => {
     refresh 
   } = useAnalytics();
 
+  // Only real figures are shown: "…" while loading, "—" when there is no data yet.
+  const placeholder = loading ? '…' : '—';
+
   const weeklyRevenueValue = weeklyTrend 
     ? `₹${weeklyTrend.totalRevenue.toLocaleString('en-IN')}`
-    : '₹34,200';
+    : placeholder;
 
   const customerCountValue = stats 
     ? `${stats.todayOrders} shoppers`
-    : '68 shoppers';
+    : placeholder;
 
-  const topCategoryValue = stats 
+  const topCategoryValue = stats?.topCategory?.name
     ? `${stats.topCategory.name} (${stats.topCategory.sharePercentage}%)`
-    : 'Dairy (42%)';
+    : placeholder;
+
+  const growth = weeklyTrend?.growthRatePercentage;
+  const growthBadge = typeof growth === 'number' && Number.isFinite(growth)
+    ? `${growth >= 0 ? '+' : ''}${growth}% growth`
+    : undefined;
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -66,7 +74,7 @@ export const Insights: React.FC = () => {
           value={weeklyRevenueValue}
           subtitle={t('insights.past7Days')}
           icon={<TrendingUp className="w-6 h-6 text-emerald-600" />}
-          badgeText={`+${weeklyTrend?.growthRatePercentage || 18}% growth`}
+          badgeText={growthBadge}
           badgeColor="emerald"
         />
         <StatCard
@@ -74,7 +82,7 @@ export const Insights: React.FC = () => {
           value={customerCountValue}
           subtitle={t('insights.walkInCheckout')}
           icon={<Calendar className="w-6 h-6 text-blue-600" />}
-          badgeText="Live Data"
+          badgeText={stats ? 'Live Data' : undefined}
           badgeColor="blue"
         />
         <StatCard
@@ -82,7 +90,7 @@ export const Insights: React.FC = () => {
           value={topCategoryValue}
           subtitle={t('insights.highestTurnover')}
           icon={<Award className="w-6 h-6 text-amber-600" />}
-          badgeText="High Demand"
+          badgeText={stats?.topCategory?.name ? 'High Demand' : undefined}
           badgeColor="amber"
         />
       </div>
@@ -103,18 +111,21 @@ export const Insights: React.FC = () => {
               <Award className="w-5 h-5 text-amber-600" />
               <span>{t('insights.topSellingProducts')}</span>
             </h3>
-            <span className="text-xs font-extrabold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md">
-              Top {topProducts.length > 0 ? topProducts.length : 4}
-            </span>
+            {topProducts.length > 0 && (
+              <span className="text-xs font-extrabold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md">
+                Top {topProducts.length}
+              </span>
+            )}
           </div>
 
           <div className="divide-y divide-slate-100 mt-2">
-            {(topProducts.length > 0 ? topProducts : [
-              { rank: 1, productName: 'Toned Milk (500ml)', quantitySold: 140, revenue: 3920, category: 'Dairy', unit: 'pkts' },
-              { rank: 2, productName: 'Marie Gold Biscuits', quantitySold: 85, revenue: 2125, category: 'Snacks', unit: 'packs' },
-              { rank: 3, productName: 'Coca Cola (750ml)', quantitySold: 60, revenue: 2400, category: 'Beverages', unit: 'bottles' },
-              { rank: 4, productName: 'White Bread (400g)', quantitySold: 42, revenue: 1890, category: 'Bakery', unit: 'loaves' }
-            ]).map((item) => (
+            {loading && topProducts.length === 0 && (
+              <p role="status" className="py-6 text-center text-xs font-bold text-slate-500">Loading top sellers…</p>
+            )}
+            {!loading && topProducts.length === 0 && (
+              <p className="py-6 text-center text-xs font-bold text-slate-500">No sales recorded yet, so there are no top sellers to show.</p>
+            )}
+            {topProducts.map((item) => (
               <div key={item.rank} className="py-3 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <span className="w-7 h-7 rounded-full bg-slate-900 text-white font-black text-xs flex items-center justify-center shrink-0">
@@ -149,32 +160,13 @@ export const Insights: React.FC = () => {
             </div>
 
             <div className="mt-3 space-y-2.5">
-              {(lowStockInsights.length > 0 ? lowStockInsights.slice(0, 3) : [
-                {
-                  productName: 'Maggi Noodles',
-                  currentStock: 2,
-                  unit: 'packs',
-                  estimatedDaysUntilStockout: 1,
-                  recommendedRestockQuantity: 20,
-                  urgency: 'critical' as const
-                },
-                {
-                  productName: 'Fresh White Bread',
-                  currentStock: 12,
-                  unit: 'loaves',
-                  estimatedDaysUntilStockout: 2,
-                  recommendedRestockQuantity: 25,
-                  urgency: 'high' as const
-                },
-                {
-                  productName: 'Toned Milk 500ml',
-                  currentStock: 15,
-                  unit: 'pkts',
-                  estimatedDaysUntilStockout: 3,
-                  recommendedRestockQuantity: 40,
-                  urgency: 'medium' as const
-                }
-              ]).map((it, idx) => (
+              {loading && lowStockInsights.length === 0 && (
+                <p role="status" className="py-6 text-center text-xs font-bold text-slate-500">Checking stock levels…</p>
+              )}
+              {!loading && lowStockInsights.length === 0 && (
+                <p className="py-6 text-center text-xs font-bold text-slate-500">No products are running low right now.</p>
+              )}
+              {lowStockInsights.slice(0, 3).map((it, idx) => (
                 <div 
                   key={idx} 
                   className={`p-3 rounded-xl border text-xs ${

@@ -84,29 +84,37 @@ export function normalizeProduct(id: string, data: any): Product {
 }
 
 /**
- * Fetch all products from the backend with optional category/search filters.
+ * Fetch products from the backend with optional category/search filters.
+ * Throws when the request fails, so callers can tell "no products" from "could not load".
+ */
+export async function fetchProducts(filters?: ProductQueryFilters): Promise<Product[]> {
+  const res = await productsApi.getProducts({
+    search: filters?.search,
+    category: filters?.category,
+    limit: 100,
+  });
+
+  let mapped = res.items.map(mapBackendProductToFrontend);
+
+  if (filters?.status) {
+    if (filters.status === 'Low Stock') {
+      mapped = mapped.filter((p) => p.status === 'Low Stock' || p.status === 'Critical' || isLowStock(p));
+    } else if (filters.status === 'Out of Stock') {
+      mapped = mapped.filter((p) => p.stock <= 0);
+    } else if (filters.status === 'In Stock') {
+      mapped = mapped.filter((p) => p.status === 'In Stock' && p.stock > 0);
+    }
+  }
+
+  return mapped;
+}
+
+/**
+ * Fetch all products, returning an empty list if the backend cannot be reached.
  */
 export async function getProducts(filters?: ProductQueryFilters): Promise<Product[]> {
   try {
-    const res = await productsApi.getProducts({
-      search: filters?.search,
-      category: filters?.category,
-      limit: 100,
-    });
-
-    let mapped = res.items.map(mapBackendProductToFrontend);
-
-    if (filters?.status) {
-      if (filters.status === 'Low Stock') {
-        mapped = mapped.filter((p) => p.status === 'Low Stock' || p.status === 'Critical' || isLowStock(p));
-      } else if (filters.status === 'Out of Stock') {
-        mapped = mapped.filter((p) => p.stock <= 0);
-      } else if (filters.status === 'In Stock') {
-        mapped = mapped.filter((p) => p.status === 'In Stock' && p.stock > 0);
-      }
-    }
-
-    return mapped;
+    return await fetchProducts(filters);
   } catch (err) {
     console.warn('Failed to load products from backend API:', err);
     return [];
@@ -130,7 +138,9 @@ export async function getProductById(id: string): Promise<Product | null> {
  */
 export async function addProduct(input: ProductInput): Promise<Product> {
   const sellingPrice = Number(input.sellingPrice ?? input.price ?? 0);
-  const purchasePrice = Number(input.purchasePrice ?? 0);
+  // A purchase price that was not entered is stored as unknown (null), not as ₹0.
+  const purchasePrice =
+    typeof input.purchasePrice === 'number' && Number.isFinite(input.purchasePrice) ? input.purchasePrice : null;
   const reorderLevel = Number(input.reorderLevel ?? input.minStock ?? 0);
   const stock = Number(input.stock ?? 0);
 
@@ -240,14 +250,23 @@ export async function searchProducts(queryText: string): Promise<Product[]> {
  */
 export function subscribeToProducts(
   callback: (products: Product[]) => void,
-  filters?: ProductQueryFilters
+  filters?: ProductQueryFilters,
+  onError?: (error: unknown) => void
 ): () => void {
   let active = true;
 
   const refresh = async () => {
     if (!active) return;
-    const items = await getProducts(filters);
-    if (active) callback(items);
+    try {
+      const items = await fetchProducts(filters);
+      if (active) callback(items);
+    } catch (err) {
+      if (!active) return;
+      console.warn('Failed to load products from backend API:', err);
+      // With an error handler the last loaded list is kept; otherwise fall back to an empty list.
+      if (onError) onError(err);
+      else callback([]);
+    }
   };
 
   // Immediate initial load

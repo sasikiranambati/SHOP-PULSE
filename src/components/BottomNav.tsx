@@ -28,7 +28,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activePage, setActivePage 
   return (
     <nav 
       aria-label="Bottom mobile navigation" 
-      className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 px-1 pt-1 pb-[calc(0.4rem+env(safe-area-inset-bottom,0px))] shadow-lg select-none"
+      className="no-print md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 px-1 pt-1 pb-[calc(0.4rem+env(safe-area-inset-bottom,0px))] shadow-lg select-none"
     >
       <div className="flex items-center justify-around max-w-md mx-auto">
         {navItems.map((item) => {
@@ -37,6 +37,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activePage, setActivePage 
           return (
             <button
               key={item.id}
+              type="button"
               onClick={() => setActivePage(item.id)}
               aria-label={t(item.labelKey)}
               aria-current={isActive ? 'page' : undefined}

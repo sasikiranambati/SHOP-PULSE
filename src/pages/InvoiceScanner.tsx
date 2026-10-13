@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useId } from 'react';
 import { 
   Camera, 
   Upload, 
@@ -22,7 +22,8 @@ import {
   Cpu,
   Edit3,
   Search,
-  Package
+  Package,
+  Loader2
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/Button';
@@ -47,7 +48,20 @@ import { db } from '../services/firebase';
 import { collection, addDoc } from 'firebase/firestore';
 import { invoiceApi, mapBackendResponseToParsedInvoice } from '../api/invoice';
 import { getAccessToken } from '../api/client';
-import { recalculateLineTotal } from '../services/invoiceReview';
+import {
+  recalculateLineTotal,
+  summarizeExtractionIssues,
+  applyStoreMatch,
+  copyStorePrices,
+  setPackSizeText,
+  formatPackSize,
+  knownStorePrice,
+} from '../services/invoiceReview';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useDialog } from '../hooks/useDialog';
+import { useToast } from '../hooks/useToast';
+import { describeError } from '../utils/errorHandler';
+import type { ApiError } from '../api/client';
 import { MrpStatus, LineAmount, LineReviewNotes, ValidationStatusBadge } from '../components/InvoiceLineCells';
 import { ImageTableCropper } from '../components/ImageTableCropper';
 import { parseProductTableFromImage } from '../services/productTableScanner';
@@ -98,6 +112,8 @@ export interface StockSuccessStats {
   purchaseValue: number;
   invoiceNumber?: string;
 }
+
+const newSampleInvoiceId = () => 'inv_' + Date.now().toString(36);
 
 const isBlank = (v: unknown) => v === null || v === undefined || (typeof v === 'number' && isNaN(v));
 
@@ -186,10 +202,17 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
 }) => {
   const { t } = useLanguage();
   
-  // Scanning state
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanProgress, setScanProgress] = useState(0);
+  const toast = useToast();
+
+  // Scanning state. Stages are reported only when they are actually known:
+  // 'uploading' carries the real percentage of bytes sent, 'processing' has no invented percentage.
+  const [scanPhase, setScanPhase] = useState<'idle' | 'uploading' | 'processing'>('idle');
+  const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const [scanStatusText, setScanStatusText] = useState('');
+  const [scanError, setScanError] = useState<{ title: string; message: string; retry?: () => void } | null>(null);
+  const [confirmDiscardReview, setConfirmDiscardReview] = useState(false);
+  const scanInFlightRef = useRef(false);
+  const isScanning = scanPhase !== 'idle';
   const [invoiceData, setInvoiceData] = useState<ParsedInvoice | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [stockSuccessData, setStockSuccessData] = useState<StockSuccessStats | null>(null);
@@ -225,6 +248,24 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Keyboard/focus behaviour for the scanner's dialogs (Escape closes the top-most one).
+  const confirmTitleId = useId();
+  const editTitleId = useId();
+  const pickerTitleId = useId();
+  const cameraTitleId = useId();
+  const settingsTitleId = useId();
+  const debugTitleId = useId();
+  const confirmModalRef = useDialog<HTMLDivElement>({
+    isOpen: isConfirmModalOpen && Boolean(invoiceData),
+    onClose: () => setIsConfirmModalOpen(false),
+    closeOnEscape: !isSaving,
+  });
+  const editModalRef = useDialog<HTMLDivElement>({ isOpen: Boolean(editingItem), onClose: () => setEditingItem(null) });
+  const pickerModalRef = useDialog<HTMLDivElement>({ isOpen: Boolean(matchingPickerItem), onClose: () => setMatchingPickerItem(null) });
+  const cameraModalRef = useDialog<HTMLDivElement>({ isOpen: isCameraOpen, onClose: () => closeCamera() });
+  const settingsModalRef = useDialog<HTMLDivElement>({ isOpen: isSettingsOpen, onClose: () => setIsSettingsOpen(false) });
+  const debugModalRef = useDialog<HTMLDivElement>({ isOpen: isDebugOpen && Boolean(invoiceData), onClose: () => setIsDebugOpen(false) });
 
   // Hidden file inputs
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -296,72 +337,101 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
     }
   };
 
+  /** Shows a finished scan and reports completion only once the extracted lines are on screen. */
+  const showScanResult = (parsed: ParsedInvoice, emptyWarning: string) => {
+    setInvoiceData(parsed);
+    if (parsed.items.length === 0) {
+      setScanWarning(emptyWarning);
+    } else {
+      toast.success('Invoice processed successfully', {
+        description: `${parsed.items.length} line${parsed.items.length === 1 ? '' : 's'} extracted. Review them before adding to stock.`,
+      });
+    }
+  };
+
   const handleConfirmCropAndScan = async (cropRegion: CropRegion) => {
-    if (!cropperImageUrl) return;
+    if (!cropperImageUrl || scanInFlightRef.current) return;
+    scanInFlightRef.current = true;
     setIsCroppingOpen(false);
-    setIsScanning(true);
-    setScanProgress(20);
-    setScanStatusText('Cropping table region with high resolution...');
+    setScanPhase('processing');
+    setUploadPercent(null);
+    setScanStatusText('Cropping the table area…');
     setSuccessMessage(null);
     setScanWarning(null);
+    setScanError(null);
 
     try {
       const parsed = await parseProductTableFromImage(
         cropperImageUrl,
         cropRegion,
-        (progress, statusText) => {
-          setScanProgress(progress);
-          setScanStatusText(statusText);
-        },
+        (_progress, statusText) => setScanStatusText(statusText),
         products
       );
-      setInvoiceData(parsed);
-      if (parsed.items.length === 0) {
-        setScanWarning(
-          'No product rows could be detected in the cropped table area. Try clicking "Recrop Table" or add items manually.'
-        );
-      }
+      showScanResult(
+        parsed,
+        'No product rows could be detected in the cropped table area. Try clicking "Recrop Table" or add items manually.'
+      );
     } catch (err: any) {
       console.error('Failed to parse product table:', err);
-      alert('Failed to parse product table: ' + (err?.message || 'Unknown error.'));
+      setScanError({
+        title: 'OCR extraction failed',
+        message: describeError(err, 'The text in the cropped table could not be read. Try a sharper, well-lit photo.'),
+        retry: () => void handleConfirmCropAndScan(cropRegion),
+      });
     } finally {
-      setIsScanning(false);
+      setScanPhase('idle');
+      scanInFlightRef.current = false;
     }
   };
 
   const processUploadedFile = async (file: File) => {
-    setIsScanning(true);
-    setScanProgress(10);
-    setScanStatusText('Preparing image for OCR recognition...');
+    // One scan at a time: a second drop or tap while a bill is being read is ignored.
+    if (scanInFlightRef.current) return;
+    scanInFlightRef.current = true;
     setSuccessMessage(null);
     setScanWarning(null);
+    setScanError(null);
+    setUploadPercent(null);
 
     try {
       let serverNotice: string | null = null;
       if (getAccessToken()) {
         try {
-          setScanProgress(25);
-          setScanStatusText('Reading the invoice on the ShopPulse server...');
-          const backendResp = await invoiceApi.extractInvoice(file);
+          setScanPhase('uploading');
+          setScanStatusText('Uploading invoice…');
+          const backendResp = await invoiceApi.extractInvoice(file, {
+            onUploadProgress: ({ percent }) => setUploadPercent(percent),
+            onUploadComplete: () => {
+              setScanPhase('processing');
+              setUploadPercent(null);
+              setScanStatusText('Processing on the server: reading text, checking prices and looking up MRP…');
+            },
+          });
           if (backendResp && backendResp.items && backendResp.items.length > 0) {
-            setScanProgress(90);
-            setScanStatusText('Matching items with your inventory...');
+            setScanStatusText('Matching items with your inventory…');
             const parsed = mapBackendResponseToParsedInvoice(backendResp, products);
-            setInvoiceData(parsed);
-            setIsScanning(false);
+            showScanResult(parsed, '');
             return;
           }
           serverNotice = `The server found no product rows (${backendResp?.reason || 'no table detected'}).`;
         } catch (apiErr: any) {
           console.warn('Backend invoice extraction failed:', apiErr);
-          serverNotice = `Server extraction failed: ${apiErr?.message || 'unknown error'}.`;
+          const status = (apiErr as ApiError)?.status;
+          serverNotice =
+            status === 0
+              ? 'Invoice upload failed: the ShopPulse server could not be reached.'
+              : status === 503
+              ? 'The server OCR engine is unavailable.'
+              : `Server extraction failed: ${describeError(apiErr, 'unknown error')}.`;
         }
       } else {
         serverNotice = 'Not signed in to the ShopPulse server.';
       }
 
-      const parsed = await parseInvoiceFile(file, products, (progress, statusText) => {
-        setScanProgress(progress);
+      setScanPhase('processing');
+      setUploadPercent(null);
+      setScanStatusText('Reading the invoice in this browser…');
+      const parsed = await parseInvoiceFile(file, products, (_progress, statusText) => {
         setScanStatusText(statusText);
       });
       parsed.notices = [
@@ -369,45 +439,40 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
         ...(parsed.notices || []),
       ];
       parsed.diagnostics = { ...(parsed.diagnostics || {}), backendError: serverNotice };
-      setInvoiceData(parsed);
-      if (parsed.items.length === 0) {
-        setScanWarning(
-          'No product rows could be detected in this bill. Add items with "+ Add Item" or check the extracted text below.'
-        );
-      }
+      showScanResult(
+        parsed,
+        'No product rows could be detected in this bill. Add items with "+ Add Item" or check the extracted text below.'
+      );
     } catch (err: any) {
       console.error('Failed to parse invoice:', err);
-      alert('Failed to parse invoice: ' + (err?.message || 'Unknown error. Please try a clearer photo.'));
+      setScanError({
+        title: 'OCR extraction failed',
+        message: describeError(err, 'The invoice could not be read. Try a clearer photo or a PDF.'),
+        retry: () => void processUploadedFile(file),
+      });
     } finally {
-      setIsScanning(false);
+      setScanPhase('idle');
+      setUploadPercent(null);
+      scanInFlightRef.current = false;
     }
   };
 
+  // Sample bills are bundled with the app, so they load instantly with no simulated progress.
   const loadSampleInvoice = (sampleIndex: number) => {
-    setIsScanning(true);
-    setScanProgress(30);
-    setScanStatusText('Loading sample supplier bill...');
+    if (scanInFlightRef.current) return;
     setSuccessMessage(null);
-
-    setTimeout(() => {
-      setScanProgress(75);
-      setScanStatusText('Matching line items with current inventory...');
-    }, 300);
-
-    setTimeout(() => {
-      setScanProgress(100);
-      const sample = SAMPLE_INVOICES[sampleIndex].invoice;
-      const matched = {
-        ...sample,
-        id: 'inv_' + Date.now().toString(36),
-        items: matchItemsWithInventory(sample.items, products),
-      };
-      setInvoiceData(matched);
-      setIsScanning(false);
-    }, 600);
+    setScanError(null);
+    setScanWarning(null);
+    const sample = SAMPLE_INVOICES[sampleIndex].invoice;
+    setInvoiceData({
+      ...sample,
+      id: newSampleInvoiceId(),
+      items: matchItemsWithInventory(sample.items, products),
+    });
   };
 
   const handleUploadedFile = (file: File) => {
+    if (scanInFlightRef.current) return;
     if (scanWorkflow === 'table') {
       const reader = new FileReader();
       reader.onload = () => {
@@ -444,6 +509,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
       ...invoiceData,
       items: invoiceData.items.map((item) => {
         if (item.id !== id) return item;
+        if (field === 'packSize') return setPackSizeText(item, String(value ?? ''));
         const updated = { ...item, [field]: value };
         // Auto-detect store match on name change if not user-confirmed
         if (field === 'name' && !item.isMatchConfirmed) {
@@ -451,15 +517,9 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
             (p) => p.name.toLowerCase().trim() === String(value).toLowerCase().trim()
           );
           if (found) {
-            updated.matchedProductId = found.id;
-            updated.inventoryData = {
-              id: found.id,
-              name: found.name,
-              currentStock: found.stock,
-              storePurchasePrice: found.purchasePrice,
-              storeSellingPrice: found.sellingPrice || found.price,
-              storeMrp: found.mrp,
-            };
+            const linked = applyStoreMatch(updated, found);
+            updated.matchedProductId = linked.matchedProductId;
+            updated.inventoryData = linked.inventoryData;
           } else {
             updated.matchedProductId = undefined;
             updated.inventoryData = undefined;
@@ -510,27 +570,12 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
     }
   };
 
-  /** Copies the stored product's prices into the line; a copied MRP is marked STORE. */
+  /** Copies the stored product's known prices into the line; a copied MRP is marked STORE. */
   const applyStorePrices = (item: InvoiceLineItem) => {
     if (!invoiceData || !item.inventoryData) return;
-    const inv = item.inventoryData;
     setInvoiceData({
       ...invoiceData,
-      items: invoiceData.items.map((it) => {
-        if (it.id !== item.id) return it;
-        const updated: InvoiceLineItem = { ...it };
-        if (inv.storePurchasePrice != null) {
-          updated.purchasePrice = inv.storePurchasePrice;
-          updated.rate = inv.storePurchasePrice;
-          recalculateLineTotal(updated);
-        }
-        if (inv.storeSellingPrice != null) updated.sellingPrice = inv.storeSellingPrice;
-        if (inv.storeMrp != null) {
-          updated.mrp = inv.storeMrp;
-          updated.mrpSource = 'STORE';
-        }
-        return updated;
-      }),
+      items: invoiceData.items.map((it) => (it.id === item.id ? copyStorePrices(it) : it)),
     });
   };
 
@@ -544,33 +589,26 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
     if (!invoiceData) return;
     setInvoiceData({
       ...invoiceData,
-      items: invoiceData.items.map((it) => {
-        if (it.id !== itemId) return it;
-        if (!selectedProduct) {
-          return {
-            ...it,
-            matchedProductId: undefined,
-            isMatchConfirmed: false,
-            inventoryData: undefined,
-          };
-        }
-        return {
-          ...it,
-          matchedProductId: selectedProduct.id,
-          isMatchConfirmed: true,
-          unit: it.unit || selectedProduct.unit || '',
-          inventoryData: {
-            id: selectedProduct.id,
-            name: selectedProduct.name,
-            currentStock: selectedProduct.stock,
-            storePurchasePrice: selectedProduct.purchasePrice,
-            storeSellingPrice: selectedProduct.sellingPrice || selectedProduct.price,
-            storeMrp: selectedProduct.mrp,
-          },
-        };
-      }),
+      items: invoiceData.items.map((it) => (it.id === itemId ? applyStoreMatch(it, selectedProduct) : it)),
     });
+    // When the picker was opened from the edit dialog, update the dialog's copy as well;
+    // otherwise saving the dialog would overwrite the link that was just chosen.
+    setEditingItem((current) => (current && current.id === itemId ? applyStoreMatch(current, selectedProduct) : current));
     setMatchingPickerItem(null);
+  };
+
+  const discardReview = () => {
+    setInvoiceData(null);
+    setValidationErrors([]);
+    setStockUpdateError(null);
+    setScanWarning(null);
+    setConfirmDiscardReview(false);
+  };
+
+  // Discarding a reviewed invoice loses every correction, so it is confirmed first.
+  const requestDiscardReview = () => {
+    if (invoiceData && invoiceData.items.length > 0) setConfirmDiscardReview(true);
+    else discardReview();
   };
 
   const handleRemoveItem = (id: string) => {
@@ -608,6 +646,8 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
       items: [...invoiceData.items, newItem],
     });
   };
+
+  const extractionIssues = invoiceData ? summarizeExtractionIssues(invoiceData.items) : [];
 
   // Calculate live total
   const calculatedTotal = invoiceData?.items.reduce((acc, item) => acc + (item.lineTotal || 0), 0) || 0;
@@ -785,7 +825,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
       console.error('Error adding invoice items to stock:', err);
       setIsConfirmModalOpen(false);
       // The server applies everything or nothing, so on failure stock is unchanged
-      setStockUpdateError('Stock was not updated: ' + (err?.message || 'please try again.'));
+      setStockUpdateError('Stock was not updated: ' + describeError(err, 'please try again.'));
       // Keep invoiceData intact so user doesn't lose their edits!
     } finally {
       setIsSaving(false);
@@ -874,6 +914,30 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
         </div>
       )}
 
+      {/* Scan failure: the file or crop can be retried without choosing it again */}
+      {scanError && !invoiceData && (
+        <div role="alert" className="p-4 bg-rose-50 rounded-2xl border-2 border-rose-400 text-rose-950 shadow-sm flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" aria-hidden="true" />
+            <div className="text-sm">
+              <p className="font-black">{scanError.title}</p>
+              <p className="text-xs text-rose-800 mt-0.5">{scanError.message}</p>
+              <p className="text-xs text-rose-800 mt-0.5">Stock has not been changed.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {scanError.retry && (
+              <Button variant="primary" size="sm" onClick={scanError.retry} icon={<RefreshCw className="w-4 h-4" />}>
+                Retry
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={() => setScanError(null)}>
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Stock Update Success Modal / Card (Section 21) */}
       {stockSuccessData && (
         <Card className="border-2 border-emerald-500 bg-white shadow-xl p-6 sm:p-8 rounded-3xl text-center space-y-4 animate-in fade-in zoom-in-95">
@@ -928,12 +992,22 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
 
       {/* Stock Update Failure Error Banner */}
       {stockUpdateError && (
-        <div className="p-4 bg-rose-50 rounded-2xl border-2 border-rose-500 text-rose-950 shadow-md flex items-start justify-between gap-3 animate-in fade-in">
+        <div role="alert" className="p-4 bg-rose-50 rounded-2xl border-2 border-rose-500 text-rose-950 shadow-md flex items-start justify-between gap-3 animate-in fade-in">
           <div className="flex items-start gap-2.5">
             <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
             <div>
               <p className="font-black text-sm">{stockUpdateError}</p>
-              <p className="text-xs text-rose-800 mt-0.5">Your edited invoice items are preserved above. Please review them and try again.</p>
+              <p className="text-xs text-rose-800 mt-0.5">Your edited invoice items are preserved below. Please review them and try again.</p>
+              {invoiceData && invoiceData.items.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleInitiateAddToStock}
+                  disabled={isSaving}
+                  className="mt-2 text-xs font-black text-rose-800 underline underline-offset-2 hover:text-rose-950 cursor-pointer"
+                >
+                  Try adding to stock again
+                </button>
+              )}
             </div>
           </div>
           <button 
@@ -1065,21 +1139,66 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
 
             {/* Scanning Progress Bar */}
             {isScanning ? (
-              <div className="p-6 bg-white rounded-2xl border border-emerald-300 shadow-sm space-y-3">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                  <span className="flex items-center gap-2">
-                    <RefreshCw className="w-4 h-4 text-emerald-600 animate-spin" />
-                    <span>{scanStatusText}</span>
+              <div className="p-5 bg-white rounded-2xl border border-emerald-300 shadow-sm space-y-3 text-left" aria-live="polite">
+                {/* Stage list: only stages the app can actually detect are shown */}
+                <ol className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wide" aria-label="Scan progress">
+                  {[
+                    { key: 'uploading', label: 'Uploading' },
+                    { key: 'processing', label: 'Processing' },
+                    { key: 'review', label: 'Review' },
+                  ].map((step, idx) => {
+                    const order = { uploading: 0, processing: 1, review: 2 } as const;
+                    const current = order[scanPhase as 'uploading' | 'processing'];
+                    const state = idx < current ? 'done' : idx === current ? 'active' : 'todo';
+                    return (
+                      <li
+                        key={step.key}
+                        aria-current={state === 'active' ? 'step' : undefined}
+                        className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border ${
+                          state === 'active'
+                            ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                            : state === 'done'
+                            ? 'bg-white border-slate-200 text-slate-500'
+                            : 'bg-white border-slate-200 text-slate-400'
+                        }`}
+                      >
+                        {state === 'done' ? (
+                          <Check className="w-3 h-3" aria-hidden="true" />
+                        ) : state === 'active' ? (
+                          <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+                        ) : null}
+                        <span>{step.label}</span>
+                        <span className="sr-only">{state === 'done' ? '(done)' : state === 'active' ? '(in progress)' : '(not started)'}</span>
+                      </li>
+                    );
+                  })}
+                </ol>
+
+                <p role="status" className="text-xs font-bold text-slate-800 flex items-start gap-2">
+                  <Loader2 className="w-4 h-4 text-emerald-600 animate-spin shrink-0" aria-hidden="true" />
+                  <span>
+                    {scanStatusText}
+                    {scanPhase === 'uploading' && uploadPercent !== null ? ` ${uploadPercent}%` : ''}
                   </span>
-                  <span className="text-emerald-700 font-black">{scanProgress}%</span>
-                </div>
-                <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-emerald-600 transition-all duration-300 rounded-full"
-                    style={{ width: `${scanProgress}%` }}
-                  />
-                </div>
-                <p className="text-[11px] text-slate-500 font-medium">Extracting tabular items and aligning with store inventory...</p>
+                </p>
+
+                {scanPhase === 'uploading' && uploadPercent !== null && (
+                  <div
+                    role="progressbar"
+                    aria-label="Upload progress"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={uploadPercent}
+                    className="w-full h-2 bg-slate-100 rounded-full overflow-hidden"
+                  >
+                    <div className="h-full bg-emerald-600 rounded-full transition-[width] duration-200" style={{ width: `${uploadPercent}%` }} />
+                  </div>
+                )}
+                <p className="text-[11px] text-slate-500 font-medium">
+                  {scanPhase === 'uploading'
+                    ? 'Sending the file to the ShopPulse server.'
+                    : 'This can take up to a minute for photos. Nothing is added to stock until you review and confirm.'}
+                </p>
               </div>
             ) : (
               /* Drag & Drop Box */
@@ -1214,7 +1333,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setInvoiceData(null)}
+                onClick={requestDiscardReview}
                 icon={<X className="w-4 h-4" />}
                 className="font-bold text-slate-600"
               >
@@ -1272,6 +1391,35 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
               </div>
             )}
             
+            {/* Extraction issues, grouped by kind (missing, low confidence, arithmetic, MRP lookup) */}
+            {extractionIssues.length > 0 && (
+              <section aria-label="Extraction issues to review" className="p-3 sm:p-4 bg-white border border-slate-300 rounded-2xl space-y-2">
+                <p className="text-xs font-black uppercase tracking-wider text-slate-600">Check before adding to stock</p>
+                <ul className="space-y-1.5">
+                  {extractionIssues.map((issue) => (
+                    <li key={issue.key} className="text-xs flex items-start gap-2">
+                      {issue.severity === 'error' ? (
+                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-px" aria-hidden="true" />
+                      ) : issue.severity === 'warning' ? (
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-px" aria-hidden="true" />
+                      ) : (
+                        <Info className="w-4 h-4 text-slate-500 shrink-0 mt-px" aria-hidden="true" />
+                      )}
+                      <span className="text-slate-700">
+                        <span className="font-black text-slate-900">
+                          {issue.severity === 'error' ? 'Required: ' : issue.severity === 'warning' ? 'Check: ' : 'Note: '}
+                          {issue.label}
+                        </span>{' '}
+                        ({issue.itemIds.length} {issue.itemIds.length === 1 ? 'line' : 'lines'}:{' '}
+                        {issue.itemNames.slice(0, 3).join(', ')}
+                        {issue.itemNames.length > 3 ? ` +${issue.itemNames.length - 3} more` : ''}). {issue.detail}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
             {/* Validation Errors Alert Banner */}
             {validationErrors.length > 0 && (
               <div className="p-4 bg-rose-50 rounded-2xl border-2 border-rose-400 text-rose-950 shadow-sm space-y-2 animate-in fade-in">
@@ -1377,7 +1525,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                         {item.inventoryData && (
                           <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500 bg-white border border-slate-200 px-2 py-1 rounded-lg">
                             <span className="font-semibold text-slate-700">Store:</span>
-                            <span>Purch: {item.inventoryData.storePurchasePrice != null ? `₹${item.inventoryData.storePurchasePrice}` : '—'}</span>
+                            <span>Purch: {knownStorePrice(item.inventoryData.storePurchasePrice) != null ? `₹${item.inventoryData.storePurchasePrice}` : '—'}</span>
                             <span>•</span>
                             <span>Sell: {item.inventoryData.storeSellingPrice != null ? `₹${item.inventoryData.storeSellingPrice}` : '—'}</span>
                             {item.inventoryData.storeMrp != null && (
@@ -1460,7 +1608,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                         <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Pack Size</label>
                         <input
                           type="text"
-                          value={item.packSize ? `${item.packSize}${item.packSizeUnit ? ' ' + item.packSizeUnit : ''}` : ''}
+                          value={formatPackSize(item)}
                           placeholder="e.g. 400g"
                           onChange={(e) => handleItemChange(item.id, 'packSize' as any, e.target.value)}
                           className="w-full text-xs font-medium text-slate-700 bg-white px-2 py-1.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none"
@@ -1557,9 +1705,11 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
             </div>
 
             {/* Desktop Table View (>= md) */}
-            <div className="hidden md:block overflow-x-auto border border-slate-200 rounded-2xl">
+            {/* The table scrolls inside this box so its header stays visible over long invoices */}
+            <div className="hidden md:block overflow-auto max-h-[70dvh] border border-slate-200 rounded-2xl">
               <table className="w-full text-left text-xs sm:text-sm">
-                <thead className="bg-slate-50 text-slate-700 font-extrabold uppercase text-[11px] border-b border-slate-200 select-none">
+                <caption className="sr-only">Extracted invoice line items</caption>
+                <thead className="sticky top-0 z-10 bg-slate-50 text-slate-700 font-extrabold uppercase text-[11px] select-none shadow-[inset_0_-1px_0_0_rgb(226_232_240)]">
                   <tr>
                     <th className="py-3 px-3 sm:px-4">Product Name</th>
                     <th className="py-3 px-2">Category</th>
@@ -1629,7 +1779,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                         {item.inventoryData && (
                           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 bg-slate-50 border border-slate-200/80 px-2 py-0.5 rounded-md">
                             <span className="font-semibold text-slate-600">Store:</span>
-                            <span>Purch: {item.inventoryData.storePurchasePrice != null ? `₹${item.inventoryData.storePurchasePrice}` : '—'}</span>
+                            <span>Purch: {knownStorePrice(item.inventoryData.storePurchasePrice) != null ? `₹${item.inventoryData.storePurchasePrice}` : '—'}</span>
                             <span>•</span>
                             <span>Sell: {item.inventoryData.storeSellingPrice != null ? `₹${item.inventoryData.storeSellingPrice}` : '—'}</span>
                             {item.inventoryData.storeMrp != null && (
@@ -1686,7 +1836,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                       <td className="py-2.5 px-2 text-center">
                         <input
                           type="text"
-                          value={item.packSize ? `${item.packSize}${item.packSizeUnit ? ' ' + item.packSizeUnit : ''}` : ''}
+                          value={formatPackSize(item)}
                           placeholder="—"
                           title="Packaging size printed on product (e.g. 400g, 1L, 25kg)"
                           onChange={(e) => handleItemChange(item.id, 'packSize' as any, e.target.value)}
@@ -1869,7 +2019,8 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
             <div className="flex items-center gap-3 w-full sm:w-auto">
               <Button
                 variant="outline"
-                onClick={() => setInvoiceData(null)}
+                onClick={requestDiscardReview}
+                disabled={isSaving}
                 className="w-1/3 sm:w-auto font-bold"
               >
                 Discard
@@ -1890,17 +2041,33 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
         </Card>
       )}
 
+      <ConfirmDialog
+        isOpen={confirmDiscardReview}
+        title="Discard this invoice?"
+        message={
+          <>
+            The {invoiceData?.items.length ?? 0} extracted line{invoiceData?.items.length === 1 ? '' : 's'} and any corrections you
+            made will be lost. Your stock has not been changed.
+          </>
+        }
+        confirmLabel="Discard invoice"
+        cancelLabel="Keep reviewing"
+        tone="default"
+        onConfirm={discardReview}
+        onCancel={() => setConfirmDiscardReview(false)}
+      />
+
       {/* Confirmation Before Stock Update Modal (Section 8 & 15) */}
       {isConfirmModalOpen && invoiceData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl border border-slate-200 max-w-lg w-full p-6 shadow-xl space-y-5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-4 animate-in fade-in">
+          <div ref={confirmModalRef} role="dialog" aria-modal="true" aria-labelledby={confirmTitleId} className="bg-white rounded-3xl border border-slate-200 max-w-lg w-full p-6 shadow-xl space-y-5 max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
                   <Package className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-slate-900">Confirm & Add to Stock</h3>
+                  <h3 id={confirmTitleId} className="text-lg font-black text-slate-900">Confirm & Add to Stock</h3>
                   <p className="text-xs text-slate-500 font-medium">Verify summary before inventory database update</p>
                 </div>
               </div>
@@ -1908,6 +2075,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                 type="button"
                 disabled={isSaving}
                 onClick={() => setIsConfirmModalOpen(false)}
+                aria-label="Close"
                 className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer disabled:opacity-50"
               >
                 <X className="w-5 h-5" />
@@ -1972,9 +2140,9 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
               </Button>
               <Button
                 variant="primary"
-                disabled={isSaving}
+                loading={isSaving}
                 onClick={handleConfirmAddToStock}
-                icon={isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                icon={<Check className="w-4 h-4" />}
                 className="font-black px-5"
               >
                 {isSaving ? 'Adding to Stock...' : 'Confirm & Add to Stock'}
@@ -1986,21 +2154,22 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
 
       {/* Full Line Item Edit Modal (Section 1, 2, 3, 4, 5, 6) */}
       {editingItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl border border-slate-200 max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-4 animate-in fade-in">
+          <div ref={editModalRef} role="dialog" aria-modal="true" aria-labelledby={editTitleId} className="bg-white rounded-3xl border border-slate-200 max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
                   <Edit3 className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900">Edit Line Item Details</h3>
+                  <h3 id={editTitleId} className="text-base font-black text-slate-900">Edit Line Item Details</h3>
                   <p className="text-xs text-slate-500">Correct spelling, prices, units, HSN, and taxes</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setEditingItem(null)}
+                aria-label="Close"
                 className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -2081,9 +2250,9 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                   </label>
                   <input
                     type="text"
-                    value={editingItem.packSize ? `${editingItem.packSize}${editingItem.packSizeUnit ? ' ' + editingItem.packSizeUnit : ''}` : ''}
+                    value={formatPackSize(editingItem)}
                     placeholder="e.g. 400g / 1L"
-                    onChange={(e) => setEditingItem({ ...editingItem, packSize: e.target.value as any })}
+                    onChange={(e) => setEditingItem(setPackSizeText(editingItem, e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white"
                   />
                 </div>
@@ -2301,21 +2470,22 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
 
       {/* Product Matcher Picker Modal (Section 10) */}
       {matchingPickerItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl border border-slate-200 max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60 p-3 sm:p-4 animate-in fade-in">
+          <div ref={pickerModalRef} role="dialog" aria-modal="true" aria-labelledby={pickerTitleId} className="bg-white rounded-3xl border border-slate-200 max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90dvh] flex flex-col">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
                   <Search className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900">Select Store Product</h3>
+                  <h3 id={pickerTitleId} className="text-base font-black text-slate-900">Select Store Product</h3>
                   <p className="text-xs text-slate-500">Link extracted line to existing product or create new</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setMatchingPickerItem(null)}
+                aria-label="Close"
                 className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -2377,7 +2547,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                           <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 text-[10px] font-medium">{p.category}</span>
                         </div>
                         <p className="text-[10px] text-slate-500 mt-0.5">
-                          Stock: {p.stock} {p.unit || 'pcs'} • Purch: ₹{p.purchasePrice} • Sell: ₹{p.sellingPrice || p.price}
+                          Stock: {p.stock} {p.unit || 'pcs'} • Purch: {knownStorePrice(p.purchasePrice) != null ? `₹${p.purchasePrice}` : '—'} • Sell: ₹{p.sellingPrice || p.price}
                           {p.mrp != null && ` • MRP: ₹${p.mrp}`}
                         </p>
                       </div>
@@ -2405,13 +2575,13 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
 
       {/* Live Camera Viewfinder Modal */}
       {isCameraOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-xs p-3 sm:p-4">
-          <div className="bg-slate-900 rounded-3xl border border-slate-700 overflow-hidden max-w-lg w-full shadow-2xl flex flex-col max-h-[92dvh]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 sm:p-4">
+          <div ref={cameraModalRef} role="dialog" aria-modal="true" aria-labelledby={cameraTitleId} className="bg-slate-900 rounded-3xl border border-slate-700 overflow-hidden max-w-lg w-full shadow-2xl flex flex-col max-h-[92dvh]">
             
             <div className="p-3.5 sm:p-4 flex items-center justify-between border-b border-slate-800 text-white">
               <div className="flex items-center gap-2">
                 <Camera className="w-5 h-5 text-emerald-400 shrink-0" />
-                <span className="font-extrabold text-xs sm:text-base">Align Supplier Bill Inside Frame</span>
+                <span id={cameraTitleId} className="font-extrabold text-xs sm:text-base">Align Supplier Bill Inside Frame</span>
               </div>
               <button 
                 onClick={closeCamera}
@@ -2481,15 +2651,15 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
 
       {/* OCR Engine & Gemini API Key Settings Modal */}
       {isSettingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 max-w-md w-full shadow-2xl space-y-5 animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div ref={settingsModalRef} role="dialog" aria-modal="true" aria-labelledby={settingsTitleId} className="bg-white rounded-3xl border border-slate-200 p-6 max-w-md w-full shadow-2xl space-y-5 animate-in fade-in max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
                   <Cpu className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900">OCR & AI Scanner Settings</h3>
+                  <h3 id={settingsTitleId} className="text-base font-black text-slate-900">OCR & AI Scanner Settings</h3>
                   <p className="text-xs text-slate-500 font-medium">Configure recognition engine & API keys</p>
                 </div>
               </div>
@@ -2612,15 +2782,15 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
 
       {/* Developer Debug Inspector Modal (Phase 19) */}
       {isDebugOpen && invoiceData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in">
-          <div className="bg-slate-900 border border-slate-700 text-slate-100 rounded-3xl p-5 sm:p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto space-y-5 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-4 animate-in fade-in">
+          <div ref={debugModalRef} role="dialog" aria-modal="true" aria-labelledby={debugTitleId} className="bg-slate-900 border border-slate-700 text-slate-100 rounded-3xl p-5 sm:p-6 max-w-4xl w-full max-h-[90dvh] overflow-y-auto space-y-5 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-purple-600/30 text-purple-400 flex items-center justify-center border border-purple-500/30">
                   <Cpu className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
+                  <h3 id={debugTitleId} className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
                     <span>Developer OCR & Layout Inspector</span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-900/60 text-purple-300 font-mono uppercase">
                       Dev Debug View

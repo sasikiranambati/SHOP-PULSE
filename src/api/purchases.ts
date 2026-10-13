@@ -12,6 +12,12 @@ export interface PurchaseItemBackend {
   product_id: string;
   quantity: number;
   purchase_price: number;
+  product_name?: string | null;
+  product_unit?: string | null;
+  /** Amount printed on the invoice line; null when it was not recorded. */
+  line_amount?: number | null;
+  mrp?: number | null;
+  mrp_source?: string | null;
   created_at?: string | null;
 }
 
@@ -19,6 +25,9 @@ export interface PurchaseBackend {
   id: string;
   shop_id: string;
   supplier_id?: string | null;
+  supplier_name?: string | null;
+  invoice_number?: string | null;
+  invoice_date?: string | null;
   total_amount: number;
   items: PurchaseItemBackend[];
   created_at?: string | null;
