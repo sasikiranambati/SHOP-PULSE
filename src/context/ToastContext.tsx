@@ -126,8 +126,10 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   return (
     <ToastContext.Provider value={api}>
       {children}
+      {/* Bottom of the screen: above the mobile bottom nav, and above the assistant button on
+          desktop, so notifications never cover page actions such as "Add Product". */}
       <div
-        className="no-print fixed z-[70] inset-x-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:bottom-auto md:top-20 md:left-auto md:right-6 md:w-96 flex flex-col gap-2 pointer-events-none"
+        className="no-print fixed z-[70] inset-x-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:bottom-28 md:left-auto md:right-6 md:w-96 flex flex-col gap-2 pointer-events-none"
       >
         <div role="alert" aria-live="assertive" aria-atomic="false" className="flex flex-col gap-2">
           {errorToasts.map((toast) => (
