@@ -51,6 +51,7 @@ import { getAccessToken } from '../api/client';
 import {
   recalculateLineTotal,
   summarizeExtractionIssues,
+  describeScanCompletion,
   applyStoreMatch,
   copyStorePrices,
   setPackSizeText,
@@ -343,9 +344,8 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
     if (parsed.items.length === 0) {
       setScanWarning(emptyWarning);
     } else {
-      toast.success('Invoice processed successfully', {
-        description: `${parsed.items.length} line${parsed.items.length === 1 ? '' : 's'} extracted. Review them before adding to stock.`,
-      });
+      const done = describeScanCompletion(parsed.items);
+      toast[done.tone](done.title, { description: done.description });
     }
   };
 
@@ -417,6 +417,15 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
         } catch (apiErr: any) {
           console.warn('Backend invoice extraction failed:', apiErr);
           const status = (apiErr as ApiError)?.status;
+          // The server rejected the file itself (empty, unreadable or unsupported). Reading it in the
+          // browser would fail the same way, so show the server's reason instead of a generic error.
+          if (status === 400 || status === 413 || status === 415) {
+            setScanError({
+              title: 'Invoice upload failed',
+              message: describeError(apiErr, 'This file could not be used. Upload a PDF or a photo of the invoice.'),
+            });
+            return;
+          }
           serverNotice =
             status === 0
               ? 'Invoice upload failed: the ShopPulse server could not be reached.'

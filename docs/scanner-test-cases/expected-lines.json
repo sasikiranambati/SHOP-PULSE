@@ -1,0 +1,565 @@
+{
+  "TC01-clean-digital": [
+    {
+      "name": "Aashirvaad Atta 5kg",
+      "hsn": "1101",
+      "qty": 4,
+      "unit": "bag",
+      "rate": 245,
+      "mrp": 289,
+      "gst": 0
+    },
+    {
+      "name": "Tata Salt 1kg",
+      "hsn": "2501",
+      "qty": 20,
+      "unit": "pkt",
+      "rate": 22,
+      "mrp": 28,
+      "gst": 0
+    },
+    {
+      "name": "Fortune Sunflower Oil 1L",
+      "hsn": "1512",
+      "qty": 12,
+      "unit": "pcs",
+      "rate": 140,
+      "mrp": 175,
+      "gst": 5
+    },
+    {
+      "name": "Parle-G Biscuits 250g",
+      "hsn": "1905",
+      "qty": 24,
+      "unit": "pkt",
+      "rate": 9.5,
+      "mrp": 12,
+      "gst": 18
+    },
+    {
+      "name": "Maggi Noodles 70g",
+      "hsn": "1902",
+      "qty": 48,
+      "unit": "pkt",
+      "rate": 11,
+      "mrp": 14,
+      "gst": 18
+    }
+  ],
+  "TC04-no-rate-column": [
+    {
+      "name": "Aashirvaad Atta 5kg",
+      "hsn": "1101",
+      "qty": 4,
+      "unit": "bag",
+      "rate": 245,
+      "mrp": 289,
+      "gst": 0
+    },
+    {
+      "name": "Tata Salt 1kg",
+      "hsn": "2501",
+      "qty": 20,
+      "unit": "pkt",
+      "rate": 22,
+      "mrp": 28,
+      "gst": 0
+    },
+    {
+      "name": "Fortune Sunflower Oil 1L",
+      "hsn": "1512",
+      "qty": 12,
+      "unit": "pcs",
+      "rate": 140,
+      "mrp": 175,
+      "gst": 5
+    }
+  ],
+  "TC05-amount-mismatch": [
+    {
+      "name": "Aashirvaad Atta 5kg",
+      "hsn": "1101",
+      "qty": 4,
+      "unit": "bag",
+      "rate": 245,
+      "mrp": 289,
+      "gst": 0
+    },
+    {
+      "name": "Tata Salt 1kg",
+      "hsn": "2501",
+      "qty": 20,
+      "unit": "pkt",
+      "rate": 22,
+      "mrp": 28,
+      "gst": 0
+    },
+    {
+      "name": "Fortune Sunflower Oil 1L",
+      "hsn": "1512",
+      "qty": 12,
+      "unit": "pcs",
+      "rate": 140,
+      "mrp": 175,
+      "gst": 5
+    }
+  ],
+  "TC06-no-mrp-column": [
+    {
+      "name": "Tata Salt 1kg",
+      "hsn": "2501",
+      "qty": 20,
+      "unit": "pkt",
+      "rate": 22,
+      "mrp": 28,
+      "gst": 0
+    },
+    {
+      "name": "Fortune Sunflower Oil 1L",
+      "hsn": "1512",
+      "qty": 12,
+      "unit": "pcs",
+      "rate": 140,
+      "mrp": 175,
+      "gst": 5
+    },
+    {
+      "name": "Parle-G Biscuits 250g",
+      "hsn": "1905",
+      "qty": 24,
+      "unit": "pkt",
+      "rate": 9.5,
+      "mrp": 12,
+      "gst": 18
+    }
+  ],
+  "TC07-long-40-lines": [
+    {
+      "name": "Aashirvaad Atta 5kg Lot A1",
+      "hsn": "1101",
+      "qty": 2,
+      "unit": "bag",
+      "rate": 245,
+      "mrp": 289,
+      "gst": 0
+    },
+    {
+      "name": "Tata Salt 1kg Lot A2",
+      "hsn": "2501",
+      "qty": 3,
+      "unit": "pkt",
+      "rate": 22,
+      "mrp": 28,
+      "gst": 0
+    },
+    {
+      "name": "Fortune Sunflower Oil 1L Lot A3",
+      "hsn": "1512",
+      "qty": 4,
+      "unit": "pcs",
+      "rate": 140,
+      "mrp": 175,
+      "gst": 5
+    },
+    {
+      "name": "Parle-G Biscuits 250g Lot A4",
+      "hsn": "1905",
+      "qty": 5,
+      "unit": "pkt",
+      "rate": 9.5,
+      "mrp": 12,
+      "gst": 18
+    },
+    {
+      "name": "Maggi Noodles 70g Lot A5",
+      "hsn": "1902",
+      "qty": 6,
+      "unit": "pkt",
+      "rate": 11,
+      "mrp": 14,
+      "gst": 18
+    },
+    {
+      "name": "Aashirvaad Atta 5kg Lot B1",
+      "hsn": "1101",
+      "qty": 7,
+      "unit": "bag",
+      "rate": 245,
+      "mrp": 289,
+      "gst": 0
+    },
+    {
+      "name": "Tata Salt 1kg Lot B2",
+      "hsn": "2501",
+      "qty": 8,
+      "unit": "pkt",
+      "rate": 22,
+      "mrp": 28,
+      "gst": 0
+    },
+    {
+      "name": "Fortune Sunflower Oil 1L Lot B3",
+      "hsn": "1512",
+      "qty": 9,
+      "unit": "pcs",
+      "rate": 140,
+      "mrp": 175,
+      "gst": 5
+    },
+    {
+      "name": "Parle-G Biscuits 250g Lot B4",
+      "hsn": "1905",
+      "qty": 10,
+      "unit": "pkt",
+      "rate": 9.5,
+      "mrp": 12,
+      "gst": 18
+    },
+    {
+      "name": "Maggi Noodles 70g Lot B5",
+      "hsn": "1902",
+      "qty": 2,
+      "unit": "pkt",
+      "rate": 11,
+      "mrp": 14,
+      "gst": 18
+    },
+    {
+      "name": "Aashirvaad Atta 5kg Lot C1",
+      "hsn": "1101",
+      "qty": 3,
+      "unit": "bag",
+      "rate": 245,
+      "mrp": 289,
+      "gst": 0
+    },
+    {
+      "name": "Tata Salt 1kg Lot C2",
+      "hsn": "2501",
+      "qty": 4,
+      "unit": "pkt",
+      "rate": 22,
+      "mrp": 28,
+      "gst": 0
+    },
+    {
+      "name": "Fortune Sunflower Oil 1L Lot C3",
+      "hsn": "1512",
+      "qty": 5,
+      "unit": "pcs",
+      "rate": 140,
+      "mrp": 175,
+      "gst": 5
+    },
+    {
+      "name": "Parle-G Biscuits 250g Lot C4",
+      "hsn": "1905",
+      "qty": 6,
+      "unit": "pkt",
+      "rate": 9.5,
+      "mrp": 12,
+      "gst": 18
+    },
+    {
+      "name": "Maggi Noodles 70g Lot C5",
+      "hsn": "1902",
+      "qty": 7,
+      "unit": "pkt",
+      "rate": 11,
+      "mrp": 14,
+      "gst": 18
+    },
+    {
+      "name": "Aashirvaad Atta 5kg Lot D1",
+      "hsn": "1101",
+      "qty": 8,
+      "unit": "bag",
+      "rate": 245,
+      "mrp": 289,
+      "gst": 0
+    },
+    {
+      "name": "Tata Salt 1kg Lot D2",
+      "hsn": "2501",
+      "qty": 9,
+      "unit": "pkt",
+      "rate": 22,
+      "mrp": 28,
+      "gst": 0
+    },
+    {
+      "name": "Fortune Sunflower Oil 1L Lot D3",
+      "hsn": "1512",
+      "qty": 10,
+      "unit": "pcs",
+      "rate": 140,
+      "mrp": 175,
+      "gst": 5
+    },
+    {
+      "name": "Parle-G Biscuits 250g Lot D4",
+      "hsn": "1905",
+      "qty": 2,
+      "unit": "pkt",
+      "rate": 9.5,
+      "mrp": 12,
+      "gst": 18
+    },
+    {
+      "name": "Maggi Noodles 70g Lot D5",
+      "hsn": "1902",
+      "qty": 3,
+      "unit": "pkt",
+      "rate": 11,
+      "mrp": 14,
+      "gst": 18
+    },
+    {
+      "name": "Aashirvaad Atta 5kg Lot E1",
+      "hsn": "1101",
+      "qty": 4,
+      "unit": "bag",
+      "rate": 245,
+      "mrp": 289,
+      "gst": 0
+    },
+    {
+      "name": "Tata Salt 1kg Lot E2",
+      "hsn": "2501",
+      "qty": 5,
+      "unit": "pkt",
+      "rate": 22,
+      "mrp": 28,
+      "gst": 0
+    },
+    {
+      "name": "Fortune Sunflower Oil 1L Lot E3",
+      "hsn": "1512",
+      "qty": 6,
+      "unit": "pcs",
+      "rate": 140,
+      "mrp": 175,
+      "gst": 5
+    },
+    {
+      "name": "Parle-G Biscuits 250g Lot E4",
+      "hsn": "1905",
+      "qty": 7,
+      "unit": "pkt",
+      "rate": 9.5,
+      "mrp": 12,
+      "gst": 18
+    },
+    {
+      "name": "Maggi Noodles 70g Lot E5",
+      "hsn": "1902",
+      "qty": 8,
+      "unit": "pkt",
+      "rate": 11,
+      "mrp": 14,
+      "gst": 18
+    },
+    {
+      "name": "Aashirvaad Atta 5kg Lot F1",
+      "hsn": "1101",
+      "qty": 9,
+      "unit": "bag",
+      "rate": 245,
+      "mrp": 289,
+      "gst": 0
+    },
+    {
+      "name": "Tata Salt 1kg Lot F2",
+      "hsn": "2501",
+      "qty": 10,
+      "unit": "pkt",
+      "rate": 22,
+      "mrp": 28,
+      "gst": 0
+    },
+    {
+      "name": "Fortune Sunflower Oil 1L Lot F3",
+      "hsn": "1512",
+      "qty": 2,
+      "unit": "pcs",
+      "rate": 140,
+      "mrp": 175,
+      "gst": 5
+    },
+    {
+      "name": "Parle-G Biscuits 250g Lot F4",
+      "hsn": "1905",
+      "qty": 3,
+      "unit": "pkt",
+      "rate": 9.5,
+      "mrp": 12,
+      "gst": 18
+    },
+    {
+      "name": "Maggi Noodles 70g Lot F5",
+      "hsn": "1902",
+      "qty": 4,
+      "unit": "pkt",
+      "rate": 11,
+      "mrp": 14,
+      "gst": 18
+    },
+    {
+      "name": "Aashirvaad Atta 5kg Lot G1",
+      "hsn": "1101",
+      "qty": 5,
+      "unit": "bag",
+      "rate": 245,
+      "mrp": 289,
+      "gst": 0
+    },
+    {
+      "name": "Tata Salt 1kg Lot G2",
+      "hsn": "2501",
+      "qty": 6,
+      "unit": "pkt",
+      "rate": 22,
+      "mrp": 28,
+      "gst": 0
+    },
+    {
+      "name": "Fortune Sunflower Oil 1L Lot G3",
+      "hsn": "1512",
+      "qty": 7,
+      "unit": "pcs",
+      "rate": 140,
+      "mrp": 175,
+      "gst": 5
+    },
+    {
+      "name": "Parle-G Biscuits 250g Lot G4",
+      "hsn": "1905",
+      "qty": 8,
+      "unit": "pkt",
+      "rate": 9.5,
+      "mrp": 12,
+      "gst": 18
+    },
+    {
+      "name": "Maggi Noodles 70g Lot G5",
+      "hsn": "1902",
+      "qty": 9,
+      "unit": "pkt",
+      "rate": 11,
+      "mrp": 14,
+      "gst": 18
+    },
+    {
+      "name": "Aashirvaad Atta 5kg Lot H1",
+      "hsn": "1101",
+      "qty": 10,
+      "unit": "bag",
+      "rate": 245,
+      "mrp": 289,
+      "gst": 0
+    },
+    {
+      "name": "Tata Salt 1kg Lot H2",
+      "hsn": "2501",
+      "qty": 2,
+      "unit": "pkt",
+      "rate": 22,
+      "mrp": 28,
+      "gst": 0
+    },
+    {
+      "name": "Fortune Sunflower Oil 1L Lot H3",
+      "hsn": "1512",
+      "qty": 3,
+      "unit": "pcs",
+      "rate": 140,
+      "mrp": 175,
+      "gst": 5
+    },
+    {
+      "name": "Parle-G Biscuits 250g Lot H4",
+      "hsn": "1905",
+      "qty": 4,
+      "unit": "pkt",
+      "rate": 9.5,
+      "mrp": 12,
+      "gst": 18
+    },
+    {
+      "name": "Maggi Noodles 70g Lot H5",
+      "hsn": "1902",
+      "qty": 5,
+      "unit": "pkt",
+      "rate": 11,
+      "mrp": 14,
+      "gst": 18
+    }
+  ],
+  "TC08-numbers-in-names": [
+    {
+      "name": "7UP 2.25L",
+      "hsn": "2202",
+      "qty": 6,
+      "unit": "btl",
+      "rate": 85,
+      "mrp": 99
+    },
+    {
+      "name": "Lizol Floor Cleaner 975ml x 2",
+      "hsn": "3402",
+      "qty": 3,
+      "unit": "pack",
+      "rate": 310,
+      "mrp": 378
+    },
+    {
+      "name": "Dettol Soap 125g (Pack of 4)",
+      "hsn": "3401",
+      "qty": 5,
+      "unit": "pack",
+      "rate": 168,
+      "mrp": 200
+    },
+    {
+      "name": "Red Label Tea 500g",
+      "hsn": "0902",
+      "qty": 10,
+      "unit": "pkt",
+      "rate": 245,
+      "mrp": 290
+    }
+  ],
+  "TC09-discount-and-gst": [
+    {
+      "name": "Fortune Sunflower Oil 1L",
+      "hsn": "1512",
+      "qty": 12,
+      "unit": "pcs",
+      "rate": 140,
+      "mrp": 175,
+      "gst": 5,
+      "disc": 5
+    },
+    {
+      "name": "Parle-G Biscuits 250g",
+      "hsn": "1905",
+      "qty": 24,
+      "unit": "pkt",
+      "rate": 9.5,
+      "mrp": 12,
+      "gst": 18,
+      "disc": 0
+    },
+    {
+      "name": "Maggi Noodles 70g",
+      "hsn": "1902",
+      "qty": 48,
+      "unit": "pkt",
+      "rate": 11,
+      "mrp": 14,
+      "gst": 18,
+      "disc": 10
+    }
+  ],
+  "TC10-no-item-table": []
+}
