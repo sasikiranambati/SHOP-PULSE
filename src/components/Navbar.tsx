@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Activity, 
   Bell, 
@@ -19,13 +20,15 @@ import {
   Settings as SettingsIcon, 
   PhoneCall,
   Wifi,
-  WifiOff
+  WifiOff,
+  Search
 } from 'lucide-react';
 import type { PageRoute } from '../types';
 import { useLanguage } from '../i18n/LanguageContext';
 import { LanguageSelectorModal } from './LanguageSelectorModal';
 
 import { useAlerts } from '../hooks/useAlerts';
+import { useDialog } from '../hooks/useDialog';
 import { useSync } from '../hooks/useSync';
 
 interface NavbarProps {
@@ -34,6 +37,8 @@ interface NavbarProps {
   shopName?: string;
   isLoggedIn?: boolean;
   onLogout?: () => void;
+  /** Opens global search; the search button is hidden when not provided. */
+  onOpenSearch?: () => void;
 }
 
 function formatAlertTime(isoString: string): string {
@@ -56,6 +61,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   shopName = 'Kiran General Store',
   isLoggedIn = true,
   onLogout,
+  onOpenSearch,
 }) => {
   const { t, currentLanguageMeta } = useLanguage();
   const [showNotifications, setShowNotifications] = useState(false);
@@ -74,17 +80,26 @@ export const Navbar: React.FC<NavbarProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Lock body scroll when mobile menu is open
+  // Drawer: Escape closes it, focus moves into it and is trapped there, background scroll is
+  // locked, and focus returns to the menu button when it closes.
+  const drawerRef = useDialog<HTMLDivElement>({
+    isOpen: isMobileMenuOpen,
+    onClose: () => setIsMobileMenuOpen(false),
+  });
+
+  // Escape also closes the notifications panel and returns focus to the bell.
+  const bellRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
-    if (isMobileMenuOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
+    if (!showNotifications) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowNotifications(false);
+        bellRef.current?.focus();
+      }
     };
-  }, [isMobileMenuOpen]);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [showNotifications]);
 
   // Live real-time alerts connection
   const { alerts, unreadCount, markAsRead, markAllAsRead } = useAlerts();
@@ -109,13 +124,15 @@ export const Navbar: React.FC<NavbarProps> = ({
   ];
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/90 shadow-2xs">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between">
+    <header className="no-print sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/90 shadow-2xs">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2">
         
         {/* Brand Logo & Shop Name */}
-        <div 
+        <button 
+          type="button"
           onClick={() => setActivePage(isLoggedIn ? 'dashboard' : 'landing')}
-          className="flex items-center gap-2 sm:gap-2.5 cursor-pointer group select-none min-w-0"
+          aria-label={`ShopPulse – ${shopName}. Go to ${isLoggedIn ? 'dashboard' : 'home'}`}
+          className="flex items-center gap-2 sm:gap-2.5 cursor-pointer group select-none min-w-0 text-left rounded-xl"
         >
           <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-sm group-hover:bg-emerald-700 transition-colors shrink-0">
             <Activity className="w-4 h-4 sm:w-6 sm:h-6" />
@@ -129,14 +146,43 @@ export const Navbar: React.FC<NavbarProps> = ({
               {shopName}
             </p>
           </div>
-        </div>
+        </button>
+
+        {/* Global search (desktop: wide button styled like a field) */}
+        {isLoggedIn && onOpenSearch && (
+          <button
+            type="button"
+            onClick={onOpenSearch}
+            aria-label="Search products, bills and purchase invoices"
+            aria-keyshortcuts="Control+K Meta+K /"
+            className="hidden md:flex flex-1 max-w-sm items-center gap-2 px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 hover:bg-white hover:border-slate-400 text-slate-500 text-sm font-medium cursor-pointer transition-colors"
+          >
+            <Search className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <span className="flex-1 text-left truncate">Search products, bills, invoices…</span>
+            <kbd className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-slate-300 bg-white text-slate-500">Ctrl K</kbd>
+          </button>
+        )}
 
         {/* Action Controls & Store Info */}
         <div className="flex items-center gap-1.5 sm:gap-2.5">
+          {/* Mobile search button */}
+          {isLoggedIn && onOpenSearch && (
+            <button
+              type="button"
+              onClick={onOpenSearch}
+              aria-label="Search"
+              className="md:hidden w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors cursor-pointer active:scale-95"
+            >
+              <Search className="w-4 h-4 sm:w-5 sm:h-5" />
+            </button>
+          )}
+
           {/* Quick Language Selector Button */}
           <button
+            type="button"
             onClick={() => setIsLangModalOpen(true)}
             title="Change Language"
+            aria-label={`Change language (current: ${currentLanguageMeta.nativeName})`}
             className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 flex items-center gap-1.5 transition-colors cursor-pointer text-xs font-black"
           >
             <Globe className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -146,14 +192,22 @@ export const Navbar: React.FC<NavbarProps> = ({
           {isLoggedIn ? (
             <>
               {/* Desktop Store Tag */}
-              <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-black">
+              <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-black">
                 <Store className="w-4 h-4 text-emerald-600" />
                 <span>{shopName}</span>
               </div>
 
               {/* Sync & Connectivity Status Indicator */}
               <div 
+                role={!isOnline ? 'button' : 'status'}
+                tabIndex={!isOnline ? 0 : undefined}
                 onClick={() => !isOnline && syncNow()}
+                onKeyDown={(e) => {
+                  if (!isOnline && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    syncNow();
+                  }
+                }}
                 title={isOnline ? (isSyncing ? 'Syncing data with cloud...' : 'Connected online') : `${totalPendingCount} items queued offline. Click to sync.`}
                 className={`hidden xs:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-extrabold border transition-all select-none ${
                   !isOnline
@@ -182,9 +236,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               {/* Notification Popover Icon */}
               <div className="relative">
                 <button
+                  ref={bellRef}
+                  type="button"
                   id="notification-bell-btn"
                   onClick={() => setShowNotifications(!showNotifications)}
                   title="Notifications"
+                  aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+                  aria-expanded={showNotifications}
+                  aria-controls="notifications-panel"
                   className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors cursor-pointer relative"
                 >
                   <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -205,7 +264,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       className="fixed inset-0 z-40 bg-slate-900/20 sm:hidden" 
                       onClick={() => setShowNotifications(false)} 
                     />
-                    <div className="fixed inset-x-2.5 top-16 sm:inset-x-auto sm:right-0 sm:top-12 w-auto sm:w-96 max-w-[calc(100vw-1.25rem)] bg-white rounded-2xl border border-slate-200 shadow-2xl p-3.5 z-50 animate-fade-in max-h-[75vh] sm:max-h-[480px] flex flex-col">
+                    <div id="notifications-panel" role="region" aria-label="Notifications" className="fixed inset-x-2.5 top-16 sm:inset-x-auto sm:right-0 sm:top-12 w-auto sm:w-96 max-w-[calc(100vw-1.25rem)] bg-white rounded-2xl border border-slate-200 shadow-2xl p-3.5 z-50 animate-fade-in max-h-[75vh] sm:max-h-[480px] flex flex-col">
                       <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-2 shrink-0">
                         <div className="flex items-center gap-1.5">
                           <button
@@ -261,6 +320,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                           return (
                             <div
                               key={alertItem.id}
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={(e) => {
+                                if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                                  e.preventDefault();
+                                  (e.currentTarget as HTMLElement).click();
+                                }
+                              }}
                               onClick={() => {
                                 if (!alertItem.isRead) markAsRead(alertItem.id);
                                 setShowNotifications(false);
@@ -361,6 +428,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               {/* Profile & Settings Action */}
               <button
+                type="button"
                 onClick={() => setActivePage('settings')}
                 title="Shop Profile & Settings"
                 aria-label="Shop Profile and Settings"
@@ -371,9 +439,13 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               {/* Mobile Hamburger Navigation Button */}
               <button
+                type="button"
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                 title="Navigation Menu"
-                aria-label="Navigation Menu"
+                aria-label={isMobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+                aria-expanded={isMobileMenuOpen}
+                aria-controls="mobile-nav-drawer"
+                aria-haspopup="dialog"
                 className="md:hidden w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors cursor-pointer active:scale-95"
               >
                 {isMobileMenuOpen ? <X className="w-5 h-5 text-emerald-700" /> : <Menu className="w-5 h-5" />}
@@ -381,6 +453,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               {/* Desktop Logout Button */}
               <button
+                type="button"
                 onClick={onLogout}
                 title="Logout"
                 aria-label="Logout"
@@ -410,9 +483,10 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       </div>
 
-      {/* Mobile Slide-Over Navigation Drawer */}
-      {isMobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-50 flex">
+      {/* Mobile Slide-Over Navigation Drawer. Rendered into <body>: the header's backdrop blur
+          would otherwise make this fixed overlay only as tall as the header. */}
+      {isMobileMenuOpen && createPortal(
+        <div className="no-print md:hidden fixed inset-0 z-50 flex">
           {/* Semi-transparent Backdrop */}
           <div 
             className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
@@ -420,7 +494,14 @@ export const Navbar: React.FC<NavbarProps> = ({
           />
 
           {/* Drawer Sheet */}
-          <div className="relative w-4/5 max-w-xs bg-white h-full shadow-2xl flex flex-col justify-between p-5 z-50 animate-in slide-in-from-left duration-200 overflow-y-auto">
+          <div
+            ref={drawerRef}
+            id="mobile-nav-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation menu"
+            className="relative w-4/5 max-w-xs bg-white h-full shadow-2xl flex flex-col justify-between p-5 pt-[calc(1.25rem+env(safe-area-inset-top,0px))] pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] z-50 animate-in slide-in-from-left duration-200 overflow-y-auto overscroll-contain"
+          >
             <div className="space-y-4">
               {/* Drawer Brand Header */}
               <div className="flex items-center justify-between pb-4 border-b border-slate-100">
@@ -439,8 +520,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer"
+                  className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer"
                   aria-label="Close menu"
                 >
                   <X className="w-4 h-4" />
@@ -449,6 +531,14 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               {/* Sync Status Banner in Mobile Drawer */}
               <div 
+                role={!isOnline ? 'button' : 'status'}
+                tabIndex={!isOnline ? 0 : undefined}
+                onKeyDown={(e) => {
+                  if (!isOnline && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    syncNow();
+                  }
+                }}
                 onClick={() => !isOnline && syncNow()}
                 className={`flex items-center justify-between p-3 rounded-2xl border text-xs font-bold transition-all ${
                   !isOnline
@@ -478,8 +568,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
 
               {/* Full Navigation List */}
-              <div className="space-y-1">
-                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-3 pb-1">
+              <nav aria-label="Main" className="space-y-1">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-3 pb-1" aria-hidden="true">
                   Menu
                 </p>
                 {navMenuItems.map((item) => {
@@ -488,7 +578,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                   return (
                     <button
                       key={item.id}
+                      type="button"
                       onClick={() => handleNavClick(item.id)}
+                      aria-current={isActive ? 'page' : undefined}
                       className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl font-black text-sm transition-all cursor-pointer min-h-[48px] ${
                         isActive
                           ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
@@ -509,10 +601,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                     </button>
                   );
                 })}
-              </div>
+              </nav>
 
               {/* Language Switcher inside Drawer */}
               <button
+                type="button"
                 onClick={() => {
                   setIsMobileMenuOpen(false);
                   setIsLangModalOpen(true);
@@ -540,6 +633,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
 
               <button
+                type="button"
                 onClick={() => {
                   setIsMobileMenuOpen(false);
                   if (onLogout) onLogout();
@@ -551,13 +645,18 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      <LanguageSelectorModal
-        isOpen={isLangModalOpen}
-        onClose={() => setIsLangModalOpen(false)}
-      />
+      {/* Also rendered into <body> so the dialog covers the screen, not just the header */}
+      {createPortal(
+        <LanguageSelectorModal
+          isOpen={isLangModalOpen}
+          onClose={() => setIsLangModalOpen(false)}
+        />,
+        document.body
+      )}
     </header>
   );
 };

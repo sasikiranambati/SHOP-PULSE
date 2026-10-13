@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useId } from 'react';
 import { 
   ShoppingCart, 
   Plus, 
@@ -17,7 +17,9 @@ import {
   User,
   AlertTriangle,
   X,
-  Mic
+  Mic,
+  Loader2,
+  Printer
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/Button';
@@ -28,12 +30,35 @@ import type { Product, CartItem, Sale, PaymentMethod } from '../types';
 import { PRODUCT_CATEGORIES } from '../data/mockData';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useSales } from '../hooks/useSales';
+import { getSaleById } from '../services/salesService';
+import { describeError } from '../utils/errorHandler';
+import { useDialog } from '../hooks/useDialog';
+import { usePrintRequest } from '../hooks/usePrint';
+import { PrintPortal } from '../components/PrintPortal';
+import { SalesReportDocument } from '../components/PrintDocuments';
 
 interface SalesProps {
   products: Product[];
   shopName?: string;
   onSaleComplete?: (sale: Sale) => void;
   initialTab?: 'pos' | 'history';
+  /**
+   * Bill opened from global search. The page is mounted with a new `key` for each request;
+   * it starts on Sales History and opens that bill's receipt.
+   */
+  focusSaleId?: string | null;
+}
+
+/** Backend sale lines carry only a product id; show the catalog name for that id when it is known. */
+function withCatalogNames(sale: Sale, namesById: Map<string, { name: string; unit: string }>): Sale {
+  if (!sale.items.some((i) => i.name === 'Sold Item' && namesById.has(i.productId))) return sale;
+  return {
+    ...sale,
+    items: sale.items.map((item) => {
+      const known = item.name === 'Sold Item' ? namesById.get(item.productId) : undefined;
+      return known ? { ...item, name: known.name, productName: known.name, unit: known.unit || item.unit } : item;
+    }),
+  };
 }
 
 function formatSaleDateTime(isoString: string): { date: string; time: string } {
@@ -53,19 +78,29 @@ export const Sales: React.FC<SalesProps> = ({
   products, 
   shopName = 'Kiran General Store',
   onSaleComplete,
-  initialTab = 'pos'
+  initialTab = 'pos',
+  focusSaleId = null
 }) => {
   const { t } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'pos' | 'history'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'pos' | 'history'>(focusSaleId ? 'history' : initialTab);
 
   // Live sales hook connected to Firestore and real-time counter updates
   const { 
-    sales, 
+    sales: rawSales, 
     loading: salesLoading, 
+    loadError: salesLoadError,
     recordSale, 
-    deleteSale, 
     refreshSales 
   } = useSales();
+
+  const productNamesById = useMemo(
+    () => new Map(products.map((p) => [p.id, { name: p.name, unit: p.unit }])),
+    [products]
+  );
+  const sales = useMemo(
+    () => rawSales.map((sale) => withCatalogNames(sale, productNamesById)),
+    [rawSales, productNamesById]
+  );
 
   // POS State
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -77,6 +112,7 @@ export const Sales: React.FC<SalesProps> = ({
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
   const [lastSaleTotal, setLastSaleTotal] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
+  const checkoutInFlight = useRef(false);
   const [saleError, setSaleError] = useState<string | null>(null);
   const [showVoiceModal, setShowVoiceModal] = useState(false);
 
@@ -117,8 +153,30 @@ export const Sales: React.FC<SalesProps> = ({
   const [historyPeriod, setHistoryPeriod] = useState<'today' | '7days' | '30days' | 'all'>('all');
   const [historyPaymentMethod, setHistoryPaymentMethod] = useState<'All' | 'Cash' | 'UPI' | 'Card'>('All');
   const [historySearch, setHistorySearch] = useState('');
-  const [deletingSale, setDeletingSale] = useState<Sale | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [receiptLookupError, setReceiptLookupError] = useState<string | null>(null);
+  const successTitleId = useId();
+  const successRef = useDialog<HTMLDivElement>({ isOpen: showSuccessModal && !showReceiptModal, onClose: () => setShowSuccessModal(false), lockScroll: true });
+  const { isPrinting: isPrintingReport, requestPrint: printReport } = usePrintRequest();
+
+  // Open the bill chosen in global search (fetched directly if it is older than the loaded history).
+  useEffect(() => {
+    if (!focusSaleId) return;
+    let cancelled = false;
+    getSaleById(focusSaleId).then((found) => {
+      if (cancelled) return;
+      if (found) {
+        setSelectedReceiptSale(withCatalogNames(found, productNamesById));
+        setShowReceiptModal(true);
+      } else {
+        setReceiptLookupError('That bill could not be loaded. Check your connection and try again.');
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Runs once per search request; the page is re-mounted for the next one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusSaleId]);
 
   // ---------------------------------------------------------------------------
   // Cart Actions
@@ -164,7 +222,9 @@ export const Sales: React.FC<SalesProps> = ({
   // Complete Sale (Checkout)
   // ---------------------------------------------------------------------------
   const handleCompleteSale = async () => {
-    if (cart.length === 0 || isProcessing) return;
+    // The ref blocks a second tap that arrives before React re-renders the disabled button.
+    if (cart.length === 0 || isProcessing || checkoutInFlight.current) return;
+    checkoutInFlight.current = true;
     setIsProcessing(true);
     setSaleError(null);
 
@@ -189,25 +249,11 @@ export const Sales: React.FC<SalesProps> = ({
       setCustomerName('');
       onSaleComplete?.(sale);
     } catch (err: any) {
-      setSaleError(err.message || 'Transaction failed. Please check stock and try again.');
+      // The cart is kept so the sale can be retried after fixing the problem.
+      setSaleError(describeError(err, 'Transaction failed. Please check stock and try again.'));
     } finally {
       setIsProcessing(false);
-    }
-  };
-
-  // ---------------------------------------------------------------------------
-  // Delete Past Sale
-  // ---------------------------------------------------------------------------
-  const handleConfirmDelete = async () => {
-    if (!deletingSale) return;
-    setIsDeleting(true);
-    try {
-      await deleteSale(deletingSale.id, true);
-      setDeletingSale(null);
-    } catch (err: any) {
-      alert(err.message || 'Failed to delete sale.');
-    } finally {
-      setIsDeleting(false);
+      checkoutInFlight.current = false;
     }
   };
 
@@ -334,12 +380,23 @@ export const Sales: React.FC<SalesProps> = ({
             <Button
               variant="outline"
               size="sm"
+              onClick={printReport}
+              disabled={filteredHistorySales.length === 0}
+              className="rounded-xl text-xs font-bold"
+              icon={<Printer className="w-3.5 h-3.5" />}
+              title="Print the bills currently shown"
+            >
+              Print report
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => refreshSales()}
               disabled={salesLoading}
               className="rounded-xl text-xs font-bold"
               icon={<RefreshCw className={`w-3.5 h-3.5 ${salesLoading ? 'animate-spin' : ''}`} />}
             >
-              Sync
+              {salesLoading ? 'Syncing…' : 'Sync'}
             </Button>
             <Button
               variant="primary"
@@ -629,8 +686,9 @@ export const Sales: React.FC<SalesProps> = ({
                 </div>
 
                 {saleError && (
-                  <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-xl mt-2">
-                    {saleError}
+                  <div role="alert" className="p-2.5 bg-rose-50 border border-rose-300 text-rose-800 text-xs font-bold rounded-xl mt-2 flex items-start gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px text-rose-600" aria-hidden="true" />
+                    <span>Sale not recorded. {saleError} Your bill items are kept so you can try again.</span>
                   </div>
                 )}
 
@@ -649,7 +707,8 @@ export const Sales: React.FC<SalesProps> = ({
                     variant="primary"
                     size="lg"
                     className="w-full font-black text-base py-4 rounded-2xl shadow-md shadow-emerald-600/20 min-h-[50px]"
-                    disabled={cart.length === 0 || isProcessing}
+                    disabled={cart.length === 0}
+                    loading={isProcessing}
                     onClick={handleCompleteSale}
                     icon={<CheckCircle2 className="w-5 h-5" />}
                   >
@@ -814,13 +873,43 @@ export const Sales: React.FC<SalesProps> = ({
               </div>
 
               {salesLoading && (
-                <span className="text-xs font-bold text-emerald-600 animate-pulse">
-                  Syncing live sales...
+                <span role="status" className="text-xs font-bold text-emerald-700 flex items-center gap-1.5">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                  Loading sales…
                 </span>
               )}
             </div>
 
-            {filteredHistorySales.length > 0 ? (
+            {(salesLoadError || receiptLookupError) && (
+              <div role="alert" className="m-4 p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs sm:text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" aria-hidden="true" />
+                  <div>
+                    <p className="font-black">{receiptLookupError ? 'Bill could not be opened.' : 'Sales history could not be loaded.'}</p>
+                    <p className="font-medium">
+                      {receiptLookupError || describeError({ message: salesLoadError }, 'The server did not respond.')}
+                      {!receiptLookupError && sales.length > 0 ? ' The bills below may be out of date.' : ''}
+                    </p>
+                  </div>
+                </div>
+                {!receiptLookupError && (
+                  <Button variant="outline" size="sm" loading={salesLoading} onClick={() => void refreshSales()} className="shrink-0">
+                    Retry
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {salesLoading && sales.length === 0 && !salesLoadError ? (
+              <div className="divide-y divide-slate-100" aria-hidden="true">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="p-4 space-y-2">
+                    <div className="h-4 w-40 rounded bg-slate-200 animate-pulse" />
+                    <div className="h-3 w-2/3 rounded bg-slate-200 animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            ) : filteredHistorySales.length > 0 ? (
               <div className="divide-y divide-slate-100">
                 {filteredHistorySales.map((sale) => {
                   const { date, time } = formatSaleDateTime(sale.createdAt);
@@ -898,14 +987,6 @@ export const Sales: React.FC<SalesProps> = ({
                           >
                             Receipt
                           </Button>
-                          <button
-                            type="button"
-                            onClick={() => setDeletingSale(sale)}
-                            title="Delete transaction and restore inventory"
-                            className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
                         </div>
                       </div>
 
@@ -920,7 +1001,9 @@ export const Sales: React.FC<SalesProps> = ({
                   No sales found
                 </h4>
                 <p className="text-xs sm:text-sm text-slate-500 max-w-sm mx-auto">
-                  {historySearch || historyPaymentMethod !== 'All' || historyPeriod !== 'all'
+                  {salesLoadError && sales.length === 0
+                    ? 'Sales could not be loaded, so none are shown. Use Retry above.'
+                    : historySearch || historyPaymentMethod !== 'All' || historyPeriod !== 'all'
                     ? 'No sales matched your filters. Try resetting the filters or search keywords.'
                     : 'No sales records currently exist. Ring up customer purchases in Quick POS to start tracking sales history.'}
                 </p>
@@ -957,14 +1040,35 @@ export const Sales: React.FC<SalesProps> = ({
         </div>
       )}
 
+      {isPrintingReport && (
+        <PrintPortal label="Sales report print view">
+          <SalesReportDocument
+            sales={filteredHistorySales}
+            shopName={shopName}
+            totals={historyTotals}
+            filterLabel={[
+              { all: 'All time', today: 'Today', '7days': 'Last 7 days', '30days': 'Last 30 days' }[historyPeriod],
+              historyPaymentMethod === 'All' ? 'all payment methods' : historyPaymentMethod,
+              historySearch.trim() ? `matching “${historySearch.trim()}”` : null,
+            ].filter(Boolean).join(', ')}
+          />
+        </PrintPortal>
+      )}
+
       {/* Sale Complete Success Modal Sheet */}
       {showSuccessModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 max-w-sm w-full text-center shadow-xl border border-slate-200 animate-slide-up sm:animate-fade-in max-h-[90vh] max-h-[90dvh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60">
+          <div
+            ref={successRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={successTitleId}
+            className="bg-white rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 max-w-sm w-full text-center shadow-xl border border-slate-200 animate-slide-up sm:animate-fade-in max-h-[90vh] max-h-[90dvh] overflow-y-auto"
+          >
             <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center mb-3 shadow-inner">
               <Sparkles className="w-8 h-8" />
             </div>
-            <h3 className="text-2xl font-black text-slate-900">{t('sales.saleRecorded')}</h3>
+            <h3 id={successTitleId} className="text-2xl font-black text-slate-900">{t('sales.saleRecorded')}</h3>
             
             {completedSale?.billNumber && (
               <div className="mt-1.5">
@@ -1032,61 +1136,6 @@ export const Sales: React.FC<SalesProps> = ({
         sale={selectedReceiptSale || completedSale}
         shopName={shopName}
       />
-
-      {/* Delete Sale Confirmation Modal */}
-      {deletingSale && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-sm sm:max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 max-h-[90vh] max-h-[90dvh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2.5 text-rose-600 font-extrabold text-lg">
-                <div className="w-9 h-9 rounded-xl bg-rose-50 flex items-center justify-center text-rose-600 shrink-0 border border-rose-200">
-                  <AlertTriangle className="w-5 h-5" />
-                </div>
-                <span>Delete Bill Record</span>
-              </div>
-              <button 
-                onClick={() => setDeletingSale(null)}
-                disabled={isDeleting}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer disabled:opacity-50"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="py-4 space-y-2">
-              <p className="text-sm text-slate-700 font-medium leading-relaxed">
-                Are you sure you want to delete bill <span className="font-extrabold text-slate-900">"{deletingSale.billNumber}"</span> (₹{deletingSale.total})?
-              </p>
-              <p className="text-xs text-rose-700 font-semibold bg-rose-50 p-2.5 rounded-xl border border-rose-200 flex items-center gap-1.5">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-600" />
-                <span>This will cancel the transaction and automatically return the sold items back to your inventory stock.</span>
-              </p>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 mt-2">
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={() => setDeletingSale(null)} 
-                disabled={isDeleting}
-                className="rounded-xl"
-              >
-                Cancel
-              </Button>
-              <Button 
-                type="button" 
-                variant="primary" 
-                onClick={handleConfirmDelete} 
-                disabled={isDeleting}
-                className="bg-rose-600 hover:bg-rose-700 text-white rounded-xl"
-                icon={<Trash2 className="w-4 h-4" />}
-              >
-                {isDeleting ? 'Deleting...' : 'Delete & Restore Stock'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Voice-to-Bill Modal (Phases 3, 6, 7, 8, 10) */}
       <VoiceBillModal

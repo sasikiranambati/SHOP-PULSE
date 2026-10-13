@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import type { SearchOption } from './utils/searchResults';
 import type { PageRoute, Product } from './types';
 import { useAuth } from './hooks/useAuth';
 import { useInventory } from './hooks/useInventory';
@@ -20,7 +21,16 @@ import { Settings } from './pages/Settings';
 
 export function App() {
   const { firebaseUser, userProfile, loading, logout } = useAuth();
-  const { products, addProduct, updateProduct, deleteProduct, increaseStock } = useInventory();
+  const {
+    products,
+    loading: productsLoading,
+    loadError: productsLoadError,
+    refreshInventory,
+    addProduct,
+    updateProduct,
+    deleteProduct,
+    increaseStock,
+  } = useInventory();
 
   const [activePage, setActivePageState] = useState<PageRoute>(() => {
     try {
@@ -50,6 +60,33 @@ export function App() {
 
   const [shopName, setShopName] = useState('Kiran General Store');
 
+  // Requests from global search. Each carries a new key so the page re-mounts once with it.
+  const [inventoryRequest, setInventoryRequest] = useState<{ key: number; query: string; highlightId?: string } | null>(null);
+  const [saleRequest, setSaleRequest] = useState<{ key: number; saleId: string } | null>(null);
+
+  const handleOpenSearchResult = (option: SearchOption) => {
+    if (option.kind === 'product') {
+      setInventoryRequest({ key: Date.now(), query: option.hit.name, highlightId: option.id });
+      setActivePage('inventory');
+    } else if (option.kind === 'sale') {
+      setSaleRequest({ key: Date.now(), saleId: option.id });
+      setActivePage('sales');
+    }
+  };
+
+  const handleShowAllProducts = (query: string) => {
+    setInventoryRequest({ key: Date.now(), query });
+    setActivePage('inventory');
+  };
+
+  // Normal navigation (menus, buttons) drops any pending search request, so returning to a
+  // page later does not re-apply an old search filter.
+  const navigate = (page: PageRoute) => {
+    setInventoryRequest(null);
+    setSaleRequest(null);
+    setActivePage(page);
+  };
+
   // Sync shop name from authenticated user profile
   useEffect(() => {
     if (userProfile?.shopName) {
@@ -75,6 +112,7 @@ export function App() {
     }
   }, [firebaseUser, loading, activePage]);
 
+  // Errors are re-thrown so callers (product form, invoice scanner) never report a failed save as success.
   const handleAddProduct = async (newProd: Omit<Product, 'id'>) => {
     try {
       await addProduct({
@@ -83,13 +121,16 @@ export function App() {
         stock: newProd.stock,
         unit: newProd.unit,
         sellingPrice: newProd.sellingPrice ?? newProd.price,
-        purchasePrice: newProd.purchasePrice ?? 0,
+        // Undefined when unknown; the service stores it as "not recorded" rather than ₹0.
+        purchasePrice: newProd.purchasePrice,
+        mrp: newProd.mrp,
         reorderLevel: newProd.reorderLevel ?? newProd.minStock ?? 10,
         imageUrl: newProd.imageUrl,
         barcode: newProd.barcode,
       });
     } catch (err) {
       console.error('Failed to add product in App:', err);
+      throw err;
     }
   };
 
@@ -147,16 +188,18 @@ export function App() {
 
   // Render app inside DashboardLayout for main app pages (Protected)
   return (
-    <ProtectedRoute setActivePage={setActivePage} fallbackPage="login">
+    <ProtectedRoute setActivePage={navigate} fallbackPage="login">
       <DashboardLayout
         activePage={activePage}
-        setActivePage={setActivePage}
+        setActivePage={navigate}
         shopName={shopName}
         onLogout={handleLogout}
+        onOpenSearchResult={handleOpenSearchResult}
+        onShowAllProducts={handleShowAllProducts}
       >
         {activePage === 'dashboard' && (
           <Dashboard
-            setActivePage={setActivePage}
+            setActivePage={navigate}
             products={products}
             shopName={shopName}
           />
@@ -164,7 +207,13 @@ export function App() {
 
         {activePage === 'inventory' && (
           <Inventory
+            key={inventoryRequest?.key ?? 'inventory'}
+            searchRequest={inventoryRequest}
+            shopName={shopName}
             products={products}
+            loading={productsLoading}
+            loadError={productsLoadError}
+            onRetryLoad={refreshInventory}
             onAddProduct={handleAddProduct}
             onRestock={increaseStock}
             onUpdateProduct={updateProduct}
@@ -173,7 +222,12 @@ export function App() {
         )}
 
         {activePage === 'sales' && (
-          <Sales products={products} shopName={shopName} />
+          <Sales
+            key={saleRequest?.key ?? 'sales'}
+            products={products}
+            shopName={shopName}
+            focusSaleId={saleRequest?.saleId ?? null}
+          />
         )}
 
         {activePage === 'scanner' && (
@@ -181,7 +235,7 @@ export function App() {
             products={products}
             onAddProduct={handleAddProduct}
             onRestock={increaseStock}
-            setActivePage={setActivePage}
+            setActivePage={navigate}
           />
         )}
 
@@ -192,7 +246,7 @@ export function App() {
         {activePage === 'settings' && (
           <Settings
             shopName={shopName}
-            setActivePage={setActivePage}
+            setActivePage={navigate}
             onLogout={handleLogout}
           />
         )}

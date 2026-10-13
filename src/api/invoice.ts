@@ -3,7 +3,7 @@
  * @description API client methods for Invoice Scanner backend endpoints and canonical response mapping.
  */
 
-import { apiClient } from './client';
+import { apiClient, uploadWithProgress, type UploadOptions } from './client';
 import type { Product } from '../types/product';
 import type {
   CanonicalInvoiceItem,
@@ -294,9 +294,13 @@ export const invoiceApi = {
   /**
    * Upload an invoice file to the backend extraction endpoint (multipart; the browser sets the boundary).
    */
-  extractInvoice: async (file: File): Promise<BackendInvoiceExtractResponse> => {
+  extractInvoice: async (file: File, options?: UploadOptions): Promise<BackendInvoiceExtractResponse> => {
     const formData = new FormData();
     formData.append('file', file);
+    // With progress callbacks (browser UI) the upload uses XHR so the bytes sent can be reported.
+    if ((options?.onUploadProgress || options?.onUploadComplete) && typeof XMLHttpRequest !== 'undefined') {
+      return uploadWithProgress<BackendInvoiceExtractResponse>('/api/v1/invoices/extract', formData, options);
+    }
     return apiClient.post<BackendInvoiceExtractResponse>('/api/v1/invoices/extract', formData);
   },
 

@@ -119,3 +119,19 @@ export function handleAppError(error: unknown): AppError {
 export function isOfflineOrNetworkError(error: unknown): boolean {
   return handleAppError(error).category === 'NETWORK';
 }
+
+/**
+ * Turns any thrown value into one short, user-facing sentence for toasts and inline errors.
+ * Keeps the API's own message (already written for users) but never shows stack traces,
+ * multi-line technical output or SQL/database internals; those fall back to `fallback`.
+ */
+export function describeError(error: unknown, fallback: string): string {
+  const raw = typeof error === 'string' ? error : (error as { message?: unknown } | null)?.message;
+  if (typeof raw !== 'string') return fallback;
+  const firstLine = raw.split('\n')[0].trim();
+  const looksTechnical =
+    firstLine.length === 0 ||
+    firstLine.length > 240 ||
+    /traceback|stack trace|\bat [\w$.]+ \(|sqlalchemy|sqlite|psycopg|IntegrityError|OperationalError|SELECT |INSERT |UPDATE .* SET/i.test(raw);
+  return looksTechnical ? fallback : firstLine;
+}

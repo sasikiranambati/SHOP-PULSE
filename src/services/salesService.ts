@@ -11,10 +11,19 @@ import type {
   DailySalesSummary,
   DashboardSalesStats,
   ReceiptData,
+  PaymentMethod,
 } from '../types/sale';
 import { salesApi, type SaleBackend } from '../api/sales';
 import { dashboardApi } from '../api/dashboard';
 import { generateReceipt } from '../utils/receiptGenerator';
+
+const PAYMENT_LABELS: Record<string, PaymentMethod> = { cash: 'Cash', upi: 'UPI', card: 'Card', credit: 'Credit' };
+
+/** The backend stores payment methods in lower case; the UI filters and badges use 'Cash' | 'UPI' | 'Card'. */
+export function normalizePaymentMethod(method: string | null | undefined): PaymentMethod {
+  const key = String(method || 'cash').toLowerCase();
+  return PAYMENT_LABELS[key] || (method as PaymentMethod);
+}
 
 export function mapBackendSaleToFrontend(bs: SaleBackend, productNameMap?: Record<string, string>): Sale {
   const items: SaleItem[] = (bs.items || []).map((item) => {
@@ -46,7 +55,7 @@ export function mapBackendSaleToFrontend(bs: SaleBackend, productNameMap?: Recor
     tax: 0,
     total,
     totalAmount: total,
-    paymentMethod: bs.payment_method as any,
+    paymentMethod: normalizePaymentMethod(bs.payment_method),
     cashierId: 'Staff',
     createdAt: bs.created_at || new Date().toISOString(),
     shopId: bs.shop_id,
@@ -109,15 +118,22 @@ export async function recordSale(
 }
 
 /**
- * Fetch sales history from backend.
+ * Fetch sales history from backend. Throws when the request fails.
+ */
+export async function fetchSales(limit: number = 50): Promise<Sale[]> {
+  const res = await salesApi.getSales({ limit });
+  return res.items.map((s) => mapBackendSaleToFrontend(s));
+}
+
+/**
+ * Fetch sales history from backend, returning an empty list if it cannot be reached.
  */
 export async function getSales(
   options?: number | { limit?: number; period?: 'today' | '7days' | '30days' }
 ): Promise<Sale[]> {
   try {
     const limit = typeof options === 'number' ? options : (options?.limit ?? 50);
-    const res = await salesApi.getSales({ limit });
-    let mapped = res.items.map((s) => mapBackendSaleToFrontend(s));
+    let mapped = await fetchSales(limit);
 
     if (typeof options === 'object' && options?.period) {
       const now = Date.now();
@@ -158,10 +174,12 @@ export async function getSaleById(saleId: string): Promise<Sale | null> {
 }
 
 /**
- * Delete sale placeholder.
+ * Sales are an immutable ledger: the backend has no endpoint to delete a sale or reverse its
+ * stock deduction. This used to resolve without doing anything, which made the UI report a
+ * deletion and stock restore that never happened. It now fails explicitly instead.
  */
-export async function deleteSale(saleId: string, restoreInventory: boolean = true): Promise<void> {
-  console.info('Delete sale requested for:', saleId, 'restore:', restoreInventory);
+export async function deleteSale(_saleId: string, _restoreInventory: boolean = true): Promise<void> {
+  throw new Error('Deleting a recorded sale is not supported. Sales records cannot be changed after checkout.');
 }
 
 /**
@@ -237,14 +255,22 @@ export async function getDashboardSalesStats(): Promise<DashboardSalesStats> {
  */
 export function subscribeToSales(
   callback: (sales: Sale[]) => void,
-  limitCount: number = 50
+  limitCount: number = 50,
+  onError?: (error: unknown) => void
 ): () => void {
   let active = true;
 
   const refresh = async () => {
     if (!active) return;
-    const items = await getSales(limitCount);
-    if (active) callback(items);
+    try {
+      const items = await fetchSales(limitCount);
+      if (active) callback(items);
+    } catch (err) {
+      if (!active) return;
+      console.warn('Failed to load sales history from backend:', err);
+      if (onError) onError(err);
+      else callback([]);
+    }
   };
 
   refresh();

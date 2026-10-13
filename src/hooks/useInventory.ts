@@ -15,6 +15,8 @@ export interface UseInventoryResult {
   lowStockProducts: Product[];
   loading: boolean;
   error: string | null;
+  /** Set when the product list could not be loaded (distinct from an empty catalog). */
+  loadError: string | null;
   addProduct: (input: ProductInput, imageFile?: File) => Promise<Product>;
   updateProduct: (id: string, updates: Partial<ProductInput>, newImageFile?: File) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
@@ -40,6 +42,7 @@ export function useInventory(initialFilters?: ProductQueryFilters): UseInventory
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const categoryFilter = initialFilters?.category;
   const searchFilter = initialFilters?.search;
@@ -55,11 +58,20 @@ export function useInventory(initialFilters?: ProductQueryFilters): UseInventory
 
     setLoading(true);
     setError(null);
+    setLoadError(null);
 
-    const unsubscribe = inventoryService.subscribeToProducts((liveProducts) => {
-      setProducts(liveProducts);
-      setLoading(false);
-    }, { category: categoryFilter, search: searchFilter, status: statusFilter });
+    const unsubscribe = inventoryService.subscribeToProducts(
+      (liveProducts) => {
+        setProducts(liveProducts);
+        setLoadError(null);
+        setLoading(false);
+      },
+      { category: categoryFilter, search: searchFilter, status: statusFilter },
+      (err: any) => {
+        setLoadError(err?.message || 'Products could not be loaded.');
+        setLoading(false);
+      }
+    );
 
     const handleAuthChange = () => {
       setProducts([]);
@@ -76,10 +88,11 @@ export function useInventory(initialFilters?: ProductQueryFilters): UseInventory
   const refreshInventory = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await inventoryService.getProducts(initialFilters);
+      const data = await inventoryService.fetchProducts(initialFilters);
       setProducts(data);
+      setLoadError(null);
     } catch (err: any) {
-      setError(err.message || 'Failed to refresh inventory.');
+      setLoadError(err?.message || 'Products could not be loaded.');
     } finally {
       setLoading(false);
     }
@@ -185,6 +198,7 @@ export function useInventory(initialFilters?: ProductQueryFilters): UseInventory
     lowStockProducts,
     loading,
     error,
+    loadError,
     addProduct,
     updateProduct,
     deleteProduct,

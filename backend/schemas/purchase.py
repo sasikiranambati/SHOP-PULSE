@@ -18,6 +18,12 @@ class PurchaseItemResponse(BaseModel):
     product_id: UUID
     quantity: int
     purchase_price: float
+    # Additional read-only details for viewing/printing a purchase record
+    product_name: Optional[str] = None
+    product_unit: Optional[str] = None
+    line_amount: Optional[float] = None
+    mrp: Optional[float] = None
+    mrp_source: Optional[str] = None
     created_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -26,6 +32,9 @@ class PurchaseResponse(BaseModel):
     id: UUID
     shop_id: UUID
     supplier_id: Optional[UUID] = None
+    supplier_name: Optional[str] = None
+    invoice_number: Optional[str] = None
+    invoice_date: Optional[str] = None
     total_amount: float
     items: List[PurchaseItemResponse]
     created_at: Optional[datetime] = None

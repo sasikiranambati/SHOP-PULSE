@@ -23,3 +23,12 @@ class PurchaseItem(Base):
 
     purchase = relationship("Purchase", back_populates="items")
     product = relationship("Product")
+
+    @property
+    def product_name(self):
+        """Product name for API responses (read-only; not a database column)."""
+        return self.product.name if self.product else None
+
+    @property
+    def product_unit(self):
+        return self.product.unit if self.product else None

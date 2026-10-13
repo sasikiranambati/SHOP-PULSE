@@ -16,6 +16,8 @@ import { PageHeader } from '../components/PageHeader';
 import { LanguageSelectorModal } from '../components/LanguageSelectorModal';
 import type { PageRoute } from '../types';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useToast } from '../hooks/useToast';
+import { describeError } from '../utils/errorHandler';
 
 interface SettingsProps {
   shopName: string;
@@ -31,6 +33,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const { t, currentLanguageMeta } = useLanguage();
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const toast = useToast();
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
@@ -185,14 +188,16 @@ export const Settings: React.FC<SettingsProps> = ({
               try {
                 const { seedDemoData } = await import('../scripts/seedDemoData');
                 const res = await seedDemoData({ overwrite: false });
-                alert(res.message);
-              } catch (e: any) {
-                alert(e.message || 'Seeding failed');
+                if (res.skipped) toast.info('Demo data was not added', { description: res.message });
+                else toast.success('Demo data added', { description: res.message });
+              } catch (e) {
+                toast.error('Demo data could not be added', { description: describeError(e, 'Please try again.') });
               } finally {
                 setIsSeeding(false);
               }
             }}
             disabled={isSeeding}
+            aria-busy={isSeeding || undefined}
             className="text-xs font-bold px-3.5 py-2 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded-xl cursor-pointer transition-all active:scale-95 disabled:opacity-50 shrink-0"
           >
             {isSeeding ? 'Seeding...' : 'Seed Data'}
