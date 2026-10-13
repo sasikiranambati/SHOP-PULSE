@@ -417,6 +417,15 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
         } catch (apiErr: any) {
           console.warn('Backend invoice extraction failed:', apiErr);
           const status = (apiErr as ApiError)?.status;
+          // The server rejected the file itself (empty, unreadable or unsupported). Reading it in the
+          // browser would fail the same way, so show the server's reason instead of a generic error.
+          if (status === 400 || status === 413 || status === 415) {
+            setScanError({
+              title: 'Invoice upload failed',
+              message: describeError(apiErr, 'This file could not be used. Upload a PDF or a photo of the invoice.'),
+            });
+            return;
+          }
           serverNotice =
             status === 0
               ? 'Invoice upload failed: the ShopPulse server could not be reached.'
