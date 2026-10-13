@@ -51,6 +51,7 @@ import { getAccessToken } from '../api/client';
 import {
   recalculateLineTotal,
   summarizeExtractionIssues,
+  describeScanCompletion,
   applyStoreMatch,
   copyStorePrices,
   setPackSizeText,
@@ -343,9 +344,8 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
     if (parsed.items.length === 0) {
       setScanWarning(emptyWarning);
     } else {
-      toast.success('Invoice processed successfully', {
-        description: `${parsed.items.length} line${parsed.items.length === 1 ? '' : 's'} extracted. Review them before adding to stock.`,
-      });
+      const done = describeScanCompletion(parsed.items);
+      toast[done.tone](done.title, { description: done.description });
     }
   };
 
