@@ -222,3 +222,33 @@ export function formatPackSize(item: Pick<InvoiceLineItem, 'packSize' | 'packSiz
   if (item.packSize === null || item.packSize === undefined || String(item.packSize) === '') return '';
   return `${item.packSize}${item.packSizeUnit ? ' ' + item.packSizeUnit : ''}`;
 }
+
+/**
+ * Wording for the "scan finished" notification. It only says the invoice was processed
+ * successfully when no line needs fixing or checking; otherwise it says how many lines do.
+ */
+export function describeScanCompletion(items: InvoiceLineItem[]): {
+  tone: 'success' | 'info';
+  title: string;
+  description: string;
+} {
+  const lines = `${items.length} line${items.length === 1 ? '' : 's'}`;
+  const needsAttention = new Set(
+    summarizeExtractionIssues(items)
+      .filter((g) => g.severity !== 'info')
+      .flatMap((g) => g.itemIds)
+  );
+  if (needsAttention.size === 0) {
+    return {
+      tone: 'success',
+      title: 'Invoice processed successfully',
+      description: `${lines} extracted. Review them before adding to stock.`,
+    };
+  }
+  const n = needsAttention.size;
+  return {
+    tone: 'info',
+    title: 'Invoice read: some values need checking',
+    description: `${lines} extracted; ${n} ${n === 1 ? 'needs' : 'need'} fixing or checking before it can be added to stock.`,
+  };
+}

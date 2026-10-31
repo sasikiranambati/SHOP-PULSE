@@ -1,0 +1,10 @@
+SRI BALAJI WHOLESALE TRADERS
+GSTIN 37ABCDE1234F1Z5
+Invoice No: SBW-4112    Date: 08/10/2026
+
+Sl  Item Description           Qty   Unit   Rate     MRP      Amount
+1   Tata Salt 1kg               20   pkt    22.00    28.00    440.00
+2   Parle-G Biscuits 250g       24   pkt     9.50    12.00    228.00
+3   Red Label Tea 500g          10   pkt   245.00   290.00   2450.00
+
+Grand Total                                                   3118.00

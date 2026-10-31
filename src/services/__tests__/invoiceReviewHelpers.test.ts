@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   summarizeExtractionIssues,
+  describeScanCompletion,
   applyStoreMatch,
   copyStorePrices,
   setPackSizeText,
@@ -164,5 +165,26 @@ describe('pack size editing', () => {
     expect(formatPackSize(edited)).toBe('500g');
     expect(formatPackSize(setPackSizeText(edited, '500g '))).toBe('500g ');
     expect(formatPackSize(setPackSizeText(edited, ''))).toBe('');
+  });
+});
+
+describe('describeScanCompletion', () => {
+  it('reports success only when no line needs fixing or checking', () => {
+    const done = describeScanCompletion([line(), line({ id: 'l2' })]);
+    expect(done.tone).toBe('success');
+    expect(done.title).toBe('Invoice processed successfully');
+  });
+
+  it('does not claim success when a line is unusable', () => {
+    // e.g. a phone photo where the header row was read as an item with no quantity
+    const done = describeScanCompletion([line({ name: 'Item Description HSN', quantity: null, confidence: 40, lowConfidence: true })]);
+    expect(done.tone).toBe('info');
+    expect(done.title).not.toMatch(/success/i);
+    expect(done.description).toContain('1 needs fixing');
+  });
+
+  it('ignores optional notes such as a missing MRP lookup', () => {
+    const done = describeScanCompletion([line({ mrpLookup: { status: 'API_CONFIGURATION_ERROR', provider: 'openmrp', message: '' } as any })]);
+    expect(done.tone).toBe('success');
   });
 });
