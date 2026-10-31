@@ -1,10 +1,57 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --color-primary-forest: #234B3A;
+  --color-primary-forest-dark: #18382B;
+  --color-primary-forest-secondary: #52745D;
+  --color-primary-forest-light: #E5EEE6;
+  --color-cream: #F7F5EF;
+  --color-surface-white: #FFFFFF;
+  --color-text-primary: #202923;
+  --color-text-secondary: #69736C;
+  --color-border-subtle: #E3E5DE;
+  --color-success-forest: #287A4B;
+  --color-warning-amber: #A66A16;
+  --color-error-rose: #B93838;
+  --color-info-blue: #3567A8;
+}
+
 @layer base {
   :root {
-    --color-emerald-500: #10b981;
-    --color-emerald-600: #059669;
-    --color-emerald-700: #047857;
+    /* Cream + Forest Green SaaS Design Tokens */
+    --background: #F7F5EF;
+    --surface: #FFFFFF;
+    --surface-subtle: #F2EFE9;
+    --primary: #234B3A;
+    --primary-hover: #18382B;
+    --primary-dark: #18382B;
+    --primary-secondary: #52745D;
+    --primary-light: #E5EEE6;
+    --heading: #202923;
+    --text: #202923;
+    --muted: #69736C;
+    --border: #E3E5DE;
+    --border-subtle: #E3E5DE;
+    --border-focus: #234B3A;
+    --success: #287A4B;
+    --success-light: #E5EEE6;
+    --warning: #A66A16;
+    --warning-light: #FEF9EB;
+    --danger: #B93838;
+    --danger-light: #FDF2F2;
+    --info: #3567A8;
+    --info-light: #EEF4FC;
+
+    /* Radius and Shadow Tokens */
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+    --radius-xl: 12px;
+    --shadow-card: 0 1px 3px 0 rgba(24, 56, 43, 0.04), 0 1px 2px 0 rgba(24, 56, 43, 0.02);
+    --shadow-dropdown: 0 4px 12px 0 rgba(24, 56, 43, 0.08);
+
+    /* Safe Area insets */
     --safe-area-top: env(safe-area-inset-top, 0px);
     --safe-area-bottom: env(safe-area-inset-bottom, 0px);
     --safe-area-left: env(safe-area-inset-left, 0px);
@@ -22,12 +69,11 @@
   }
 
   body {
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-    background-color: #f8fafc;
-    color: #0f172a;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    background-color: var(--background, #F7F5EF);
+    color: var(--text, #202923);
     min-height: 100vh;
     min-height: 100dvh;
-    overflow-x: hidden;
     padding-left: var(--safe-area-left);
     padding-right: var(--safe-area-right);
   }
@@ -65,9 +111,9 @@
   display: none;
 }
 
-/* Micro-animations and utility transitions */
+/* Subtle micro-animations and utility transitions */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(3px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -78,43 +124,55 @@
 
 @keyframes pulseGlow {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  50% { opacity: 0.6; }
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.25s ease-out forwards;
+  animation: fadeIn 0.18s ease-out forwards;
 }
 
 .animate-slide-up {
-  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .animate-pulse-glow {
   animation: pulseGlow 2s infinite ease-in-out;
 }
 
-/* Common UI Helper Classes */
+/* Common UI Helper Classes - Cream + Forest Green SaaS Tokens */
 .btn-primary {
-  @apply bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] text-white font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 text-sm sm:text-base cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 min-h-[44px];
+  @apply bg-[#234B3A] hover:bg-[#18382B] active:bg-[#142e23] active:scale-[0.99] text-white font-bold px-4 py-2.5 rounded-lg shadow-xs transition-all duration-150 flex items-center justify-center gap-2 text-sm sm:text-base cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 min-h-[44px];
 }
 
 .btn-secondary {
-  @apply bg-slate-100 hover:bg-slate-200 active:bg-slate-300 active:scale-[0.98] text-slate-800 font-bold px-4 py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 text-sm sm:text-base cursor-pointer border border-slate-300 min-h-[44px];
+  @apply bg-white hover:bg-[#F7F5EF] active:bg-[#E5EEE6] active:scale-[0.99] text-[#202923] font-bold px-4 py-2.5 rounded-lg transition-all duration-150 flex items-center justify-center gap-2 text-sm sm:text-base cursor-pointer border border-[#E3E5DE] shadow-2xs min-h-[44px];
+}
+
+.btn-outline {
+  @apply bg-transparent hover:bg-[#E5EEE6] text-[#234B3A] font-bold px-4 py-2.5 rounded-lg border border-[#234B3A] transition-all duration-150 flex items-center justify-center gap-2 text-sm sm:text-base cursor-pointer min-h-[44px];
+}
+
+.btn-ghost {
+  @apply bg-transparent hover:bg-[#E5EEE6] text-[#234B3A] font-bold px-3 py-2 rounded-lg transition-all duration-150 flex items-center justify-center gap-2 text-sm cursor-pointer min-h-[40px];
 }
 
 .btn-danger {
-  @apply bg-rose-600 hover:bg-rose-700 active:bg-rose-800 active:scale-[0.98] text-white font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 text-sm sm:text-base cursor-pointer min-h-[44px];
+  @apply bg-[#B93838] hover:bg-[#9e2d2d] active:bg-[#852525] active:scale-[0.99] text-white font-bold px-4 py-2.5 rounded-lg shadow-xs transition-all duration-150 flex items-center justify-center gap-2 text-sm sm:text-base cursor-pointer min-h-[44px];
 }
 
 .card-base {
-  @apply bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 sm:p-5 transition-all;
+  @apply bg-white rounded-xl border border-[#E3E5DE] shadow-xs p-5 sm:p-6 transition-all;
+}
+
+.input-base {
+  @apply w-full rounded-lg border border-[#E3E5DE] bg-white px-3.5 py-2.5 text-sm text-[#202923] placeholder-[#69736C] min-h-[44px] transition-colors duration-150 focus:border-[#234B3A] focus:outline-none focus:ring-2 focus:ring-[#234B3A]/20 disabled:bg-[#F7F5EF] disabled:cursor-not-allowed;
 }
 
 /* Accessibility focus ring */
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible,
 textarea:focus-visible, summary:focus-visible, [role="button"]:focus-visible,
 [role="option"]:focus-visible, [tabindex]:focus-visible {
-  outline: 2px solid #059669;
+  outline: 2px solid var(--primary, #234B3A);
   outline-offset: 2px;
 }
 
@@ -140,6 +198,12 @@ textarea[aria-invalid="true"] {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  /* Retain slow, non-jarring rotation for essential loading spinners so users know operations are in-flight */
+  .animate-spin {
+    animation-duration: 2s !important;
+    animation-iteration-count: infinite !important;
   }
 }
 

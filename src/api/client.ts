@@ -4,12 +4,15 @@
  * Belongs in `src/api/client.ts`.
  */
 
-const rawUrl = (import.meta.env.VITE_API_URL || '').trim();
-// In local development, if VITE_API_URL is empty or refers to localhost/127.0.0.1, use ''
+const env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : {} as any;
+const rawUrl = (env.VITE_API_URL || '').trim();
+// In local browser development, if VITE_API_URL is empty or refers to localhost/127.0.0.1, use ''
 // so requests are proxied by Vite (/api -> http://127.0.0.1:8000), avoiding CORS and IPv4/IPv6 localhost issues.
-const API_BASE_URL = (import.meta.env.DEV && (rawUrl === '' || rawUrl.includes('localhost') || rawUrl.includes('127.0.0.1')))
+// In Node.js CLI environments (tests/scripts), fallback to http://127.0.0.1:8000 since fetch requires an absolute URL.
+const isBrowser = typeof window !== 'undefined' && Boolean(window.location?.origin);
+const API_BASE_URL = (isBrowser && env.DEV && (rawUrl === '' || rawUrl.includes('localhost') || rawUrl.includes('127.0.0.1')))
   ? ''
-  : rawUrl.replace(/\/+$/, '');
+  : (rawUrl ? rawUrl.replace(/\/+$/, '') : 'http://127.0.0.1:8000');
 const TOKEN_KEY = 'shoppulse_token';
 const NETWORK_ERROR_MESSAGE =
   'Unable to connect to ShopPulse backend server. Please verify the backend is running on http://127.0.0.1:8000.';

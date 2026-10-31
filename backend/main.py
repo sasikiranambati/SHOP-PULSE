@@ -60,6 +60,21 @@ def init_db_schema(bind=None):
                     logger.error("Schema migration failed for %s.%s: %s", table, name, exc)
                     raise
 
+        # Ensure high-traffic query indexes exist for SQLite / PostgreSQL
+        indexes_to_ensure = [
+            ("ix_sale_items_sale_id", "sale_items", "sale_id"),
+            ("ix_sale_items_product_id", "sale_items", "product_id"),
+            ("ix_sales_shop_id_created_at", "sales", "shop_id, created_at"),
+        ]
+        for idx_name, table, cols in indexes_to_ensure:
+            if table not in tables:
+                continue
+            try:
+                conn.execute(text(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table} ({cols})"))
+                conn.commit()
+            except Exception as exc:
+                logger.debug("Index creation %s skipped: %s", idx_name, exc)
+
 init_db_schema()
 
 app = FastAPI(
@@ -93,5 +108,5 @@ def root():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=settings.PORT, reload=True)
+    uvicorn.run("main:app", host="127.0.0.1", port=settings.PORT, reload=True, reload_dirs=[str(_backend_dir)])
 

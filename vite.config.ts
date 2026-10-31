@@ -12,20 +12,43 @@ function autoBackendPlugin(): Plugin {
     name: 'auto-start-backend',
     apply: 'serve',
     configureServer() {
-      // Check if backend is already alive on port 8000
-      const req = http.get('http://127.0.0.1:8000/api/v1/health', (res) => {
-        if (res.statusCode === 200) {
-          console.log('\x1b[32m[ShopPulse] FastAPI backend is already running on http://127.0.0.1:8000\x1b[0m');
-        }
-      });
-
-      req.on('error', () => {
+      let resolved = false;
+      const triggerStart = () => {
+        if (resolved) return;
+        resolved = true;
         console.log('\x1b[36m[ShopPulse] FastAPI backend not detected on port 8000. Auto-starting backend...\x1b[0m');
         try {
           backendProc = startBackend();
         } catch (err: any) {
           console.error('[ShopPulse] Failed to auto-start backend:', err?.message);
         }
+      };
+
+      // Check if backend is already alive on port 8000 with a fast 350ms timeout
+      const req = http.get(
+        {
+          hostname: '127.0.0.1',
+          port: 8000,
+          path: '/api/v1/health',
+          timeout: 350,
+        },
+        (res) => {
+          if (res.statusCode === 200) {
+            resolved = true;
+            console.log('\x1b[32m[ShopPulse] FastAPI backend is already running on http://127.0.0.1:8000\x1b[0m');
+          } else {
+            triggerStart();
+          }
+        }
+      );
+
+      req.on('timeout', () => {
+        req.destroy();
+        triggerStart();
+      });
+
+      req.on('error', () => {
+        triggerStart();
       });
 
       const killProc = () => {
@@ -47,9 +70,22 @@ function autoBackendPlugin(): Plugin {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss(), autoBackendPlugin()],
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'lucide-react'],
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,
+    watch: {
+      ignored: [
+        '**/backend/**',
+        '**/android/**',
+        '**/.pytest_cache/**',
+        '**/.ocr-cache/**',
+        '**/dist/**',
+        '**/*.db*',
+      ],
+    },
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8000',
@@ -82,6 +118,9 @@ export default defineConfig({
           }
           if (id.includes('node_modules/lucide-react/')) {
             return 'vendor-icons';
+          }
+          if (id.includes('node_modules/pdfjs-dist/')) {
+            return 'vendor-pdfjs';
           }
           if (id.includes('node_modules/tesseract.js')) {
             return 'vendor-ocr';

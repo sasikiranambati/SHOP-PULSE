@@ -66,6 +66,13 @@ export interface BackendCanonicalInvoiceItem {
   matched_product_id?: string | null;
   matched_product_name?: string | null;
   match_score?: number | null;
+  pack_size?: number | null;
+  pack_size_unit?: string | null;
+  classification_status?: string;
+  is_grocery?: boolean;
+  brand?: string | null;
+  normalized_name?: string | null;
+  category?: string;
 }
 
 export interface BackendDiagnostics {
@@ -100,6 +107,10 @@ export interface BackendInvoiceExtractResponse {
   status?: string;
   reason?: string | null;
   diagnostics?: BackendDiagnostics | null;
+  excel_download_url?: string | null;
+  total_grocery_items?: number;
+  total_review_items?: number;
+  total_excluded_items?: number;
 }
 
 export interface BackendInvoiceConfirmRequest {
@@ -201,6 +212,13 @@ export function mapBackendItemToCanonical(item: BackendCanonicalInvoiceItem): Ca
     sourceText: item.source_text || '',
     extractionMethod: (item.extraction_method || 'TABLE_STRUCTURED') as ExtractionMethod,
     validationIssues: item.validation_issues || [],
+    packSize: toNum(item.pack_size),
+    packSizeUnit: item.pack_size_unit ?? null,
+    classificationStatus: item.classification_status ?? 'GROCERY_CONFIDENT',
+    isGrocery: item.is_grocery ?? true,
+    brand: item.brand ?? null,
+    normalizedName: item.normalized_name ?? null,
+    category: item.category ?? 'Groceries',
   };
 }
 
@@ -287,6 +305,10 @@ export function mapBackendResponseToParsedInvoice(
       mrpProvider: diag?.mrp_provider ?? null,
     },
     notices: diag?.warnings || [],
+    excelDownloadUrl: res.excel_download_url || undefined,
+    totalGroceryItems: res.total_grocery_items ?? 0,
+    totalReviewItems: res.total_review_items ?? 0,
+    totalExcludedItems: res.total_excluded_items ?? 0,
   };
 }
 

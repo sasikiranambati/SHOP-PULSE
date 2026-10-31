@@ -10,8 +10,8 @@ class SaleItem(Base):
     __tablename__ = "sale_items"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    sale_id = Column(UUID(as_uuid=True), ForeignKey("sales.id"), nullable=False)
-    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
+    sale_id = Column(UUID(as_uuid=True), ForeignKey("sales.id"), nullable=False, index=True)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False, index=True)
     quantity = Column(Integer, nullable=False)
     unit_price = Column(Float, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

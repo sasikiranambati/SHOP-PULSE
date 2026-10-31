@@ -175,11 +175,11 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onO
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="bg-white w-full h-full sm:h-auto sm:max-h-[75vh] sm:max-w-2xl sm:rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden"
+        className="bg-white w-full h-full sm:h-auto sm:max-h-[75vh] sm:max-w-2xl sm:rounded-xl shadow-xl border border-[#E2E8F0] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id={titleId} className="sr-only">Search ShopPulse</h2>
-        <div className="flex items-center gap-2 p-3 border-b border-slate-200 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] sm:pt-3">
+        <div className="flex items-center gap-2 p-3 border-b border-[#E2E8F0] pt-[calc(0.75rem+env(safe-area-inset-top,0px))] sm:pt-3">
           <Search className="w-5 h-5 text-slate-400 shrink-0 ml-1" aria-hidden="true" />
           <input
             ref={inputRef}
@@ -197,14 +197,14 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onO
             value={query}
             onChange={(e) => handleQueryChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="flex-1 min-w-0 py-2 text-base bg-transparent focus:outline-none"
+            className="flex-1 min-w-0 py-2 text-base text-[#202923] placeholder:text-[#69736C] bg-transparent focus:outline-none"
           />
-          {status === 'loading' && <Loader2 className="w-4 h-4 text-emerald-600 animate-spin shrink-0" aria-hidden="true" />}
+          {status === 'loading' && <Loader2 className="w-4 h-4 text-[#234B3A] animate-spin shrink-0" aria-hidden="true" />}
           <button
             type="button"
             onClick={close}
             aria-label="Close search"
-            className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 cursor-pointer shrink-0"
+            className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-[#69736C] bg-[#F7F5EF] hover:bg-[#E5EEE6] cursor-pointer shrink-0"
           >
             <span className="hidden sm:inline">Esc</span>
             <X className="w-4 h-4 sm:hidden" aria-hidden="true" />
@@ -284,16 +284,16 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onO
                           tabIndex={-1}
                           onMouseEnter={() => setActiveIndex(index)}
                           onClick={() => choose(option)}
-                          className={`mx-2 px-3 py-2.5 rounded-xl flex items-center gap-3 cursor-pointer ${
-                            isActive ? 'bg-emerald-50 ring-1 ring-emerald-300' : 'hover:bg-slate-50'
+                          className={`mx-2 px-3 py-2.5 rounded-lg flex items-center gap-3 cursor-pointer ${
+                            isActive ? 'bg-[#E5EEE6] ring-1 ring-[#52745D]/40' : 'hover:bg-slate-50'
                           }`}
                         >
-                          <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-emerald-700' : 'text-slate-400'}`} aria-hidden="true" />
+                          <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#234B3A]' : 'text-slate-400'}`} aria-hidden="true" />
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-bold text-slate-900 truncate">{title}</p>
-                            <p className="text-xs text-slate-500 truncate">{meta}</p>
+                            <p className="text-sm font-bold text-[#202923] truncate">{title}</p>
+                            <p className="text-xs text-[#69736C] truncate">{meta}</p>
                           </div>
-                          {isActive && <CornerDownLeft className="w-4 h-4 text-emerald-700 shrink-0 hidden sm:block" aria-hidden="true" />}
+                          {isActive && <CornerDownLeft className="w-4 h-4 text-[#234B3A] shrink-0 hidden sm:block" aria-hidden="true" />}
                         </div>
                       );
                     })}
@@ -311,7 +311,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onO
                   onShowAllProducts(trimmed);
                   close();
                 }}
-                className="text-xs font-black text-emerald-700 hover:text-emerald-900 underline underline-offset-2 cursor-pointer"
+                className="text-xs font-bold text-[#234B3A] hover:underline underline-offset-2 cursor-pointer"
               >
                 Show all {productGroup.total} matching products in Stock Catalog
               </button>
@@ -319,7 +319,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onO
           )}
         </div>
 
-        <div className="hidden sm:flex items-center gap-4 px-4 py-2 border-t border-slate-200 text-[11px] text-slate-500 font-semibold">
+        <div className="hidden sm:flex items-center gap-4 px-4 py-2 border-t border-[#E2E8F0] text-[11px] text-slate-500 font-semibold">
           <span><kbd className="font-sans px-1 rounded border border-slate-300">↑</kbd> <kbd className="font-sans px-1 rounded border border-slate-300">↓</kbd> to move</span>
           <span><kbd className="font-sans px-1 rounded border border-slate-300">Enter</kbd> to open</span>
           <span><kbd className="font-sans px-1 rounded border border-slate-300">Esc</kbd> to close</span>

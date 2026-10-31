@@ -208,6 +208,11 @@ export interface CanonicalInvoiceItem extends LineEvidence {
   validationStatus?: TableValidationStatus;
   reviewReasons?: string[];
   fieldConfidence?: FieldConfidence;
+  classificationStatus?: 'GROCERY_CONFIDENT' | 'GROCERY_REVIEW' | 'NON_GROCERY' | 'UNKNOWN_REVIEW' | string;
+  isGrocery?: boolean;
+  brand?: string | null;
+  normalizedName?: string | null;
+  category?: string;
 }
 
 /**
@@ -268,6 +273,10 @@ export interface InvoiceLineItem extends LineEvidence {
   validationStatus?: TableValidationStatus;
   reviewReasons?: string[];
   fieldConfidence?: FieldConfidence;
+  classificationStatus?: 'GROCERY_CONFIDENT' | 'GROCERY_REVIEW' | 'NON_GROCERY' | 'UNKNOWN_REVIEW' | string;
+  isGrocery?: boolean;
+  brand?: string | null;
+  normalizedName?: string | null;
   inventoryData?: {
     id?: string;
     name?: string;
@@ -381,4 +390,8 @@ export interface ParsedInvoice {
   };
   /** Shown above the review table, e.g. when the server could not be used */
   notices?: string[];
+  excelDownloadUrl?: string;
+  totalGroceryItems?: number;
+  totalReviewItems?: number;
+  totalExcludedItems?: number;
 }

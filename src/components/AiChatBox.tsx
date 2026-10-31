@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useId } from 'react';
 import { Bot, X, Send, Sparkles, User, MessageSquare } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useDialog } from '../hooks/useDialog';
 
 interface ChatMessage {
   id: string;
@@ -161,6 +162,27 @@ export const AiChatBox: React.FC = () => {
     }, 800);
   };
 
+  const [hasCart, setHasCart] = useState(false);
+  const titleId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const panelRef = useDialog<HTMLDivElement>({
+    isOpen,
+    onClose: () => setIsOpen(false),
+    initialFocusRef: inputRef,
+  });
+
+  // Detect mobile cart presence so the floating trigger smoothly elevates above the cart bar
+  useEffect(() => {
+    const checkCart = () => {
+      setHasCart(document.body.getAttribute('data-mobile-cart-active') === 'true');
+    };
+    checkCart();
+    const observer = new MutationObserver(checkCart);
+    observer.observe(document.body, { attributes: true, attributeFilter: ['data-mobile-cart-active'] });
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <>
       {/* Floating Toggle Button */}
@@ -168,67 +190,82 @@ export const AiChatBox: React.FC = () => {
         <button
           onClick={() => setIsOpen(true)}
           aria-label="Open ShopPulse Assistant"
-          className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:bottom-6 right-3.5 sm:right-4 z-30 bg-slate-900 hover:bg-slate-800 text-white p-3 sm:p-3.5 rounded-full shadow-xl ring-4 ring-emerald-500/20 flex items-center gap-2 active:scale-95 transition-all cursor-pointer group min-h-[44px]"
+          className={`fixed ${
+            hasCart 
+              ? 'bottom-[calc(8.75rem+env(safe-area-inset-bottom,0px))]' 
+              : 'bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))]'
+          } md:bottom-6 right-3.5 sm:right-4 z-30 bg-[#234B3A] hover:bg-[#18382B] text-white p-2.5 sm:p-3.5 rounded-full shadow-lg ring-4 ring-[#234B3A]/20 flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer group min-h-[44px] min-w-[44px]`}
           title="Open ShopPulse Assistant"
         >
-          <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-emerald-600 flex items-center justify-center text-white shrink-0 group-hover:scale-110 transition-transform">
-            <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-[#18382B] flex items-center justify-center text-white shrink-0 group-hover:scale-110 transition-transform">
+            <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-300" />
           </div>
-          <span className="text-xs font-black pr-1 hidden sm:inline">Shop Assistant</span>
+          <span className="text-xs font-bold pr-1 hidden sm:inline">Shop Assistant</span>
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
         </button>
       )}
 
       {/* Assistant Modal / Drawer Sheet */}
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white w-full max-w-lg h-[88vh] h-[88dvh] sm:h-[620px] rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-slide-up sm:animate-fade-in">
+        <div 
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-xs"
+          onClick={() => setIsOpen(false)}
+        >
+          <div 
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            className="bg-white w-full max-w-lg h-[88vh] h-[88dvh] sm:h-[620px] rounded-t-2xl sm:rounded-xl shadow-xl border border-[#E3E5DE] flex flex-col overflow-hidden animate-slide-up sm:animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+          >
             
             {/* Header */}
-            <div className="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0 border-b border-slate-800">
+            <div className="bg-[#234B3A] text-white p-4 flex items-center justify-between shrink-0 border-b border-[#18382B]">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-600 flex items-center justify-center text-white shadow-sm shrink-0">
-                  <Bot className="w-6 h-6" />
+                <div className="w-10 h-10 rounded-xl bg-[#18382B] flex items-center justify-center text-white shadow-sm shrink-0 border border-white/10">
+                  <Bot className="w-6 h-6 text-emerald-300" aria-hidden="true" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-base tracking-tight flex items-center gap-1.5">
+                  <h2 id={titleId} className="font-bold text-base tracking-tight flex items-center gap-1.5">
                     <span>{t('chatbot.title')}</span>
-                    <span className="text-[10px] bg-emerald-500/30 text-emerald-300 px-2 py-0.5 rounded-full font-bold border border-emerald-500/40">
+                    <span className="text-[10px] bg-white/20 text-emerald-200 px-2 py-0.5 rounded-full font-bold border border-white/20">
                       {t('chatbot.badge')}
                     </span>
-                  </h3>
-                  <p className="text-xs text-slate-300 font-medium">{t('chatbot.subtitle')}</p>
+                  </h2>
+                  <p className="text-xs text-emerald-100 font-medium">{t('chatbot.subtitle')}</p>
                 </div>
               </div>
 
               <button
+                type="button"
                 onClick={() => setIsOpen(false)}
                 aria-label="Close assistant"
-                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
+                className="w-10 h-10 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer min-h-[40px] min-w-[40px]"
               >
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5" aria-hidden="true" />
               </button>
             </div>
 
             {/* Chat Messages Body */}
-            <div className="flex-1 p-3.5 sm:p-4 overflow-y-auto space-y-3.5 bg-slate-50">
+            <div className="flex-1 p-3.5 sm:p-4 overflow-y-auto space-y-3.5 bg-[#F8FAFC]">
               {messages.map((msg) => (
                 <div
                   key={msg.id}
                   className={`flex gap-2.5 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
                   {msg.sender === 'bot' && (
-                    <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-xs shrink-0 mt-1 shadow-xs">
+                    <div className="w-7 h-7 rounded-lg bg-[#234B3A] text-white flex items-center justify-center text-xs shrink-0 mt-1 shadow-xs">
                       <Sparkles className="w-4 h-4" />
                     </div>
                   )}
 
                   <div className={`max-w-[85%] sm:max-w-[82%] ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
                     <div
-                      className={`p-3 sm:p-3.5 rounded-2xl text-xs sm:text-sm font-medium leading-relaxed ${
+                      className={`p-3 sm:p-3.5 rounded-xl text-xs sm:text-sm font-medium leading-relaxed ${
                         msg.sender === 'user'
-                          ? 'bg-emerald-600 text-white rounded-tr-xs shadow-xs'
-                          : 'bg-white text-slate-800 border border-slate-200/90 rounded-tl-xs shadow-xs'
+                          ? 'bg-[#234B3A] text-white rounded-tr-xs shadow-xs'
+                          : 'bg-white text-[#202923] border border-[#E3E5DE] rounded-tl-xs shadow-xs'
                       }`}
                     >
                       {msg.text.split('\n').map((line, i) => (
@@ -236,14 +273,14 @@ export const AiChatBox: React.FC = () => {
                       ))}
                     </div>
 
-                    <p className={`text-[10px] text-slate-400 font-semibold mt-1 px-1 ${msg.sender === 'user' ? 'text-right' : 'text-left'}`}>
+                    <p className={`text-[10px] text-[#69736C] font-semibold mt-1 px-1 ${msg.sender === 'user' ? 'text-right' : 'text-left'}`}>
                       {msg.time}
                     </p>
 
                     {/* Quick Suggestion Chips */}
                     {msg.suggestions && msg.suggestions.length > 0 && (
                       <div className="mt-3 space-y-1.5">
-                        <p className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
+                        <p className="text-[11px] font-bold text-[#69736C] uppercase tracking-wider">
                           {t('chatbot.suggestedHeading')}
                         </p>
                         <div className="flex flex-wrap gap-1.5">
@@ -251,9 +288,9 @@ export const AiChatBox: React.FC = () => {
                             <button
                               key={idx}
                               onClick={() => handleSendMessage(chip)}
-                              className="text-left text-xs font-bold text-slate-700 bg-white hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 border border-slate-200 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer shadow-2xs active:scale-95 flex items-center gap-1.5 min-h-[36px]"
+                              className="text-left text-xs font-semibold text-[#202923] bg-white hover:bg-[#E5EEE6] hover:text-[#234B3A] hover:border-[#52745D]/40 border border-[#E3E5DE] px-2.5 py-1.5 rounded-lg transition-all cursor-pointer shadow-2xs active:scale-95 flex items-center gap-1.5 min-h-[36px]"
                             >
-                              <MessageSquare className="w-3 h-3 text-slate-400 shrink-0" />
+                              <MessageSquare className="w-3 h-3 text-[#69736C] shrink-0" />
                               <span>{chip}</span>
                             </button>
                           ))}
@@ -263,7 +300,7 @@ export const AiChatBox: React.FC = () => {
                   </div>
 
                   {msg.sender === 'user' && (
-                    <div className="w-7 h-7 rounded-xl bg-slate-900 text-white flex items-center justify-center text-xs shrink-0 mt-1 shadow-xs">
+                    <div className="w-7 h-7 rounded-lg bg-[#202923] text-white flex items-center justify-center text-xs shrink-0 mt-1 shadow-xs">
                       <User className="w-4 h-4" />
                     </div>
                   )}
@@ -272,13 +309,13 @@ export const AiChatBox: React.FC = () => {
 
               {isTyping && (
                 <div className="flex items-center gap-2 text-slate-500 text-xs font-semibold p-2">
-                  <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
+                  <div className="w-7 h-7 rounded-lg bg-[#234B3A] text-white flex items-center justify-center">
                     <Sparkles className="w-4 h-4 animate-spin" />
                   </div>
-                  <div className="bg-white border border-slate-200 px-3.5 py-2 rounded-2xl flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-emerald-600 animate-bounce"></span>
-                    <span className="w-2 h-2 rounded-full bg-emerald-600 animate-bounce [animation-delay:0.15s]"></span>
-                    <span className="w-2 h-2 rounded-full bg-emerald-600 animate-bounce [animation-delay:0.3s]"></span>
+                  <div className="bg-white border border-[#E3E5DE] px-3.5 py-2 rounded-xl flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-[#234B3A] animate-bounce"></span>
+                    <span className="w-2 h-2 rounded-full bg-[#234B3A] animate-bounce [animation-delay:0.15s]"></span>
+                    <span className="w-2 h-2 rounded-full bg-[#234B3A] animate-bounce [animation-delay:0.3s]"></span>
                   </div>
                 </div>
               )}
@@ -287,7 +324,7 @@ export const AiChatBox: React.FC = () => {
             </div>
 
             {/* Input Bar with safe-area-inset-bottom */}
-            <div className="p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] bg-white border-t border-slate-200 shrink-0">
+            <div className="p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] bg-white border-t border-[#E3E5DE] shrink-0">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -296,17 +333,19 @@ export const AiChatBox: React.FC = () => {
                 className="flex items-center gap-2"
               >
                 <input
+                  ref={inputRef}
                   type="text"
                   placeholder={t('chatbot.placeholder')}
+                  aria-label={t('chatbot.placeholder')}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm font-medium bg-slate-50 focus:bg-white"
+                  className="flex-1 px-4 py-2.5 rounded-lg border border-[#E3E5DE] focus:outline-none focus:ring-2 focus:ring-[#234B3A]/20 focus:border-[#234B3A] text-base sm:text-sm font-medium bg-[#F7F5EF] focus:bg-white text-[#202923]"
                 />
                 <button
                   type="submit"
                   disabled={!input.trim()}
                   aria-label="Send message"
-                  className="w-10 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0 min-h-[40px] min-w-[40px]"
+                  className="w-10 h-10 rounded-lg bg-[#234B3A] hover:bg-[#18382B] text-white flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0 min-h-[40px] min-w-[40px]"
                 >
                   <Send className="w-4 h-4" />
                 </button>

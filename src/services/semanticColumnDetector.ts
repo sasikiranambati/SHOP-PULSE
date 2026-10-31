@@ -47,6 +47,8 @@ export const COLUMN_SEMANTIC_ALIASES: Record<SemanticColumnType, string[]> = {
     'unit rate', 'rate/unit', 'rate / unit', 'rate', 'unit price', 'price/unit', 'price / unit',
     'rate (₹)', 'rate(₹)', 'price (₹)', 'price(₹)', 'unit cost', 'cost/unit', 'cost / unit',
     'price', 'cost', 'item rate', 'item price', 'basic rate', 'basic price',
+    // OCR misread aliases:
+    'reel', 'rale', 'tate', 'rafe', 'reel unit', 'rale unit',
     // Regional languages:
     'दर', 'प्रति दर', 'ధర', 'రేటు', 'விலை', 'ದರ'
   ],
@@ -57,7 +59,9 @@ export const COLUMN_SEMANTIC_ALIASES: Record<SemanticColumnType, string[]> = {
   ],
   sellingPrice: [
     'selling price', 'selling rate', 'sale price', 'sale rate', 'sp', 'selling value',
-    'retail rate', 'sales price', 'selling', 'sale', 'sale value', 'विक्रय मूल्य', 'అమ్మకపు ధర'
+    'retail rate', 'sales price', 'selling', 'sale', 'sale value', 'विक्रय मूल्य', 'అమ్మకపు ధర',
+    // OCR misread aliases:
+    'i fo', 'ifo', 'pms', 'seling'
   ],
   mrp: [
     'maximum retail price', 'max retail price', 'retail price', 'maximum retail', 'max retail',
@@ -73,6 +77,8 @@ export const COLUMN_SEMANTIC_ALIASES: Record<SemanticColumnType, string[]> = {
   ],
   tax: [
     'gst amount', 'tax amount', 'total tax', 'tax amt', 'tax value', 'gst', 'tax', 'cgst', 'sgst', 'igst', 'vat',
+    // OCR misread aliases:
+    'rel', 'lax', 'tex', '1ax', 'fe',
     'कर', 'పన్ను', 'வரி'
   ],
   gstRate: [
@@ -109,9 +115,10 @@ export function cleanHeaderToken(token: string): string {
 export function isCurrencyOrUnitModifier(text: string): boolean {
   const clean = text.trim().toLowerCase();
   return /^[(\[{<]?(?:₹|rs\.?|inr|€|\$|£|[-=\/]|each|per\s*unit|\/unit)[)\]}>]?$/i.test(clean) ||
-         /^[(\[{<](?:₹|rs\.?|inr|€|\$|£)[)\]}>]$/i.test(clean) ||
-         /^[(\[{<]\s*(?:₹|rs\.?|inr|€|\$|£)\s*[)\]}>]$/i.test(clean) ||
-         /^\((?:₹|rs\.?|inr|€|\$|£)\)$/i.test(clean);
+         /^[(\[{<](?:₹|rs\.?|inr|€|\$|£|[0-9a-z?.%])[)\]}>]$/i.test(clean) ||
+         /^[(\[{<]\s*(?:₹|rs\.?|inr|€|\$|£|[0-9a-z?.%]+)\s*[)\]}>]$/i.test(clean) ||
+         /^\((?:₹|rs\.?|inr|€|\$|£|[0-9a-z?.%]+)\)$/i.test(clean) ||
+         /^[(\[{<][0-9₹rs.inr%a-z?. ]+[)\]}>]$/i.test(clean);
 }
 
 /**
@@ -344,8 +351,13 @@ export function detectColumnsFromHeaderWords(
     const p = phrases[i];
     const type = identifyColumnType(p.text);
 
+    // If type is unknown and phrase is a standalone modifier or bracket noise, DO NOT emit a column
+    if (type === 'unknown' && (isCurrencyOrUnitModifier(p.text) || /^[|:;.\-_=~()\[\]{}]+$/.test(p.text.trim()))) {
+      continue;
+    }
+
     // Estimate column boundaries: midpoint between this column's maxX and next column's minX
-    const prevMax = i > 0 ? (phrases[i - 1].maxX + p.minX) / 2 : 0;
+    const prevMax = columns.length > 0 ? (columns[columns.length - 1].maxX + p.minX) / 2 : 0;
     const nextMin = i < phrases.length - 1 ? (p.maxX + phrases[i + 1].minX) / 2 : effectiveLineWidth;
 
     columns.push({
@@ -372,6 +384,41 @@ export function detectColumnsFromHeaderWords(
     if (candidateIdx !== -1) {
       columns[candidateIdx].type = 'productName';
       columns[candidateIdx].confidence = 85;
+    }
+  }
+
+  // Deduce unknown column roles from positional layout:
+  const rateIdx = columns.findIndex((c) => c.type === 'unitPrice' || c.type === 'purchasePrice');
+  const mrpIdx = columns.findIndex((c) => c.type === 'mrp');
+  const unitIdx = columns.findIndex((c) => c.type === 'unit');
+  if (rateIdx !== -1 && mrpIdx > rateIdx) {
+    for (let j = rateIdx + 1; j < mrpIdx; j++) {
+      if (columns[j].type === 'unknown') {
+        columns[j].type = 'sellingPrice';
+        columns[j].confidence = 85;
+      }
+    }
+  } else if (unitIdx !== -1 && mrpIdx > unitIdx + 1) {
+    const between = columns.slice(unitIdx + 1, mrpIdx).filter((c) => c.type === 'unknown');
+    if (between.length === 2) {
+      between[0].type = 'unitPrice';
+      between[0].confidence = 85;
+      between[1].type = 'sellingPrice';
+      between[1].confidence = 85;
+    } else if (between.length === 1) {
+      between[0].type = 'unitPrice';
+      between[0].confidence = 85;
+    }
+  }
+
+  const discIdx = columns.findIndex((c) => c.type === 'discount');
+  const totIdx = columns.findIndex((c) => c.type === 'total' || c.type === 'taxableAmount');
+  if (discIdx !== -1 && totIdx > discIdx) {
+    for (let j = discIdx + 1; j < totIdx; j++) {
+      if (columns[j].type === 'unknown') {
+        columns[j].type = 'tax';
+        columns[j].confidence = 85;
+      }
     }
   }
 

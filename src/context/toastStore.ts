@@ -5,7 +5,7 @@
 
 import { createContext } from 'react';
 
-export type ToastTone = 'success' | 'error' | 'info';
+export type ToastTone = 'success' | 'error' | 'warning' | 'info';
 
 export interface ToastAction {
   label: string;
@@ -30,6 +30,7 @@ export interface ToastItem extends ToastOptions {
 export interface ToastApi {
   success: (message: string, options?: ToastOptions) => number;
   error: (message: string, options?: ToastOptions) => number;
+  warning: (message: string, options?: ToastOptions) => number;
   info: (message: string, options?: ToastOptions) => number;
   dismiss: (id: number) => void;
 }
@@ -39,5 +40,5 @@ export const ToastContext = createContext<ToastApi | null>(null);
 /** Default display time per tone: errors stay longer, toasts with an action longer still. */
 export function defaultToastDuration(tone: ToastTone, hasAction: boolean): number {
   if (hasAction) return 10000;
-  return tone === 'error' ? 8000 : 4500;
+  return tone === 'error' || tone === 'warning' ? 8000 : 4500;
 }

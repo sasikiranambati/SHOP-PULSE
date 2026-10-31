@@ -226,7 +226,8 @@ def test_image_upload_to_review_payload_with_mrp_lookup(monkeypatch):
     assert get_product(headers, salt["id"])["current_stock"] == 10
 
 
-def test_digital_pdf_upload_uses_word_positions():
+def test_digital_pdf_upload_uses_word_positions(monkeypatch):
+    monkeypatch.setattr(settings, "OPENMRP_API_KEY", None)
     headers = auth("flow_pdf@example.com")
     res = client.post("/api/v1/invoices/extract", files={"file": ("bill.pdf", digital_pdf(), "application/pdf")},
                       headers=headers)

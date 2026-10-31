@@ -25,7 +25,7 @@ async function runTests() {
   console.log('📊 Starting ShopPulse Phase 7 AI Business Analytics Tests');
   console.log('================================================================\n');
 
-  const analyticsService = await import('../src/services/analyticsService');
+  const analyticsService = await import('../../src/services/analyticsService');
 
   let passed = 0;
   let total = 0;

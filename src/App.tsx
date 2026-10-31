@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import type { SearchOption } from './utils/searchResults';
 import type { PageRoute, Product } from './types';
 import { useAuth } from './hooks/useAuth';
@@ -8,16 +8,25 @@ import { ProtectedRoute, PublicOnlyRoute } from './components/ProtectedRoute';
 // Layouts
 import { DashboardLayout } from './layouts/DashboardLayout';
 
-// Pages
+// Pages: Landing remains eager for instant initial paint
 import { Landing } from './pages/Landing';
-import { Login } from './pages/Login';
-import { Signup } from './pages/Signup';
-import { Dashboard } from './pages/Dashboard';
-import { Inventory } from './pages/Inventory';
-import { Sales } from './pages/Sales';
-import { InvoiceScanner } from './pages/InvoiceScanner';
-import { Insights } from './pages/Insights';
-import { Settings } from './pages/Settings';
+
+// Code-split heavy routes to prevent massive initial module cascade
+const Login = lazy(() => import('./pages/Login').then((m) => ({ default: m.Login })));
+const Signup = lazy(() => import('./pages/Signup').then((m) => ({ default: m.Signup })));
+const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })));
+const Inventory = lazy(() => import('./pages/Inventory').then((m) => ({ default: m.Inventory })));
+const Sales = lazy(() => import('./pages/Sales').then((m) => ({ default: m.Sales })));
+const InvoiceScanner = lazy(() => import('./pages/InvoiceScanner').then((m) => ({ default: m.InvoiceScanner })));
+const Insights = lazy(() => import('./pages/Insights').then((m) => ({ default: m.Insights })));
+const Settings = lazy(() => import('./pages/Settings').then((m) => ({ default: m.Settings })));
+
+const PageFallback = () => (
+  <div className="flex flex-col items-center justify-center min-h-[50vh] p-8 text-center" role="status" aria-live="polite">
+    <div className="w-10 h-10 border-4 border-[#234B3A] border-t-transparent rounded-full animate-spin mb-3" />
+    <span className="text-sm font-semibold text-[#69736C]">Loading section...</span>
+  </div>
+);
 
 export function App() {
   const { firebaseUser, userProfile, loading, logout } = useAuth();
@@ -163,12 +172,14 @@ export function App() {
   if (activePage === 'login') {
     return (
       <PublicOnlyRoute setActivePage={setActivePage} targetPage="dashboard">
-        <Login
-          setActivePage={setActivePage}
-          onLoginSuccess={(name) => {
-            setShopName(name || 'Kiran General Store');
-          }}
-        />
+        <Suspense fallback={<PageFallback />}>
+          <Login
+            setActivePage={setActivePage}
+            onLoginSuccess={(name) => {
+              setShopName(name || 'Kiran General Store');
+            }}
+          />
+        </Suspense>
       </PublicOnlyRoute>
     );
   }
@@ -176,12 +187,14 @@ export function App() {
   if (activePage === 'signup') {
     return (
       <PublicOnlyRoute setActivePage={setActivePage} targetPage="dashboard">
-        <Signup
-          setActivePage={setActivePage}
-          onSignupSuccess={(name) => {
-            setShopName(name || 'Kiran General Store');
-          }}
-        />
+        <Suspense fallback={<PageFallback />}>
+          <Signup
+            setActivePage={setActivePage}
+            onSignupSuccess={(name) => {
+              setShopName(name || 'Kiran General Store');
+            }}
+          />
+        </Suspense>
       </PublicOnlyRoute>
     );
   }
@@ -197,59 +210,61 @@ export function App() {
         onOpenSearchResult={handleOpenSearchResult}
         onShowAllProducts={handleShowAllProducts}
       >
-        {activePage === 'dashboard' && (
-          <Dashboard
-            setActivePage={navigate}
-            products={products}
-            shopName={shopName}
-          />
-        )}
+        <Suspense fallback={<PageFallback />}>
+          {activePage === 'dashboard' && (
+            <Dashboard
+              setActivePage={navigate}
+              products={products}
+              shopName={shopName}
+            />
+          )}
 
-        {activePage === 'inventory' && (
-          <Inventory
-            key={inventoryRequest?.key ?? 'inventory'}
-            searchRequest={inventoryRequest}
-            shopName={shopName}
-            products={products}
-            loading={productsLoading}
-            loadError={productsLoadError}
-            onRetryLoad={refreshInventory}
-            onAddProduct={handleAddProduct}
-            onRestock={increaseStock}
-            onUpdateProduct={updateProduct}
-            onDeleteProduct={deleteProduct}
-          />
-        )}
+          {activePage === 'inventory' && (
+            <Inventory
+              key={inventoryRequest?.key ?? 'inventory'}
+              searchRequest={inventoryRequest}
+              shopName={shopName}
+              products={products}
+              loading={productsLoading}
+              loadError={productsLoadError}
+              onRetryLoad={refreshInventory}
+              onAddProduct={handleAddProduct}
+              onRestock={increaseStock}
+              onUpdateProduct={updateProduct}
+              onDeleteProduct={deleteProduct}
+            />
+          )}
 
-        {activePage === 'sales' && (
-          <Sales
-            key={saleRequest?.key ?? 'sales'}
-            products={products}
-            shopName={shopName}
-            focusSaleId={saleRequest?.saleId ?? null}
-          />
-        )}
+          {activePage === 'sales' && (
+            <Sales
+              key={saleRequest?.key ?? 'sales'}
+              products={products}
+              shopName={shopName}
+              focusSaleId={saleRequest?.saleId ?? null}
+            />
+          )}
 
-        {activePage === 'scanner' && (
-          <InvoiceScanner
-            products={products}
-            onAddProduct={handleAddProduct}
-            onRestock={increaseStock}
-            setActivePage={navigate}
-          />
-        )}
+          {activePage === 'scanner' && (
+            <InvoiceScanner
+              products={products}
+              onAddProduct={handleAddProduct}
+              onRestock={increaseStock}
+              setActivePage={navigate}
+            />
+          )}
 
-        {activePage === 'insights' && (
-          <Insights />
-        )}
+          {activePage === 'insights' && (
+            <Insights />
+          )}
 
-        {activePage === 'settings' && (
-          <Settings
-            shopName={shopName}
-            setActivePage={navigate}
-            onLogout={handleLogout}
-          />
-        )}
+          {activePage === 'settings' && (
+            <Settings
+              shopName={shopName}
+              setActivePage={navigate}
+              onLogout={handleLogout}
+            />
+          )}
+        </Suspense>
       </DashboardLayout>
     </ProtectedRoute>
   );

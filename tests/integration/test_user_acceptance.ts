@@ -35,15 +35,15 @@ async function runAcceptanceTests() {
   console.log('   5. No TypeScript errors');
   console.log('================================================================\n');
 
-  const { createSale, getSales } = await import('../src/services/salesService');
-  const { getProducts } = await import('../src/services/inventoryService');
+  const { createSale, getSales } = await import('../../src/services/salesService');
+  const { getProducts } = await import('../../src/services/inventoryService');
   const { 
     getDailyRevenue, 
     getDashboardStats, 
     getTopSellingProducts, 
     generateBusinessInsights,
     clearAnalyticsCache 
-  } = await import('../src/services/analyticsService');
+  } = await import('../../src/services/analyticsService');
 
   // ---------------------------------------------------------------------------
   // STEP 1: Capture Initial Baseline

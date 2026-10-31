@@ -181,6 +181,21 @@ export async function getWeeklyRevenue(shopId: string = 'default'): Promise<Tren
     }
   });
 
+  // Calculate genuine prior-period revenue (previous 7-day window: today-13 to today-7)
+  let priorPeriodRevenue = 0;
+  for (let i = 13; i >= 7; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const dateStr = formatIsoDate(d);
+    const daySales = sales.filter(s => (s.createdAt || '').split('T')[0] === dateStr);
+    priorPeriodRevenue += daySales.reduce((sum, s) => sum + (s.total || s.totalAmount || 0), 0);
+  }
+
+  // Only emit growth percentage if prior period has valid positive baseline data
+  const growthRatePercentage = priorPeriodRevenue > 0
+    ? Math.round(((totalRevenue - priorPeriodRevenue) / priorPeriodRevenue) * 100 * 10) / 10
+    : undefined;
+
   return {
     period: '7days',
     totalRevenue,
@@ -192,7 +207,7 @@ export async function getWeeklyRevenue(shopId: string = 'default'): Promise<Tren
       date: peakPoint ? peakPoint.date : formatIsoDate(new Date()),
       amount: peakPoint ? peakPoint.amount : 0
     },
-    growthRatePercentage: totalRevenue > 0 ? 18.5 : 0
+    growthRatePercentage
   };
 }
 
@@ -239,13 +254,27 @@ export async function getMonthlyRevenue(shopId: string = 'default'): Promise<Tre
     p.height = `${pct}%`;
   });
 
+  // Calculate genuine prior-period revenue (previous 30-day window: today-59 to today-30)
+  let priorPeriodRevenue = 0;
+  for (let i = 59; i >= 30; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const dateStr = formatIsoDate(d);
+    const daySales = sales.filter(s => (s.createdAt || '').split('T')[0] === dateStr);
+    priorPeriodRevenue += daySales.reduce((sum, s) => sum + (s.total || s.totalAmount || 0), 0);
+  }
+
+  const growthRatePercentage = priorPeriodRevenue > 0
+    ? Math.round(((totalRevenue - priorPeriodRevenue) / priorPeriodRevenue) * 100 * 10) / 10
+    : undefined;
+
   return {
     period: '30days',
     totalRevenue,
     totalOrders,
     averageDailyRevenue: Math.round(totalRevenue / 30),
     points,
-    growthRatePercentage: totalRevenue > 0 ? 12.4 : 0
+    growthRatePercentage
   };
 }
 
@@ -666,7 +695,7 @@ export async function getDashboardStats(shopId: string = 'default'): Promise<Das
     .filter(p => p.category === topCategoryName)
     .reduce((s, p) => s + p.revenue, 0);
   const totalTopRev = topProducts.reduce((s, p) => s + p.revenue, 0);
-  const sharePercentage = totalTopRev > 0 ? Math.round((categoryRev / totalTopRev) * 100) : 42;
+  const sharePercentage = totalTopRev > 0 ? Math.round((categoryRev / totalTopRev) * 100) : 0;
 
   return {
     todayRevenue: daily.revenue ?? 0,

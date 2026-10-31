@@ -240,6 +240,11 @@ export async function signInWithEmail(
  */
 export async function loginAsDemo(rememberMe = false): Promise<UserProfile> {
   await applyAuthPersistence(rememberMe);
+  try {
+    await authApi.login('ramesh.sharma@example.com', 'password123');
+  } catch (backendErr) {
+    console.info('Backend demo login skipped (offline demo mode active):', backendErr);
+  }
   const now = new Date().toISOString();
   const demoProfile: UserProfile = {
     uid: 'demo_owner_gupta',
@@ -335,7 +340,7 @@ export function onAuthUserChanged(callback: (user: any) => void): () => void {
 
   const handleAuthChange = () => {
     const current = getLocalSession();
-    if (current && getAccessToken()) {
+    if (current && (getAccessToken() || current.uid.startsWith('demo_'))) {
       callback({ uid: current.uid, email: current.email, displayName: current.displayName });
     } else {
       callback(null);

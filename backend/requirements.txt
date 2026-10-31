@@ -11,3 +11,4 @@ email-validator
 httpx
 pillow
 pdfplumber
+openpyxl

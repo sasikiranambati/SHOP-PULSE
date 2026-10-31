@@ -38,10 +38,17 @@ export function lockBodyScroll(): void {
 }
 
 export function unlockBodyScroll(): void {
-  if (typeof document === 'undefined' || scrollLockCount === 0) return;
-  scrollLockCount--;
+  if (typeof document === 'undefined') return;
+  if (scrollLockCount > 0) {
+    scrollLockCount--;
+  }
   if (scrollLockCount === 0) {
-    document.body.style.overflow = savedBodyOverflow;
+    if (savedBodyOverflow) {
+      document.body.style.overflow = savedBodyOverflow;
+    } else {
+      document.body.style.removeProperty('overflow');
+    }
+    savedBodyOverflow = '';
   }
 }
 

@@ -45,14 +45,14 @@ async function runTests() {
     enableSimulatorMode, 
     recordDeviceEvent,
     getDeviceEvents 
-  } = await import('../src/services/deviceService');
+  } = await import('../../src/services/deviceService');
 
-  const { scaleService } = await import('../src/services/scaleService');
-  const { deviceSimulator } = await import('../src/services/deviceSimulator');
-  const { deviceHealthMonitor } = await import('../src/services/deviceHealthMonitor');
-  const { firmwareService } = await import('../src/services/firmwareService');
-  const { bluetoothService } = await import('../src/services/bluetoothService');
-  const { getAlerts } = await import('../src/services/alertService');
+  const { scaleService } = await import('../../src/services/scaleService');
+  const { deviceSimulator } = await import('../../src/services/deviceSimulator');
+  const { deviceHealthMonitor } = await import('../../src/services/deviceHealthMonitor');
+  const { firmwareService } = await import('../../src/services/firmwareService');
+  const { bluetoothService } = await import('../../src/services/bluetoothService');
+  const { getAlerts } = await import('../../src/services/alertService');
 
   let passedTests = 0;
   let totalTests = 0;

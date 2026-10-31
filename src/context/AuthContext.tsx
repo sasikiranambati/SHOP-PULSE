@@ -4,7 +4,7 @@
  * Belongs in `src/context/AuthContext.tsx`.
  */
 
-import React, { createContext, useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import type { User as FirebaseUser } from 'firebase/auth';
 import type { UserProfile, LoginCredentials, RegisterInput, UserLanguage, UserTheme } from '../types/user';
 import { 
@@ -37,7 +37,8 @@ export interface AuthContextType {
   setTheme: (theme: UserTheme) => Promise<void>;
 }
 
-export const AuthContext = createContext<AuthContextType | undefined>(undefined);
+import { AuthContext } from './authContextDef';
+export { AuthContext };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);

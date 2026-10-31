@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { validateInvoiceItems, COMMON_UNITS, type ValidationError } from '../../pages/InvoiceScanner';
+import { validateInvoiceItems, COMMON_UNITS, type ValidationError } from '../invoiceValidation';
 import type { InvoiceLineItem } from '../invoiceTypes';
 import type { Product } from '../../types';
 

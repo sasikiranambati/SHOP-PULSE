@@ -23,6 +23,7 @@ export interface UseAnalyticsResult {
   analytics: BusinessAnalytics | null;
   stats: DashboardStats | null;
   weeklyTrend: TrendDataset | null;
+  monthlyTrend: TrendDataset | null;
   topProducts: TopProductItem[];
   slowMoving: SlowMovingProductItem[];
   lowStockInsights: LowStockInsightItem[];
@@ -39,6 +40,7 @@ export function useAnalytics(shopId: string = 'default'): UseAnalyticsResult {
   const [analytics, setAnalytics] = useState<BusinessAnalytics | null>(null);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [weeklyTrend, setWeeklyTrend] = useState<TrendDataset | null>(null);
+  const [monthlyTrend, setMonthlyTrend] = useState<TrendDataset | null>(null);
   const [topProducts, setTopProducts] = useState<TopProductItem[]>([]);
   const [slowMoving, setSlowMoving] = useState<SlowMovingProductItem[]>([]);
   const [lowStockInsights, setLowStockInsights] = useState<LowStockInsightItem[]>([]);
@@ -53,6 +55,7 @@ export function useAnalytics(shopId: string = 'default'): UseAnalyticsResult {
       setAnalytics(null);
       setStats(null);
       setWeeklyTrend(null);
+      setMonthlyTrend(null);
       setTopProducts([]);
       setSlowMoving([]);
       setLowStockInsights([]);
@@ -92,6 +95,7 @@ export function useAnalytics(shopId: string = 'default'): UseAnalyticsResult {
       setAnalytics(consolidated);
       setStats(dashStats);
       setWeeklyTrend(weekly);
+      setMonthlyTrend(consolidated.monthlySales);
       setTopProducts(top);
       setSlowMoving(slow);
       setLowStockInsights(lowStock);
@@ -134,6 +138,7 @@ export function useAnalytics(shopId: string = 'default'): UseAnalyticsResult {
     analytics,
     stats,
     weeklyTrend,
+    monthlyTrend,
     topProducts,
     slowMoving,
     lowStockInsights,

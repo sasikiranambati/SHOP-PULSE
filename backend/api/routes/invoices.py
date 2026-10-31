@@ -3,6 +3,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 
+from fastapi.concurrency import run_in_threadpool
+
 from api import deps
 from db.models.user import User
 from schemas.invoice import (
@@ -41,7 +43,8 @@ async def extract_invoice(
     user_shop = get_user_shop_or_raise(db, current_user)
     content = await file.read()
     try:
-        return invoice_service.extract_invoice_from_bytes(
+        return await run_in_threadpool(
+            invoice_service.extract_invoice_from_bytes,
             file_bytes=content,
             filename=file.filename or "invoice.pdf",
             db=db,
@@ -90,3 +93,28 @@ def confirm_invoice(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to confirm invoice stock update: {type(e).__name__}",
         )
+
+
+@router.get("/{invoice_id}/excel")
+def download_invoice_excel(
+    invoice_id: str,
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    """
+    Download the genuine .xlsx workbook generated during invoice extraction.
+    Contains: Raw Invoice, Grocery Items, Review Required, and OCR Audit worksheets.
+    """
+    from fastapi.responses import FileResponse
+    from services.excel_invoice import get_invoice_workbook_path
+
+    path = get_invoice_workbook_path(invoice_id)
+    if not path or not path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Excel workbook for invoice '{invoice_id}' not found.",
+        )
+    return FileResponse(
+        path=str(path),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=f"invoice_{invoice_id}.xlsx",
+    )

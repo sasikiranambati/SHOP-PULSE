@@ -30,11 +30,31 @@ __pycache__/
 .env
 *.pyc
 *.db
+*.db-wal
+*.db-shm
+*.db-journal
 
 # OCR models and the backend OCR language-data cache
 *.traineddata
 backend/.ocr-cache/
 
-# Scratch / temporary scripts
+# Scratch / developer testing
 scratch/
+backend/storage/
+.ocr-debug/
+
+# Temporary OCR & image artifacts
+*.crop.png
+*test_crop*.png
+*debug*.png
+*.tmp.png
+*.tmp.json
+
+# Pytest & test cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Explicitly ensure test fixtures and test assets are NEVER ignored
+!tests/fixtures/**
 

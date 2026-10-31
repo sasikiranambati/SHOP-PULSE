@@ -209,11 +209,18 @@ def _ocr_image(ext: _Extraction, image_bytes: bytes) -> None:
     png = ocr_service.validate_and_preprocess_image(image_bytes)
     best: Optional[table.TableResult] = None
     best_ocr: Optional[Dict[str, Any]] = None
-    # Automatic page segmentation first; a single-block pass often keeps table rows together better
-    for psm in ("auto", "6"):
+    # Automatic page segmentation (PSM 3) first; single-block (PSM 6) pass fallback
+    for psm in ("3", "6"):
         ocr = ocr_service.run_ocr_on_preprocessed_png(png, psm)
+        logger.info("[DIAGNOSTIC] Stage A: Raw OCR tokens extracted: %d words (PSM=%s)", len(ocr.get("words", [])), psm)
         rows = table.group_words_into_rows(table.words_from_ocr(ocr["words"]))
         res = _extract_from_rows(ext, rows, False, "OCR_TABLE")
+        logger.info(
+            "[DIAGNOSTIC] Stage B: Reconstructed table columns: %s, table rows: %d, items: %d",
+            [(c.role, c.header_text) for c in (res.columns or [])],
+            len(res.rows),
+            len(res.items)
+        )
         if best is None or len(res.items) > len(best.items):
             best, best_ocr = res, ocr
         if res.items:
@@ -415,6 +422,21 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
         _extract_text(ext, text)
 
     meta = extract_metadata(ext.text_lines, ext.header_text)
+    logger.info(
+        "[DIAGNOSTIC] Stage C: Pre-MRP line items extracted (%d items): %s",
+        len(ext.items),
+        [
+            {
+                "product": it.product_name,
+                "purchase_price": it.purchase_price,
+                "rate": it.rate,
+                "selling_price": it.selling_price,
+                "invoice_mrp": it.invoice_mrp,
+                "line_total": it.line_total,
+            }
+            for it in ext.items
+        ]
+    )
 
     # Inventory matching, then MRP lookups using the strongest identifier available
     matches = [match_inventory(it.product_name, it.barcode, shop_products) for it in ext.items]
@@ -425,6 +447,56 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
                                               sku=prod.sku if prod is not None else None))
     provider = mrp_lookup.get_provider()
     lookups = mrp_lookup.lookup_mrp_batch(queries, provider) if queries else []
+    logger.info(
+        "[DIAGNOSTIC] Stage D: External MRP API lookup request & response (provider=%s): %s",
+        provider.name if provider else "None",
+        [
+            {
+                "product": q.product_name,
+                "gtin": q.gtin,
+                "status": l.status,
+                "mrp": l.mrp,
+                "source": l.match_method,
+            }
+            for q, l in zip(queries, lookups)
+        ]
+    )
+
+    invoice_id = f"inv_{uuid.uuid4().hex[:10]}"
+
+    from services import excel_invoice
+    from services.grocery_classifier import GroceryClassification
+
+    classifications = [
+        GroceryClassification(
+            is_grocery=getattr(it, "is_grocery", True),
+            status=getattr(it, "classification_status", "GROCERY_CONFIDENT"),
+            category=getattr(it, "category", "Groceries") or "Groceries",
+            normalized_name=getattr(it, "normalized_name", it.product_name) or it.product_name,
+            brand=getattr(it, "brand", None),
+            pack_size=getattr(it, "pack_size", None),
+            pack_size_unit=getattr(it, "pack_size_unit", None),
+        )
+        for it in ext.items
+    ]
+
+    try:
+        excel_path = excel_invoice.generate_invoice_workbook(
+            invoice_id=invoice_id,
+            raw_rows=ext.rows,
+            columns=ext.columns,
+            extracted_items=ext.items,
+            classifications=classifications,
+            raw_ocr_words=[],
+            metadata=meta,
+            warnings=ext.warnings,
+        )
+        parsed_excel_rows = excel_invoice.parse_invoice_workbook(excel_path)
+        logger.info("Excel-first pipeline: Generated and verified %d worksheet cells at %s", len(parsed_excel_rows), excel_path)
+        excel_download_url = f"/api/v1/invoices/{invoice_id}/excel"
+    except Exception as exc:
+        logger.warning("Could not generate Excel-first workbook: %s", exc)
+        excel_download_url = None
 
     items: List[CanonicalInvoiceItemSchema] = []
     for it, (prod, score, method), lookup in zip(ext.items, matches, lookups):
@@ -435,6 +507,7 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
         needs_review = (
             bool(issues) or mrp_review or it.arithmetic_status != "VERIFIED"
             or it.purchase_price is None or it.quantity is None or it.confidence < 85
+            or getattr(it, "classification_status", "GROCERY_CONFIDENT") in ("GROCERY_REVIEW", "UNKNOWN_REVIEW")
         )
         level = "HIGH" if it.confidence >= 85 and not needs_review else ("MEDIUM" if it.confidence >= 60 else "LOW")
         items.append(CanonicalInvoiceItemSchema(
@@ -478,7 +551,30 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
             matched_product_id=prod.id if prod is not None else None,
             matched_product_name=prod.name if prod is not None else None,
             match_score=round(score, 3) if prod is not None else None,
+            pack_size=getattr(it, "pack_size", None),
+            pack_size_unit=getattr(it, "pack_size_unit", None),
+            classification_status=getattr(it, "classification_status", "GROCERY_CONFIDENT"),
+            is_grocery=getattr(it, "is_grocery", True),
+            brand=getattr(it, "brand", None),
+            normalized_name=getattr(it, "normalized_name", it.product_name),
+            category=getattr(it, "category", "Groceries") or (prod.category if prod else "Groceries"),
         ))
+
+    logger.info(
+        "[DIAGNOSTIC] Stage E: Final parsed line items post-MRP (%d items): %s",
+        len(items),
+        [
+            {
+                "product": i.product_name,
+                "purchase_price": i.purchase_price,
+                "selling_price": i.selling_price,
+                "mrp": i.mrp,
+                "mrp_source": i.mrp_source,
+                "line_total": i.line_total,
+            }
+            for i in items
+        ]
+    )
 
     total_amount = round(sum(i.line_total for i in items if i.line_total is not None), 2)
     total_units = round(sum(i.quantity for i in items if i.quantity is not None), 2)
@@ -519,8 +615,12 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
         mrp_provider=provider.name,
     )
 
-    return InvoiceExtractResponse(
-        id=f"inv_{uuid.uuid4().hex[:10]}",
+    total_grocery_items = sum(1 for it in items if it.is_grocery and it.classification_status == "GROCERY_CONFIDENT")
+    total_review_items = sum(1 for it in items if it.classification_status in ("GROCERY_REVIEW", "UNKNOWN_REVIEW"))
+    total_excluded_items = sum(1 for it in items if it.classification_status == "NON_GROCERY")
+
+    resp = InvoiceExtractResponse(
+        id=invoice_id,
         supplier_name=meta["supplier_name"],
         supplier_confidence=meta["supplier_confidence"],
         invoice_number=meta["invoice_number"],
@@ -540,7 +640,20 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
         status=status,
         reason=reason,
         diagnostics=diag,
+        excel_download_url=excel_download_url,
+        total_grocery_items=total_grocery_items,
+        total_review_items=total_review_items,
+        total_excluded_items=total_excluded_items,
     )
+    logger.info(
+        "[DIAGNOSTIC] Stage F: FastAPI response payload: %d items, total=%s, status=%s, excel=%s",
+        len(resp.items),
+        resp.total_amount,
+        resp.status,
+        resp.excel_download_url,
+    )
+    return resp
+
 
 
 # --------------------------------------------------------------------------

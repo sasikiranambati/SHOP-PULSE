@@ -77,13 +77,15 @@ export const Inventory: React.FC<InventoryProps> = ({
   const [restockingIds, setRestockingIds] = useState<Set<string>>(() => new Set());
   const [highlightedId, setHighlightedId] = useState<string | null>(() => searchRequest?.highlightId ?? null);
   const [localProducts, setLocalProducts] = useState<Product[]>(products);
+  const [prevProducts, setPrevProducts] = useState<Product[]>(products);
+
+  // Synchronize local products with live products stream during render phase (avoids cascading effect renders)
+  if (products !== prevProducts) {
+    setPrevProducts(products);
+    setLocalProducts(products);
+  }
   const deleteInFlight = useRef(false);
   const { isPrinting, requestPrint } = usePrintRequest();
-
-  // Synchronize local products with live products stream
-  useEffect(() => {
-    setLocalProducts(products);
-  }, [products]);
 
   // A product opened from global search is highlighted and scrolled into view once.
   const highlightRequestId = searchRequest?.highlightId;
@@ -217,8 +219,8 @@ export const Inventory: React.FC<InventoryProps> = ({
           aria-label={`Restock ${RESTOCK_STEP} units of ${prod.name}`}
           title={`Restock +${RESTOCK_STEP}`}
           className={compact
-            ? 'text-xs font-black text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-xl border border-emerald-200 flex items-center gap-1 cursor-pointer active:scale-95 transition-all min-h-[38px]'
-            : 'text-xs font-black text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-lg border border-emerald-200 transition-all inline-flex items-center gap-1 cursor-pointer active:scale-95'}
+            ? 'text-xs font-bold text-[#234B3A] bg-[#E5EEE6] hover:bg-[#D5E4D7] px-3 py-2 rounded-lg border border-[#52745D]/25 flex items-center gap-1 cursor-pointer active:scale-95 transition-all min-h-[40px]'
+            : 'text-xs font-bold text-[#234B3A] hover:text-[#18382B] bg-[#E5EEE6] hover:bg-[#D5E4D7] px-2.5 py-1.5 rounded-lg border border-[#52745D]/25 transition-all inline-flex items-center gap-1 cursor-pointer active:scale-95'}
         >
           {isRestocking
             ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
@@ -238,10 +240,10 @@ export const Inventory: React.FC<InventoryProps> = ({
           aria-label={`Edit ${prod.name}`}
           title="Edit Product"
           className={compact
-            ? 'text-xs font-black text-slate-700 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-200 flex items-center gap-1 cursor-pointer active:scale-95 transition-all min-h-[38px]'
-            : 'text-xs font-black text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-all inline-flex items-center gap-1 cursor-pointer active:scale-95'}
+            ? 'text-xs font-semibold text-[#202923] hover:text-[#18382B] bg-[#F7F5EF] hover:bg-[#EBE7DF] px-3 py-2 rounded-lg border border-[#E3E5DE] flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all min-h-[40px]'
+            : 'text-xs font-semibold text-[#202923] hover:text-[#18382B] bg-[#F7F5EF] hover:bg-[#EBE7DF] px-2.5 py-1.5 rounded-lg border border-[#E3E5DE] transition-all inline-flex items-center gap-1 cursor-pointer active:scale-95'}
         >
-          <Pencil className="w-3.5 h-3.5 text-slate-600" aria-hidden="true" />
+          <Pencil className="w-3.5 h-3.5 text-[#69736C]" aria-hidden="true" />
           <span>Edit</span>
         </button>
         <button
@@ -253,10 +255,10 @@ export const Inventory: React.FC<InventoryProps> = ({
           aria-label={`Delete ${prod.name}`}
           title="Delete Product"
           className={compact
-            ? 'p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl border border-rose-200 flex items-center justify-center cursor-pointer active:scale-95 transition-all min-h-[38px] min-w-[38px]'
-            : 'p-1.5 text-xs font-black text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200 transition-all inline-flex items-center cursor-pointer active:scale-95'}
+            ? 'p-2 text-[#B93838] bg-[#FDF2F2] hover:bg-[#FCE8E8] rounded-lg border border-[#B93838]/20 flex items-center justify-center cursor-pointer active:scale-95 transition-all min-h-[40px] min-w-[40px]'
+            : 'p-1.5 text-xs font-semibold text-[#B93838] hover:text-[#9e2d2d] bg-[#FDF2F2] hover:bg-[#FCE8E8] rounded-lg border border-[#B93838]/20 transition-all inline-flex items-center cursor-pointer active:scale-95'}
         >
-          <Trash2 className="w-3.5 h-3.5 text-rose-600" aria-hidden="true" />
+          <Trash2 className="w-3.5 h-3.5 text-[#B93838]" aria-hidden="true" />
         </button>
       </>
     );
@@ -287,7 +289,7 @@ export const Inventory: React.FC<InventoryProps> = ({
               icon={<Plus className="w-5 h-5" />}
               className="font-black"
             >
-              {t('inventory.addProduct')}
+              {t('inventory.addProduct').replace(/^\+\s*/, '')}
             </Button>
           </div>
         }
@@ -335,9 +337,9 @@ export const Inventory: React.FC<InventoryProps> = ({
 
       {/* Low Stock Warning Top Banner */}
       {lowStockItems.length > 0 && (
-        <div className="bg-amber-50/90 rounded-2xl border border-amber-300/80 p-4 shadow-xs">
-          <div className="flex items-center gap-2 text-amber-900 font-black text-xs sm:text-sm uppercase tracking-wide mb-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" aria-hidden="true" />
+        <div className="bg-[#FEF9EB] rounded-xl border border-[#A66A16]/25 p-4 shadow-xs">
+          <div className="flex items-center gap-2 text-[#A66A16] font-bold text-xs sm:text-sm uppercase tracking-wide mb-2">
+            <AlertTriangle className="w-4 h-4 text-[#A66A16] shrink-0" aria-hidden="true" />
             <span>{t('inventory.productsAttention', { count: lowStockItems.length })}</span>
           </div>
 
@@ -345,17 +347,17 @@ export const Inventory: React.FC<InventoryProps> = ({
             {lowStockItems.slice(0, 5).map(item => {
               const isRestocking = restockingIds.has(item.id);
               return (
-                <div key={item.id} className="bg-white rounded-xl p-2.5 border border-amber-200 shrink-0 flex items-center gap-3 shadow-2xs">
+                <div key={item.id} className="bg-white rounded-lg p-2.5 border border-[#A66A16]/20 shrink-0 flex items-center gap-3 shadow-xs">
                   <div>
-                    <p className="font-extrabold text-slate-900 text-xs">{item.name}</p>
-                    <p className="text-[11px] text-amber-800 font-bold">{item.stock} {item.unit} {t('dashboard.left')}</p>
+                    <p className="font-bold text-[#202923] text-xs">{item.name}</p>
+                    <p className="text-[11px] text-[#A66A16] font-semibold">{item.stock} {item.unit} {t('dashboard.left')}</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => restockItem(item)}
                     disabled={isRestocking}
                     aria-label={`Restock ${RESTOCK_STEP} units of ${item.name}`}
-                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] rounded-lg active:scale-95 transition-transform shrink-0 cursor-pointer inline-flex items-center gap-1"
+                    className="px-2.5 py-1 bg-[#234B3A] hover:bg-[#18382B] text-white font-bold text-[11px] rounded-md active:scale-95 transition-transform shrink-0 cursor-pointer inline-flex items-center gap-1"
                   >
                     {isRestocking && <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />}
                     {isRestocking ? 'Saving…' : t('dashboard.restock')}
@@ -368,9 +370,9 @@ export const Inventory: React.FC<InventoryProps> = ({
       )}
 
       {/* Controls: Search & Category Filter */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-xs space-y-3">
+      <div className="bg-white rounded-xl border border-[#E3E5DE] p-3.5 shadow-xs space-y-3">
         <div className="relative">
-          <Search className="w-5 h-5 absolute left-3.5 top-3 text-slate-400" aria-hidden="true" />
+          <Search className="w-5 h-5 absolute left-3.5 top-3 text-[#69736C]" aria-hidden="true" />
           <label htmlFor="inventory-search" className="sr-only">Filter stock list</label>
           <input
             id="inventory-search"
@@ -378,14 +380,14 @@ export const Inventory: React.FC<InventoryProps> = ({
             placeholder={t('inventory.searchPlaceholder')}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm font-medium"
+            className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-[#E3E5DE] focus:outline-none focus:ring-2 focus:ring-[#234B3A] focus:border-[#234B3A] text-base sm:text-sm font-medium text-[#202923] bg-white"
           />
           {searchTerm && (
             <button
               type="button"
               onClick={() => setSearchTerm('')}
               aria-label="Clear filter"
-              className="absolute right-2.5 top-2 p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+              className="absolute right-2.5 top-2 p-1 rounded-lg text-[#69736C] hover:text-[#202923] hover:bg-[#F7F5EF] cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -393,17 +395,17 @@ export const Inventory: React.FC<InventoryProps> = ({
         </div>
 
         {/* Category filter pills */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none" role="group" aria-label="Filter by category">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none" role="group" aria-label="Filter by category">
           {PRODUCT_CATEGORIES.map((cat) => (
             <button
               key={cat}
               type="button"
               onClick={() => setSelectedCategory(cat)}
               aria-pressed={selectedCategory === cat}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                 selectedCategory === cat
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  ? 'bg-[#234B3A] text-white shadow-xs font-bold'
+                  : 'bg-[#F7F5EF] text-[#69736C] hover:text-[#202923] hover:bg-[#EBE7DF]'
               }`}
             >
               {cat}
@@ -413,7 +415,7 @@ export const Inventory: React.FC<InventoryProps> = ({
       </div>
 
       {/* Inventory Container */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden" aria-busy={loading || undefined}>
+      <div className="bg-white rounded-xl border border-[#E3E5DE] shadow-xs overflow-hidden" aria-busy={loading || undefined}>
 
         {/* Desktop Table View (>= 768px). The table scrolls inside this box so the
             sticky header stays aligned and never slides under the page navbar. */}
@@ -421,21 +423,21 @@ export const Inventory: React.FC<InventoryProps> = ({
           <table className="w-full text-left border-collapse">
             <caption className="sr-only">Stock catalog</caption>
             <thead className="sticky top-0 z-10">
-              <tr className="bg-slate-50 text-xs font-black text-slate-600 uppercase tracking-wider shadow-[inset_0_-1px_0_0_rgb(226_232_240)]">
-                <th scope="col" className="py-3.5 px-6 bg-slate-50">{t('inventory.tableProduct')}</th>
-                <th scope="col" className="py-3.5 px-4 bg-slate-50">{t('inventory.tableCategory')}</th>
-                <th scope="col" className="py-3.5 px-4 bg-slate-50">{t('inventory.tableStock')}</th>
-                <th scope="col" className="py-3.5 px-4 bg-slate-50 text-right">{t('inventory.tablePrice')}</th>
-                <th scope="col" className="py-3.5 px-4 bg-slate-50">{t('inventory.tableStatus')}</th>
-                <th scope="col" className="py-3.5 px-6 bg-slate-50 text-right">{t('inventory.tableActions')}</th>
+              <tr className="bg-[#F7F5EF] text-xs font-semibold text-[#69736C] uppercase tracking-wider shadow-[inset_0_-1px_0_0_#E3E5DE]">
+                <th scope="col" className="py-3.5 px-6 bg-[#F7F5EF]">{t('inventory.tableProduct')}</th>
+                <th scope="col" className="py-3.5 px-4 bg-[#F7F5EF]">{t('inventory.tableCategory')}</th>
+                <th scope="col" className="py-3.5 px-4 bg-[#F7F5EF]">{t('inventory.tableStock')}</th>
+                <th scope="col" className="py-3.5 px-4 bg-[#F7F5EF] text-right">{t('inventory.tablePrice')}</th>
+                <th scope="col" className="py-3.5 px-4 bg-[#F7F5EF]">{t('inventory.tableStatus')}</th>
+                <th scope="col" className="py-3.5 px-6 bg-[#F7F5EF] text-right">{t('inventory.tableActions')}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-sm font-medium text-slate-800">
+            <tbody className="divide-y divide-[#E3E5DE] text-sm font-medium text-[#202923]">
               {showSkeleton && Array.from({ length: 6 }).map((_, i) => (
                 <tr key={`skeleton-${i}`} aria-hidden="true">
                   {[48, 20, 16, 14, 18, 28].map((w, j) => (
                     <td key={j} className="py-4 px-4">
-                      <div className="h-3.5 rounded bg-slate-200 animate-pulse" style={{ width: `${w * 2}px` }} />
+                      <div className="h-3.5 rounded bg-[#E3E5DE]/70 animate-pulse" style={{ width: `${w * 2}px` }} />
                     </td>
                   ))}
                 </tr>
@@ -445,36 +447,36 @@ export const Inventory: React.FC<InventoryProps> = ({
                   key={prod.id}
                   data-product-row={prod.id}
                   tabIndex={-1}
-                  className={`transition-colors ${highlightedId === prod.id ? 'bg-amber-50 ring-2 ring-inset ring-amber-400' : 'hover:bg-slate-50/80'}`}
+                  className={`transition-colors ${highlightedId === prod.id ? 'bg-[#FEF9EB] ring-2 ring-inset ring-[#A66A16]/50' : 'hover:bg-[#F7F5EF]/60'}`}
                 >
-                  <td className="py-4 px-6 font-bold text-slate-900">
+                  <td className="py-4 px-6 font-bold text-[#202923]">
                     <div className="flex items-center gap-2.5">
                       {prod.imageUrl ? (
                         <img
                           src={prod.imageUrl}
                           alt=""
-                          className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0"
+                          className="w-8 h-8 rounded-lg object-cover border border-[#E3E5DE] shrink-0"
                         />
                       ) : (
-                        <div aria-hidden="true" className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-black text-xs border border-emerald-200 shrink-0">
+                        <div aria-hidden="true" className="w-8 h-8 rounded-lg bg-[#E5EEE6] text-[#234B3A] flex items-center justify-center font-bold text-xs border border-[#52745D]/25 shrink-0">
                           {prod.name.charAt(0)}
                         </div>
                       )}
                       <div>
                         <span>{prod.name}</span>
                         {prod.barcode && (
-                          <span className="block text-[10px] text-slate-400 font-normal">
+                          <span className="block text-[10px] text-[#69736C] font-normal">
                             UPC: {prod.barcode}
                           </span>
                         )}
                       </div>
                     </div>
                   </td>
-                  <td className="py-4 px-4 font-semibold text-slate-600">{prod.category}</td>
-                  <td className="py-4 px-4 font-bold text-slate-900 whitespace-nowrap">
+                  <td className="py-4 px-4 font-medium text-[#69736C]">{prod.category}</td>
+                  <td className="py-4 px-4 font-bold text-[#202923] whitespace-nowrap">
                     {prod.stock} {prod.unit}
                   </td>
-                  <td className="py-4 px-4 font-black text-slate-900 text-right tabular-nums whitespace-nowrap">
+                  <td className="py-4 px-4 font-extrabold text-[#202923] text-right tabular-nums whitespace-nowrap">
                     ₹{prod.price}
                   </td>
                   <td className="py-4 px-4">
@@ -492,12 +494,12 @@ export const Inventory: React.FC<InventoryProps> = ({
         </div>
 
         {/* Mobile Product Cards View (< 768px) */}
-        <div className="md:hidden divide-y divide-slate-100">
+        <div className="md:hidden divide-y divide-[#E3E5DE]">
           {showSkeleton && Array.from({ length: 4 }).map((_, i) => (
             <div key={`skeleton-card-${i}`} className="p-4 space-y-2" aria-hidden="true">
-              <div className="h-4 w-2/3 rounded bg-slate-200 animate-pulse" />
-              <div className="h-3 w-1/3 rounded bg-slate-200 animate-pulse" />
-              <div className="h-8 w-full rounded-xl bg-slate-100 animate-pulse" />
+              <div className="h-4 w-2/3 rounded bg-[#E3E5DE]/70 animate-pulse" />
+              <div className="h-3 w-1/3 rounded bg-[#E3E5DE]/70 animate-pulse" />
+              <div className="h-8 w-full rounded-lg bg-[#F7F5EF] animate-pulse" />
             </div>
           ))}
           {filteredProducts.map((prod) => (
@@ -505,7 +507,7 @@ export const Inventory: React.FC<InventoryProps> = ({
               key={prod.id}
               data-product-row={prod.id}
               tabIndex={-1}
-              className={`p-4 space-y-2.5 ${highlightedId === prod.id ? 'bg-amber-50 ring-2 ring-inset ring-amber-400' : 'bg-white'}`}
+              className={`p-4 space-y-2.5 ${highlightedId === prod.id ? 'bg-[#FEF9EB] ring-2 ring-inset ring-[#A66A16]/50' : 'bg-white'}`}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2.5 min-w-0">
@@ -513,13 +515,13 @@ export const Inventory: React.FC<InventoryProps> = ({
                     <img
                       src={prod.imageUrl}
                       alt=""
-                      className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0"
+                      className="w-10 h-10 rounded-lg object-cover border border-[#E3E5DE] shrink-0"
                     />
                   ) : null}
                   <div className="min-w-0">
-                    <h4 className="font-extrabold text-slate-900 text-base leading-tight break-words">{prod.name}</h4>
-                    <p className="text-xs text-slate-500 font-semibold mt-0.5">{prod.category} • ₹{prod.price} per {prod.unit}</p>
-                    {prod.barcode && <p className="text-[10px] text-slate-400 font-medium break-all">UPC: {prod.barcode}</p>}
+                    <h4 className="font-bold text-[#202923] text-base leading-tight break-words">{prod.name}</h4>
+                    <p className="text-xs text-[#69736C] font-medium mt-0.5">{prod.category} • ₹{prod.price} per {prod.unit}</p>
+                    {prod.barcode && <p className="text-[10px] text-[#69736C] font-normal break-all">UPC: {prod.barcode}</p>}
                   </div>
                 </div>
                 <div className="shrink-0">
@@ -527,8 +529,8 @@ export const Inventory: React.FC<InventoryProps> = ({
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-slate-100">
-                <span className="text-xs sm:text-sm font-black text-slate-900 shrink-0">
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-[#E3E5DE]">
+                <span className="text-xs sm:text-sm font-bold text-[#202923] shrink-0">
                   {t('inventory.tableStock')}: {prod.stock} {prod.unit}
                 </span>
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -542,29 +544,29 @@ export const Inventory: React.FC<InventoryProps> = ({
         {showSkeleton && <p className="sr-only" role="status">Loading stock list…</p>}
 
         {!showSkeleton && filteredProducts.length === 0 && (
-          <div className="p-10 text-center text-slate-500">
-            <Package className="w-12 h-12 mx-auto text-slate-300 mb-2" aria-hidden="true" />
+          <div className="p-10 text-center text-[#69736C]">
+            <Package className="w-12 h-12 mx-auto text-[#69736C]/40 mb-2" aria-hidden="true" />
             {loadError && localProducts.length === 0 ? (
-              <p className="font-extrabold text-slate-700">No products to show until the stock list loads.</p>
+              <p className="font-bold text-[#202923]">No products to show until the stock list loads.</p>
             ) : hasFilters ? (
               <>
-                <p className="font-extrabold text-slate-700">{t('inventory.noProductsFound')}</p>
-                <p className="text-xs text-slate-500 font-medium">{t('inventory.adjustSearch')}</p>
+                <p className="font-bold text-[#202923]">{t('inventory.noProductsFound')}</p>
+                <p className="text-xs text-[#69736C] font-normal">{t('inventory.adjustSearch')}</p>
                 <button
                   type="button"
                   onClick={() => {
                     setSearchTerm('');
                     setSelectedCategory('All');
                   }}
-                  className="mt-3 text-xs font-black text-emerald-700 hover:underline cursor-pointer"
+                  className="mt-3 text-xs font-bold text-[#234B3A] hover:underline cursor-pointer"
                 >
                   Clear filters
                 </button>
               </>
             ) : (
               <>
-                <p className="font-extrabold text-slate-700">Your stock catalog is empty.</p>
-                <p className="text-xs text-slate-500 font-medium">Add a product or scan a supplier bill to get started.</p>
+                <p className="font-bold text-[#202923]">Your stock catalog is empty.</p>
+                <p className="text-xs text-[#69736C] font-normal">Add a product or scan a supplier bill to get started.</p>
               </>
             )}
           </div>

@@ -133,6 +133,13 @@ export interface DashboardSalesStats {
     time: string;
     billNumber?: string;
   }>;
+  topProducts?: Array<{
+    id: string;
+    name: string;
+    category: string;
+    soldCount: number;
+    price?: string;
+  }>;
 }
 
 /**

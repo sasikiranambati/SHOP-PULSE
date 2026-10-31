@@ -61,6 +61,13 @@ class CanonicalInvoiceItemSchema(BaseModel):
     matched_product_id: Optional[UUID] = Field(None, description="ID of matched existing product")
     matched_product_name: Optional[str] = Field(None, description="Name of matched existing product")
     match_score: Optional[float] = Field(None, description="Inventory similarity score (0-1)")
+    pack_size: Optional[float] = Field(None, description="Product package size (e.g. 50 in 50 kg)")
+    pack_size_unit: Optional[str] = Field(None, description="Unit of the package size (e.g. kg, L, gm)")
+    classification_status: str = Field("GROCERY_CONFIDENT", description="GROCERY_CONFIDENT | GROCERY_REVIEW | NON_GROCERY | UNKNOWN_REVIEW")
+    is_grocery: bool = Field(True, description="True if item belongs to grocery retail taxonomy")
+    brand: Optional[str] = Field(None, description="Identified brand name")
+    normalized_name: Optional[str] = Field(None, description="Standardized product name")
+    category: Optional[str] = Field("Groceries", description="Detected grocery category")
 
 
 class DetectedColumnSchema(BaseModel):
@@ -109,6 +116,10 @@ class InvoiceExtractResponse(BaseModel):
     status: str = Field("success", description="Status: 'success', 'needs_review', or 'error'")
     reason: Optional[str] = None
     diagnostics: Optional[DiagnosticInfo] = None
+    excel_download_url: Optional[str] = Field(None, description="URL endpoint to download the generated genuine .xlsx workbook")
+    total_grocery_items: int = 0
+    total_review_items: int = 0
+    total_excluded_items: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 
