@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Float, Integer, DateTime, ForeignKey
+from sqlalchemy import Column, String, Float, Integer, Boolean, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -12,6 +12,9 @@ class Product(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     name = Column(String, index=True, nullable=False)
     category = Column(String, index=True, nullable=True)
+    standardized_category = Column(String, index=True, nullable=True)
+    raw_category = Column(String, nullable=True)
+    needs_category_review = Column(Boolean, default=False, nullable=True)
     selling_price = Column(Float, nullable=False)
     purchase_price = Column(Float, nullable=True, default=0.0)
     mrp = Column(Float, nullable=True)
@@ -20,6 +23,8 @@ class Product(Base):
     mrp_updated_at = Column(DateTime(timezone=True), nullable=True)
     current_stock = Column(Integer, nullable=False, default=0)
     reorder_level = Column(Integer, nullable=True, default=0)
+    last_stockout_at = Column(DateTime(timezone=True), nullable=True)
+    is_active = Column(Boolean, default=True, nullable=True)
     unit = Column(String, nullable=True, default="pcs")
     sku = Column(String, index=True, nullable=True)
     shop_id = Column(UUID(as_uuid=True), ForeignKey("shops.id"), nullable=False, index=True)
@@ -29,3 +34,5 @@ class Product(Base):
 
     shop = relationship("Shop", back_populates="products")
     supplier = relationship("Supplier", back_populates="products")
+    stockout_events = relationship("StockoutEvent", back_populates="product", cascade="all, delete-orphan")
+

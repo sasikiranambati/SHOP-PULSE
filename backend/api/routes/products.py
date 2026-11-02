@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, List
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
 from sqlalchemy.orm import Session
@@ -11,6 +11,7 @@ from schemas.product import (
     ProductResponse,
     PaginatedProductResponse,
     ProductLookupResponse,
+    CategoryItemResponse,
 )
 from services import shop as shop_service
 from services import product as product_service
@@ -104,6 +105,17 @@ def lookup_product(
         barcode=barcode,
         name=name
     )
+
+@router.get("/categories", response_model=List[CategoryItemResponse])
+def get_categories(
+    *,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+) -> Any:
+    """
+    Get the canonical 12-category Indian retail taxonomy master.
+    """
+    return product_service.get_canonical_categories(db)
 
 @router.get("/{id}", response_model=ProductResponse)
 def get_product(

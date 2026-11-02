@@ -3,7 +3,7 @@ id,Identifier,int64,0,1945944,Entity or time key
 date,Identifier,datetime64[us],0,2016-01-01 00:00:00,Entity or time key
 store_nbr,Identifier,int16,0,1,Entity or time key
 family,Identifier,str,0,AUTOMOTIVE,Entity or time key
-sales,Target,float32,0,0.0,Forecast target variable (raw and log1p transformed)
+sales,Target,float64,0,0.0,Forecast target variable (raw and log1p transformed)
 onpromotion,Promotional,int32,0,0,Promotional activity count and binary active promotion flag
 city,Store Hierarchy,str,0,Quito,Store operational metadata and geographic clustering
 state,Store Hierarchy,str,0,Pichincha,Store operational metadata and geographic clustering
@@ -30,10 +30,10 @@ is_payday,Calendar & Seasonal,int8,0,0,Temporal calendar feature extracted from 
 has_promotion,Promotional,int8,0,0,Promotional activity count and binary active promotion flag
 log1p_sales,Target,float32,0,0.0,Forecast target variable (raw and log1p transformed)
 lag_1,Sales History Lag,float32,0,5.0,Strictly shifted historical sales observation (lag_1)
-lag_7,Sales History Lag,float32,0,4.0,Strictly shifted historical sales observation (lag_7)
-lag_14,Sales History Lag,float32,0,3.0,Strictly shifted historical sales observation (lag_14)
-lag_28,Sales History Lag,float32,0,5.0,Strictly shifted historical sales observation (lag_28)
-rolling_mean_7,Rolling Window Stat,float32,0,5.285714,Historical window metric shifted by 1 day to exclude current observation
-rolling_std_7,Rolling Window Stat,float32,0,1.6035675,Historical window metric shifted by 1 day to exclude current observation
-rolling_mean_14,Rolling Window Stat,float32,0,4.214286,Historical window metric shifted by 1 day to exclude current observation
-rolling_mean_28,Rolling Window Stat,float32,0,4.5,Historical window metric shifted by 1 day to exclude current observation
+lag_7,Sales History Lag,float32,0,0.0,Strictly shifted historical sales observation (lag_7)
+lag_14,Sales History Lag,float32,0,0.0,Strictly shifted historical sales observation (lag_14)
+lag_28,Sales History Lag,float32,0,6.0,Strictly shifted historical sales observation (lag_28)
+rolling_mean_7,Rolling Window Stat,float32,0,4.714286,Historical window metric shifted by 1 day to exclude current observation
+rolling_std_7,Rolling Window Stat,float32,0,2.5634797,Historical window metric shifted by 1 day to exclude current observation
+rolling_mean_14,Rolling Window Stat,float32,0,4.0,Historical window metric shifted by 1 day to exclude current observation
+rolling_mean_28,Rolling Window Stat,float32,0,4.321429,Historical window metric shifted by 1 day to exclude current observation

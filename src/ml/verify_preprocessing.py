@@ -70,10 +70,20 @@ def main():
     for rf in raw_files:
         assert (Path("datasets/raw") / rf).exists(), f"Raw file {rf} was altered or removed!"
 
+    # Verify confirmed closure row and lag alignment around 2016-12-25
+    tr_full = pd.read_csv(p / "train_features.csv", parse_dates=["date"])
+    s1_sub = tr_full[(tr_full["store_nbr"] == 1) & (tr_full["family"] == "GROCERY I")].set_index("date")
+    assert pd.to_datetime("2016-12-25") in s1_sub.index, "Missing 2016-12-25 closure row in train_features.csv!"
+    assert s1_sub.loc["2016-12-25", "sales"] == 0.0, "2016-12-25 closure sales must be 0.0!"
+    assert s1_sub.loc["2016-12-26", "lag_1"] == 0.0, "2016-12-26 lag_1 must match 2016-12-25 zero sales!"
+    assert s1_sub.loc["2016-12-26", "lag_7"] == s1_sub.loc["2016-12-19", "sales"], "2016-12-26 lag_7 must match 2016-12-19 Monday sales!"
+
     print("=" * 60)
     print("[SUCCESS] All 6 processed files verified:")
     print("  [V] Zero unintended duplicate keys")
     print("  [V] Zero overlap between train, validation, and test splits")
+    print("  [V] Confirmed closure dates reindexed and verified (sales=0.0)")
+    print("  [V] Dec 26 lag_1 (0.0) and lag_7 (Monday match) strictly verified")
     print("  [V] Shift-1 rolling & lag features properly calculated")
     print("  [V] Raw CSV files completely preserved")
     print("=" * 60)

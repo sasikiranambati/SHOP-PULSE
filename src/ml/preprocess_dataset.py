@@ -45,6 +45,14 @@ TEST_END_DATE = "2017-08-31"
 # and zero lag-warmup NaNs, while cleaned_train.csv retains the entire 2013-2017 history.
 TRAIN_FEATURE_START_DATE = "2016-01-01"
 
+# Confirmed nationwide store closures in Ecuador (National Holiday "Navidad", 0 transactions in all stores)
+CONFIRMED_CLOSURE_DATES = [
+    "2013-12-25",
+    "2014-12-25",
+    "2015-12-25",
+    "2016-12-25",
+]
+
 
 # ---------------------------------------------------------------------------
 # 1. Dataset Ingestion and Validation
@@ -218,17 +226,65 @@ def merge_and_clean_base(
     """Merge sales data with stores, oil, and store-specific holiday indicators."""
     df = sales_df.copy()
     df["date"] = pd.to_datetime(df["date"])
-    initial_rows = len(df)
+    initial_raw_rows = len(df)
+
+    if is_train:
+        # Preserve valid zero-sales observations; clip any rare negative values
+        df["sales"] = df["sales"].clip(lower=0.0).astype(np.float32)
+
+        # -------------------------------------------------------------------
+        # Reindex to a complete daily calendar across all store-family series
+        # -------------------------------------------------------------------
+        min_date = df["date"].min()
+        max_date = df["date"].max()
+        full_calendar = pd.date_range(start=min_date, end=max_date, freq="D")
+        actual_dates = set(df["date"].unique())
+        missing_dates = sorted(list(set(full_calendar) - actual_dates))
+
+        confirmed_closure_ts = [pd.to_datetime(d) for d in CONFIRMED_CLOSURE_DATES]
+        unexpected_missing = [d for d in missing_dates if d not in confirmed_closure_ts]
+        if unexpected_missing:
+            unexpected_strs = [d.strftime("%Y-%m-%d") for d in unexpected_missing]
+            raise ValueError(
+                f"Discovered unexpected missing calendar dates: {unexpected_strs}! "
+                "Pipeline halted per safety constraints: synthetic sales can only be inserted for confirmed closures."
+            )
+
+        # Build synthetic closure rows for confirmed closure dates
+        all_stores = sorted(stores_df["store_nbr"].unique())
+        all_families = sorted(df["family"].unique())
+        synthetic_rows: List[Dict[str, Any]] = []
+
+        for c_date in confirmed_closure_ts:
+            if c_date in missing_dates:
+                for s in all_stores:
+                    for f in all_families:
+                        synthetic_rows.append({
+                            "id": -1,  # Identifies synthetic closure record
+                            "date": c_date,
+                            "store_nbr": int(s),
+                            "family": str(f),
+                            "sales": 0.0,
+                            "onpromotion": 0,
+                        })
+
+        if synthetic_rows:
+            synth_df = pd.DataFrame(synthetic_rows)
+            print(f"  [+] Inserted {len(synth_df):,} synthetic rows for {len(confirmed_closure_ts)} confirmed closure dates (sales=0.0, id=-1).")
+            df = pd.concat([df, synth_df], ignore_index=True)
+
+        expected_total_rows = len(full_calendar) * len(all_stores) * len(all_families)
+        assert len(df) == expected_total_rows, (
+            f"Calendar reindexing row mismatch! Expected {expected_total_rows:,}, got {len(df):,}"
+        )
+    else:
+        assert len(df) == initial_raw_rows, f"Test row count mismatch! Expected {initial_raw_rows}, got {len(df)}"
 
     # Standardize data types
     df["id"] = df["id"].astype(np.int64)
     df["store_nbr"] = df["store_nbr"].astype(np.int16)
     df["family"] = df["family"].astype(str)
     df["onpromotion"] = df["onpromotion"].fillna(0).astype(np.int32)
-
-    if is_train:
-        # Preserve valid zero-sales observations; clip any rare negative values
-        df["sales"] = df["sales"].clip(lower=0.0).astype(np.float32)
 
     # 1. Merge Store Metadata
     stores_meta = stores_df.rename(columns={"type": "store_type"})
@@ -249,8 +305,8 @@ def merge_and_clean_base(
     df["is_holiday_local"] = df["is_holiday_local"].fillna(0).astype(np.int8)
     df["holiday_type"] = df["holiday_type"].fillna("Regular").astype(str)
 
-    # Assert row count preservation (zero unintended duplicates)
-    assert len(df) == initial_rows, f"Merge row count mismatch! Expected {initial_rows}, got {len(df)}"
+    # Assert primary key uniqueness (zero unintended duplicates)
+    assert not df.duplicated(subset=["date", "store_nbr", "family"]).any(), "Duplicate primary keys detected after merge!"
     df = df.sort_values(["store_nbr", "family", "date"]).reset_index(drop=True)
     return df
 
@@ -582,6 +638,10 @@ def generate_reports(
         f.write("3. **Holiday Event Multi-Match & Transferred Dates (`holidays_events.csv`):**\n")
         f.write("   - Multi-event dates (e.g., 2012-06-25, 2012-12-24) historically duplicate rows if merged naively.\n")
         f.write("   - **Resolution:** Filtered out `transferred == True` (days where celebration moved) and `type == 'Work Day'`. Pre-mapped national holidays to all 54 stores, regional holidays to stores matching `state`, and local holidays to stores matching `city`. Aggregated events per `(date, store_nbr)` to ensure exactly zero row duplication.\n\n")
+        f.write("4. **Complete Calendar Reindexing & Confirmed Store Closures:**\n")
+        f.write("   - Raw `train.csv` omitted retail store closure dates across Ecuador on Christmas Day (`2013-12-25`, `2014-12-25`, `2015-12-25`, `2016-12-25`).\n")
+        f.write("   - **Resolution:** Constructed a continuous daily calendar (`freq='D'`) for every store-family combination. Inserted confirmed closure records with `sales = 0.0` and `id = -1` (7,128 synthetic rows total).\n")
+        f.write("   - **Effect:** Completely restored calendar-day alignment for all lag (`lag_1`, `lag_7`, `lag_14`, `lag_28`) and rolling window features, eliminating day-of-week phase shifts.\n\n")
 
         f.write("---\n\n")
         f.write("## 3. Merging Logic & Supporting Data Integration\n\n")
@@ -682,7 +742,7 @@ def main() -> int:
 
     # 6. Feature Engineering for Training & Validation
     print("  - Engineering features across historical sales series...")
-    train_with_cal = compute_calendar_features(cleaned_train)
+    train_with_cal = compute_calendar_features(cleaned_train.copy())
     train_with_lags = compute_lag_and_rolling_features(train_with_cal)
 
     # Chronological Split:

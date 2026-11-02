@@ -23,3 +23,5 @@ class Shop(Base):
     products = relationship("Product", back_populates="shop")
     sales = relationship("Sale", back_populates="shop")
     purchases = relationship("Purchase", back_populates="shop")
+    operating_statuses = relationship("ShopOperatingStatus", back_populates="shop", cascade="all, delete-orphan")
+    stockout_events = relationship("StockoutEvent", back_populates="shop", cascade="all, delete-orphan")

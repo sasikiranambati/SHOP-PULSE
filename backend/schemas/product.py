@@ -5,14 +5,24 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 MrpSource = Literal["INVOICE", "API", "MANUAL", "STORE"]
 
+class CategoryItemResponse(BaseModel):
+    code: str = Field(..., description="Canonical category code")
+    name: str = Field(..., description="Canonical category display name")
+    description: Optional[str] = Field(None, description="Category description")
+    display_order: int = Field(0, description="Display order")
+
 class ProductBase(BaseModel):
     name: str = Field(..., min_length=1, description="Product name")
-    category: Optional[str] = Field(None, description="Product category")
+    category: Optional[str] = Field(None, description="Product category (legacy/display)")
+    standardized_category: Optional[str] = Field(None, description="Canonical category from Indian retail master")
+    raw_category: Optional[str] = Field(None, description="Original retailer category string")
+    needs_category_review: Optional[bool] = Field(None, description="Flag indicating if category requires review")
     selling_price: float = Field(..., ge=0, description="Selling price (must be >= 0)")
     purchase_price: Optional[float] = Field(0.0, ge=0, description="Purchase price (must be >= 0)")
     mrp: Optional[float] = Field(None, ge=0, description="Maximum retail price (must be >= 0)")
     current_stock: int = Field(0, ge=0, description="Current stock quantity (must be >= 0)")
     reorder_level: Optional[int] = Field(0, ge=0, description="Reorder level (must be >= 0)")
+    is_active: Optional[bool] = Field(True, description="Whether product is active")
     unit: Optional[str] = Field("pcs", description="Unit of measurement")
     supplier_id: Optional[UUID] = Field(None, description="Supplier ID")
     sku: Optional[str] = Field(None, description="SKU or Barcode")
@@ -23,12 +33,16 @@ class ProductCreate(ProductBase):
 class ProductUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1)
     category: Optional[str] = None
+    standardized_category: Optional[str] = None
+    raw_category: Optional[str] = None
+    needs_category_review: Optional[bool] = None
     selling_price: Optional[float] = Field(None, ge=0)
     purchase_price: Optional[float] = Field(None, ge=0)
     mrp: Optional[float] = Field(None, ge=0)
     mrp_source: Optional[MrpSource] = None
     current_stock: Optional[int] = Field(None, ge=0)
     reorder_level: Optional[int] = Field(None, ge=0)
+    is_active: Optional[bool] = None
     unit: Optional[str] = None
     supplier_id: Optional[UUID] = None
     sku: Optional[str] = None
@@ -38,6 +52,7 @@ class ProductResponse(ProductBase):
     shop_id: UUID
     mrp_source: Optional[str] = None
     mrp_updated_at: Optional[datetime] = None
+    last_stockout_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

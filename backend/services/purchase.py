@@ -8,6 +8,8 @@ from db.models.product import Product
 from db.models.supplier import Supplier
 from schemas.purchase import PurchaseCreate
 
+from services.stockout import resolve_active_stockout_events_if_restocked
+
 def create_purchase(db: Session, purchase_in: PurchaseCreate, shop_id: UUID) -> Purchase:
     try:
         # Validate supplier if provided
@@ -52,6 +54,9 @@ def create_purchase(db: Session, purchase_in: PurchaseCreate, shop_id: UUID) -> 
             product.current_stock += item.quantity
             product.purchase_price = item.purchase_price
             db.add(product)
+
+            # Resolve any active stockout events
+            resolve_active_stockout_events_if_restocked(db, shop_id=shop_id, product=product)
 
         db.commit()
         db.refresh(db_purchase)
