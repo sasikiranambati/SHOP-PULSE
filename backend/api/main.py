@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from api.routes import health, auth, shops, products, suppliers, purchases, sales, dashboard, voice, invoices, shop_status
+from api.routes import health, auth, shops, products, suppliers, purchases, sales, dashboard, voice, invoices, shop_status, forecast
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
@@ -13,5 +13,7 @@ api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboar
 api_router.include_router(voice.router, prefix="/voice", tags=["voice"])
 api_router.include_router(invoices.router, prefix="/invoices", tags=["invoices"])
 api_router.include_router(shop_status.router, prefix="/shop-status", tags=["shop-status"])
+api_router.include_router(forecast.router, prefix="/forecast", tags=["forecast"])
+
 
 

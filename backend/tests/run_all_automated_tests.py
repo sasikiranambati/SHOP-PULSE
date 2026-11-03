@@ -24,6 +24,8 @@ if str(backend_dir) not in sys.path:
 from tests.test_automated_workflows import TestAutomatedWorkflows
 from tests.test_phase1_database_foundation import TestPhase1DatabaseFoundation
 from tests.test_phase2_backend_apis import TestPhase2BackendApis
+from tests.test_phase3_forecasting import TestPhase3Forecasting
+
 
 
 class QualityAuditTestResult(unittest.TextTestResult):
@@ -89,6 +91,8 @@ def build_suite() -> unittest.TestSuite:
     suite.addTests(loader.loadTestsFromTestCase(TestPhase1DatabaseFoundation))
     # Workflow 20: Phase 2 Backend APIs & Data Quality
     suite.addTests(loader.loadTestsFromTestCase(TestPhase2BackendApis))
+    # Phase 3: Statistical AI Forecasting Engine
+    suite.addTests(loader.loadTestsFromTestCase(TestPhase3Forecasting))
 
     return suite
 
@@ -103,7 +107,7 @@ def main():
 
     suite = build_suite()
     total_tests = suite.countTestCases()
-    print(f"Discovered {total_tests} test cases across 3 test modules.\n")
+    print(f"Discovered {total_tests} test cases across 4 test modules.\n")
 
     start_time = time.time()
     runner = unittest.TextTestRunner(
