@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useId } from 'react';
+﻿import React, { useState, useRef, useEffect, useId } from 'react';
 import { 
   Camera, 
   Upload, 
@@ -61,8 +61,10 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useDialog } from '../hooks/useDialog';
 import { useToast } from '../hooks/useToast';
 import { describeError } from '../utils/errorHandler';
+import { decimalMultiply } from '../utils/decimalCalc';
 import type { ApiError } from '../api/client';
 import { MrpStatus, LineAmount, LineReviewNotes, ValidationStatusBadge } from '../components/InvoiceLineCells';
+import { WarningPopover } from '../components/WarningPopover';
 import { ImageTableCropper } from '../components/ImageTableCropper';
 import { parseProductTableFromImage } from '../services/productTableScanner';
 import type { CropRegion } from '../services/imagePreprocessor';
@@ -526,7 +528,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
         }
         if (field === 'quantity' || field === 'purchasePrice') {
           if (updated.quantity != null && updated.purchasePrice != null) {
-            updated.calculatedAmount = Math.round(Number(updated.quantity) * Number(updated.purchasePrice) * 100) / 100;
+            updated.calculatedAmount = decimalMultiply(Number(updated.quantity), Number(updated.purchasePrice));
           } else {
             updated.calculatedAmount = null;
           }
@@ -1751,13 +1753,13 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                         {(item.brand || (item.normalizedName && item.normalizedName !== item.name) || item.packSize) && (
                           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-600">
                             {item.brand && (
-                              <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 font-bold border border-purple-200">
-                                Brand: {item.brand}
+                              <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 font-bold border border-purple-200 truncate max-w-[8rem]" title={`Brand: ${item.brand}`}>
+                                {item.brand}
                               </span>
                             )}
                             {item.normalizedName && item.normalizedName !== item.name && (
-                              <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200">
-                                Standard: {item.normalizedName}
+                              <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200 truncate max-w-[10rem]" title={`Standard: ${item.normalizedName}`}>
+                                {item.normalizedName}
                               </span>
                             )}
                             {item.packSize && (
@@ -1952,7 +1954,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
             {/* Desktop Table View (>= md) */}
             {/* The table scrolls inside this box so its header stays visible over long invoices */}
             <div className="hidden md:block overflow-auto max-h-[70dvh] border border-[#E3E5DE] rounded-2xl">
-              <table className="w-full text-left text-xs sm:text-sm">
+              <table className="w-full min-w-[78rem] text-left text-xs sm:text-sm table-auto">
                 <caption className="sr-only">Extracted invoice line items</caption>
                 <thead className="sticky top-0 z-10 bg-[#F7F5EF] text-[#69736C] font-extrabold uppercase text-[11px] select-none shadow-[inset_0_-1px_0_0_rgb(227_229_222)]">
                   <tr>
@@ -2003,13 +2005,14 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                           : 'hover:bg-slate-50/80'
                       }`}
                     >
-                      <td className="py-2.5 px-3 sm:px-4 min-w-[15rem]">
+                      <td className="py-2.5 px-3 sm:px-4 min-w-[14rem] max-w-[20rem]">
                         <input
                           type="text"
                           value={item.name}
                           onChange={(e) => handleItemChange(item.id, 'name', e.target.value)}
                           placeholder="e.g. Tata Salt 1 kg"
-                          className="w-full min-w-0 font-bold text-slate-900 bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none"
+                          title={item.name}
+                          className="w-full min-w-0 font-bold text-slate-900 bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none truncate"
                         />
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           {renderGroceryBadge(item)}
@@ -2021,48 +2024,18 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                               Edited
                             </span>
                           )}
-                          {item.isVerified && (
-                            <span
-                              className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-300 select-none"
-                            >
-                              ✓ Verified
-                            </span>
-                          )}
-                          {itemError && (
-                            <span
-                              className="px-1.5 py-0.5 rounded bg-rose-200 text-rose-900 text-[10px] font-black select-none"
-                              title={itemError.issues.join(' • ')}
-                            >
-                              Fix required
-                            </span>
-                          )}
-                          {isUncertain && !itemError && (
-                            <span
-                              className="px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 text-[10px] font-black select-none"
-                              title="Some values need checking"
-                            >
-                              Review
-                            </span>
-                          )}
-                          {item.arithmeticStatus === 'MISMATCH' && !itemError && (
-                            <span
-                              className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 text-[10px] font-black select-none border border-rose-200"
-                              title={item.validationWarning}
-                            >
-                              Qty × rate ≠ amount
-                            </span>
-                          )}
+                          <WarningPopover item={item} validationError={itemError} onApplyRate={() => applySuggestedRate(item)} />
                         </div>
                         {(item.brand || (item.normalizedName && item.normalizedName !== item.name)) && (
                           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-600">
                             {item.brand && (
-                              <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 font-bold border border-purple-200">
-                                Brand: {item.brand}
+                              <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 font-bold border border-purple-200 truncate max-w-[8rem]" title={`Brand: ${item.brand}`}>
+                                {item.brand}
                               </span>
                             )}
                             {item.normalizedName && item.normalizedName !== item.name && (
-                              <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200">
-                                Standard: {item.normalizedName}
+                              <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200 truncate max-w-[10rem]" title={`Standard: ${item.normalizedName}`}>
+                                {item.normalizedName}
                               </span>
                             )}
                           </div>
@@ -2089,7 +2062,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                             </button>
                           </div>
                         )}
-                        <LineReviewNotes item={item} onApplyRate={() => applySuggestedRate(item)} />
+
                       </td>
                       <td className="py-2.5 px-2 text-slate-700">
                         <input
@@ -2097,7 +2070,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                           value={item.brand || ''}
                           placeholder="—"
                           onChange={(e) => handleItemChange(item.id, 'brand', e.target.value.trim() || null)}
-                          className="w-16 sm:w-20 text-xs font-semibold bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none placeholder:text-slate-300"
+                          className="w-20 text-xs font-semibold bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none placeholder:text-slate-300"
                         />
                       </td>
                       <td className="py-2.5 px-2 text-slate-600">
@@ -2106,7 +2079,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                           value={item.category || ''}
                           placeholder="—"
                           onChange={(e) => handleItemChange(item.id, 'category', e.target.value)}
-                          className="w-16 sm:w-20 text-xs font-semibold bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none placeholder:text-slate-300"
+                          className="w-20 text-xs font-semibold bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none placeholder:text-slate-300"
                         />
                       </td>
                       <td className="py-2.5 px-2 text-center">
@@ -2227,7 +2200,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                       </td>
                       <td className="py-2.5 px-2 text-right">
                         {(() => {
-                          const calc = item.calculatedAmount ?? (item.quantity != null && (item.purchasePrice ?? item.rate) != null ? Math.round(Number(item.quantity) * Number(item.purchasePrice ?? item.rate) * 100) / 100 : null);
+                          const calc = item.calculatedAmount ?? decimalMultiply(Number(item.quantity), Number(item.purchasePrice ?? item.rate));
                           return calc !== null ? (
                             <span className="font-bold text-emerald-800">₹{calc.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                           ) : (

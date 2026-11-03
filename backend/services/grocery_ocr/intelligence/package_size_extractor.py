@@ -90,10 +90,20 @@ PACK_OF_REGEX = re.compile(
 )
 
 # Regex 3: Standard single pack size e.g. "50 KG", "500 GM", "1.5 L", "100G"
+# NOTE: billing/wholesale container units (BOR, BAG, CTN, BOX, DZ, DOZ, CS, TUB)
+# are NOT pack sizes — they are invoice billing units. Exclude them here.
 STANDARD_PACK_REGEX = re.compile(
     r"\b(?P<val>\d+(?:\.\d+)?)\s*(?P<unit>kg|kgs|kilo|kilogram|g|gm|gms|gram|grams|mg|l|lt|ltr|ltrs|litre|litres|liter|liters|ml|mls|quintal|qtl|pack|packs|pkt|pkts|packet|pouch|box|boxes|can|tin|jar|bottle|btl|sachet|pc|pcs)\b",
     re.I
 )
+
+# Units that are invoice billing / wholesale container units — should NEVER be extracted
+# as pack sizes. These are quantities of the billing unit (BOR = borsa/sack, CTN = carton, etc.)
+BILLING_UNIT_KEYWORDS = frozenset([
+    "bor", "bag", "bags", "ctn", "carton", "cartons", "dz", "doz", "dozen", "cs", "case",
+    "tub", "tubs", "drum", "drums", "bale", "bales", "roll", "rolls", "reel", "reels",
+    "bundle", "bundles", "unit", "units",
+])
 
 
 class PackageSizeExtractor:
@@ -170,6 +180,12 @@ class PackageSizeExtractor:
             raw_unit = best_match.group("unit").lower()
             if raw_unit in UNIT_NORMALIZATION:
                 val = Decimal(best_match.group("val"))
+
+                # Guard: zero or negative pack sizes are invalid
+                if val <= Decimal("0"):
+                    logger.warning("Discarding zero/negative pack size value: %s in '%s'", val, text)
+                    return None, text
+
                 norm_unit = UNIT_NORMALIZATION[raw_unit]
                 raw_token = best_match.group(0)
 

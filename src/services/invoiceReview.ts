@@ -219,7 +219,7 @@ export function setPackSizeText(item: InvoiceLineItem, text: string): InvoiceLin
 
 /** How a line's pack size is shown in the review inputs. */
 export function formatPackSize(item: Pick<InvoiceLineItem, 'packSize' | 'packSizeUnit'>): string {
-  if (item.packSize === null || item.packSize === undefined || String(item.packSize) === '') return '';
+  if (item.packSize === null || item.packSize === undefined || String(item.packSize) === '' || Number(item.packSize) === 0) return '';
   return `${item.packSize}${item.packSizeUnit ? ' ' + item.packSizeUnit : ''}`;
 }
 

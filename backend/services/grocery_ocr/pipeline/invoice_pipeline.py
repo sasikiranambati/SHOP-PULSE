@@ -295,6 +295,17 @@ class InvoicePipeline:
                         raw_name, norm_name = self.product_extractor.extract_product_name(row, columns)
                         pack_size = self.product_extractor.extract_pack_size(raw_name)
 
+                        # Guard: discard pack_size if its unit is a billing/wholesale container unit
+                        # (e.g. '1 PKT' in a product name is typically the billing quantity, not physical size)
+                        if pack_size is not None and pack_size.unit is not None:
+                            from services.grocery_ocr.intelligence.package_size_extractor import BILLING_UNIT_KEYWORDS
+                            if pack_size.unit.lower() in BILLING_UNIT_KEYWORDS:
+                                logger.debug(
+                                    'Discarding pack_size %s %s -- billing unit, not physical pack size',
+                                    pack_size.value, pack_size.unit,
+                                )
+                                pack_size = None
+
                         # Detailed Quantity Extraction
                         if hasattr(self.quantity_extractor, "extract_quantity_detailed"):
                             qty_res = self.quantity_extractor.extract_quantity_detailed(row, columns)

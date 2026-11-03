@@ -220,8 +220,8 @@ export function mapBackendItemToCanonical(item: BackendCanonicalInvoiceItem): Ca
     sourceText: item.source_text || '',
     extractionMethod: (item.extraction_method || 'TABLE_STRUCTURED') as ExtractionMethod,
     validationIssues: item.validation_issues || [],
-    packSize: toNum(item.pack_size),
-    packSizeUnit: item.pack_size_unit ?? null,
+    packSize: (() => { const p = toNum(item.pack_size); return (p !== null && p > 0) ? p : null; })(),
+    packSizeUnit: (() => { const p = toNum(item.pack_size); return (p !== null && p > 0) ? (item.pack_size_unit ?? null) : null; })(),
     classificationStatus: item.classification_status ?? 'GROCERY_CONFIDENT',
     isGrocery: item.is_grocery ?? true,
     brand: item.brand ?? null,
@@ -244,7 +244,7 @@ export function mapBackendItemToCanonical(item: BackendCanonicalInvoiceItem): Ca
       lineTotal,
       brand: item.brand ?? null,
       category: item.category ?? 'Groceries',
-      packSize: toNum(item.pack_size),
+      packSize: (() => { const p = toNum(item.pack_size); return (p !== null && p > 0) ? p : null; })(),
     },
   };
 }
