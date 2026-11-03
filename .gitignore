@@ -55,6 +55,10 @@ backend/storage/
 .coverage
 htmlcov/
 
+# Runtime uploaded / exported invoice audit files
+backend/uploads/invoices/*.xlsx
+!backend/uploads/invoices/.gitkeep
+
 # Explicitly ensure test fixtures and test assets are NEVER ignored
 !tests/fixtures/**
-
+!backend/tests/fixtures/**

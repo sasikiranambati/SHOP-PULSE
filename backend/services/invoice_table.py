@@ -69,6 +69,7 @@ class Column:
     is_percent: bool = False
     start: float = 0.0
     end: float = float("inf")
+    confidence: float = 100.0
 
     @property
     def type(self) -> str:  # alias used by older callers
@@ -603,7 +604,8 @@ def _header_columns_for_row(row: Row, med_h: float, text_mode: bool) -> List[Col
                 _, pct = normalize_header(cell)
                 cols.append(Column(role, cell, float(idx), float(idx), pct))
         return cols
-    phrases = _phrases_from_words(row.words, gap_limit=max(med_h * 1.2, 25.0))
+    row_h = _median_height([row])
+    phrases = _phrases_from_words(row.words, gap_limit=max(med_h * 1.2, row_h * 1.25, 25.0))
     return _columns_from_phrases(phrases)
 
 
@@ -645,28 +647,57 @@ def detect_header(rows: Sequence[Row], text_mode: bool) -> Tuple[Optional[int], 
             for idx, c in enumerate(cols):
                 c.x0 = c.x1 = float(idx)
 
+    if not text_mode:
+        _assign_spatial_ranges(cols, med_h)
+
     # Deduce unknown column roles from positional layout
+    data_rows = rows[best_idx + 1:] if best_idx is not None else []
+
+    def _col_has_numeric_in_most(target_col: Column, target_idx: int) -> bool:
+        if not data_rows:
+            return False
+        total_cells = 0
+        numeric_cells = 0
+        for r in data_rows:
+            text = r.text.strip()
+            if not text or TABLE_END_RE.match(text):
+                continue
+            if text_mode:
+                cells_txt, mode = _split_text_cells(r.text)
+                if mode != "single" and len(cells_txt) == len(cols):
+                    cell_str = cells_txt[target_idx].strip()
+                else:
+                    cell_dict = _cells_text(r, cols)
+                    cell_str = " ".join(cell_dict.get(target_idx, [])).strip()
+            else:
+                clean_words = [w for w in r.words if not re.match(r"^[\s|\[\]\-_—–]+$", w.text)]
+                cell_words = [w for w in clean_words if target_col.start <= w.cx < target_col.end]
+                cell_str = " ".join(w.text for w in cell_words).strip()
+
+            if not cell_str or re.match(r"^[\s|\[\]\-_—–.]+$", cell_str):
+                continue
+
+            total_cells += 1
+            if looks_numeric(cell_str) or any(looks_numeric(tok) for tok in cell_str.split()):
+                numeric_cells += 1
+
+        return total_cells > 0 and (numeric_cells / total_cells >= 0.5)
+
     rate_col_idx = next((i for i, c in enumerate(cols) if c.role in ("rate", "purchase_price")), -1)
     mrp_col_idx = next((i for i, c in enumerate(cols) if c.role == "mrp"), -1)
-    unit_col_idx = next((i for i, c in enumerate(cols) if c.role == "unit"), -1)
-    if rate_col_idx >= 0 and mrp_col_idx > rate_col_idx:
-        for c in cols[rate_col_idx + 1: mrp_col_idx]:
-            if c.role == "unknown":
-                c.role = "selling_price"
-    elif unit_col_idx >= 0 and mrp_col_idx > unit_col_idx + 1:
-        between = [c for c in cols[unit_col_idx + 1: mrp_col_idx] if c.role == "unknown"]
-        if len(between) == 2:
-            between[0].role = "rate"
-            between[1].role = "selling_price"
-        elif len(between) == 1:
-            between[0].role = "rate"
+    if rate_col_idx >= 0 and mrp_col_idx > rate_col_idx + 1:
+        gap_unknowns = [(i, c) for i, c in enumerate(cols[rate_col_idx + 1: mrp_col_idx], start=rate_col_idx + 1) if c.role == "unknown"]
+        if len(gap_unknowns) == 1 and _col_has_numeric_in_most(gap_unknowns[0][1], gap_unknowns[0][0]):
+            gap_unknowns[0][1].role = "selling_price"
+            gap_unknowns[0][1].confidence = 65.0
 
     disc_col_idx = next((i for i, c in enumerate(cols) if c.role in ("discount", "discount_pct")), -1)
     tot_col_idx = next((i for i, c in enumerate(cols) if c.role in ("total", "taxable")), -1)
-    if disc_col_idx >= 0 and tot_col_idx > disc_col_idx:
-        for c in cols[disc_col_idx + 1: tot_col_idx]:
-            if c.role == "unknown":
-                c.role = "tax_amount"
+    if disc_col_idx >= 0 and tot_col_idx > disc_col_idx + 1:
+        gap_unknowns = [(i, c) for i, c in enumerate(cols[disc_col_idx + 1: tot_col_idx], start=disc_col_idx + 1) if c.role == "unknown"]
+        if len(gap_unknowns) == 1 and _col_has_numeric_in_most(gap_unknowns[0][1], gap_unknowns[0][0]):
+            gap_unknowns[0][1].role = "tax_amount"
+            gap_unknowns[0][1].confidence = 65.0
 
     if not text_mode:
         _assign_spatial_ranges(cols, med_h)

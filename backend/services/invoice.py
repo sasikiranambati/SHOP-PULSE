@@ -10,6 +10,7 @@ Stock is only changed by confirm_and_update_stock(), in one transaction.
 
 import io
 import logging
+import os
 import re
 import uuid
 import zlib
@@ -39,6 +40,11 @@ from schemas.invoice import (
 )
 
 logger = logging.getLogger(__name__)
+
+from services.grocery_ocr.engines.ocr_engine import TesseractOCREngine
+from services.grocery_ocr.pipeline.invoice_pipeline import InvoicePipeline
+
+USE_NEW_GROCERY_OCR = os.getenv("USE_NEW_GROCERY_OCR", "true").lower() in ("true", "1", "yes")
 
 MAX_PDF_PAGES = 5
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif"}
@@ -371,7 +377,7 @@ def match_inventory(name: str, barcode: Optional[str], products: List[Product]) 
 # --------------------------------------------------------------------------
 
 
-def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, shop_id: UUID) -> InvoiceExtractResponse:
+def _extract_invoice_legacy(file_bytes: bytes, filename: str, db: Session, shop_id: UUID) -> InvoiceExtractResponse:
     if not file_bytes or len(file_bytes.strip()) == 0:
         raise ValueError("Uploaded file is empty. Please upload a valid invoice document.")
 
@@ -510,6 +516,27 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
             or getattr(it, "classification_status", "GROCERY_CONFIDENT") in ("GROCERY_REVIEW", "UNKNOWN_REVIEW")
         )
         level = "HIGH" if it.confidence >= 85 and not needs_review else ("MEDIUM" if it.confidence >= 60 else "LOW")
+        printed_amount = it.line_total if it.line_total_source != "CALCULATED" else None
+        calculated_amount = (
+            round(it.quantity * it.purchase_price, 2)
+            if it.quantity is not None and it.purchase_price is not None
+            else None
+        )
+        is_verified = (it.arithmetic_status == "VERIFIED")
+        orig_values = {
+            "name": it.product_name,
+            "quantity": it.quantity,
+            "unit": unit,
+            "purchase_price": it.purchase_price,
+            "selling_price": it.selling_price,
+            "mrp": mrp,
+            "discount": it.discount,
+            "gst_rate": it.gst_rate,
+            "line_total": it.line_total,
+            "brand": getattr(it, "brand", None),
+            "category": getattr(it, "category", "Groceries"),
+            "pack_size": getattr(it, "pack_size", None),
+        }
         items.append(CanonicalInvoiceItemSchema(
             id=f"item_{uuid.uuid4().hex[:8]}",
             product_name=it.product_name,
@@ -536,6 +563,8 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
             barcode=it.barcode,
             line_total=it.line_total,
             amount=it.line_total,
+            printed_amount=printed_amount,
+            calculated_amount=calculated_amount,
             line_total_source=it.line_total_source,
             arithmetic_status=it.arithmetic_status,
             purchasePrice=it.purchase_price,
@@ -558,6 +587,9 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
             brand=getattr(it, "brand", None),
             normalized_name=getattr(it, "normalized_name", it.product_name),
             category=getattr(it, "category", "Groceries") or (prod.category if prod else "Groceries"),
+            is_verified=is_verified,
+            user_edited=False,
+            original_values=orig_values,
         ))
 
     logger.info(
@@ -644,6 +676,16 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
         total_grocery_items=total_grocery_items,
         total_review_items=total_review_items,
         total_excluded_items=total_excluded_items,
+        pipeline_stages=[
+            "file_validation",
+            "page_preparation",
+            "ocr_recognition",
+            "table_and_column_detection",
+            "invoice_validation",
+            "workbook_generation",
+            "workbook_parsing",
+            "integrity_validation",
+        ],
     )
     logger.info(
         "[DIAGNOSTIC] Stage F: FastAPI response payload: %d items, total=%s, status=%s, excel=%s",
@@ -653,6 +695,263 @@ def extract_invoice_from_bytes(file_bytes: bytes, filename: str, db: Session, sh
         resp.excel_download_url,
     )
     return resp
+
+
+def _extract_invoice_with_new_pipeline(
+    file_bytes: bytes, filename: str, db: Session, shop_id: UUID
+) -> InvoiceExtractResponse:
+    shop_products = db.query(Product).filter(Product.shop_id == shop_id).all()
+    pipeline = InvoicePipeline(ocr_engine=TesseractOCREngine())
+    extracted = pipeline.process(file_bytes, filename, candidate_products=shop_products)
+
+    if extracted.status == "FAILED":
+        raise ValueError(extracted.reason or "Failed to process invoice document.")
+
+    # External MRP lookup integration
+    queries = []
+    for it in extracted.items:
+        p_name = it.normalized_product_name or it.raw_product_name
+        gtin = normalize_gtin(it.barcode)
+        queries.append(mrp_lookup.LookupQuery(product_name=p_name, gtin=gtin, sku=None))
+    provider = mrp_lookup.get_provider()
+    lookups = mrp_lookup.lookup_mrp_batch(queries, provider) if queries else []
+
+    items: List[CanonicalInvoiceItemSchema] = []
+    for idx, it in enumerate(extracted.items):
+        q = float(it.quantity) if it.quantity is not None else None
+        pp = float(it.purchase_price) if it.purchase_price is not None else None
+        sp = float(it.selling_price) if it.selling_price is not None else None
+        m = float(it.mrp) if it.mrp is not None else None
+        prn = float(it.printed_amount) if it.printed_amount is not None else None
+        calc = float(it.calculated_amount) if it.calculated_amount is not None else None
+        tot = prn if prn is not None else calc
+        verified = (it.validation_status == "VERIFIED")
+        needs_review = (
+            it.review_status in ("REVIEW_REQUIRED", "UNKNOWN_REVIEW", "NON_GROCERY")
+            or not verified
+            or pp is None
+            or q is None
+            or (it.ocr_confidence is not None and it.ocr_confidence < 85.0)
+        )
+
+        orig = {
+            "name": it.raw_product_name,
+            "quantity": q,
+            "unit": it.unit,
+            "purchase_price": pp,
+            "selling_price": sp,
+            "mrp": m,
+            "discount": float(it.discount) if it.discount is not None else None,
+            "gst_rate": float(it.gst_rate) if it.gst_rate is not None else None,
+            "line_total": tot,
+            "brand": it.brand,
+            "category": it.category,
+            "pack_size": it.package_size.raw_text if it.package_size else None,
+        }
+
+        matched_prod_id = None
+        matched_prod_name = None
+        match_score = None
+        matched_id_val = it.metadata.get("matched_product_id") or it.matched_product_id
+        if matched_id_val:
+            matched_prod = next((p for p in shop_products if str(p.id) == str(matched_id_val)), None)
+            if matched_prod:
+                matched_prod_id = matched_prod.id
+                matched_prod_name = matched_prod.name
+                match_score = float(it.metadata.get("match_score", 1.0))
+
+        lookup = lookups[idx] if idx < len(lookups) else None
+        store_mrp = matched_prod.mrp if matched_prod is not None else None
+        mrp_val, mrp_src, _, _ = mrp_lookup.resolve_line_mrp(m, lookup, store_mrp)
+        mrp_lookup_schema = MrpLookupSchema(**lookup.to_dict()) if lookup else MrpLookupSchema(
+            status="FOUND" if mrp_val else "NOT_FOUND",
+            provider="invoice",
+            message="Read from invoice" if mrp_val else "Not printed",
+            mrp=mrp_val,
+            match_method="invoice" if mrp_val else "none",
+        )
+
+        items.append(
+            CanonicalInvoiceItemSchema(
+                id=it.item_id,
+                product_name=it.normalized_product_name or it.raw_product_name,
+                quantity=q,
+                unit=it.unit,
+                rate=pp,
+                purchase_price=pp,
+                selling_price=sp,
+                mrp=mrp_val,
+                mrp_source=mrp_src,
+                invoice_mrp=m,
+                store_mrp=store_mrp,
+                mrp_lookup=mrp_lookup_schema,
+                raw_rate=pp,
+                raw_purchase_price=pp,
+                raw_selling_price=sp,
+                raw_mrp=m,
+                discount=float(it.discount) if it.discount is not None else None,
+                discount_pct=float(it.discount_pct) if it.discount_pct is not None else None,
+                taxable_amount=float(it.taxable_amount) if it.taxable_amount is not None else None,
+                tax_amount=float(it.tax_amount) if it.tax_amount is not None else None,
+                gst_rate=float(it.gst_rate) if it.gst_rate is not None else None,
+                hsn_code=it.hsn_code,
+                barcode=it.barcode,
+                line_total=tot,
+                amount=tot,
+                printed_amount=prn,
+                calculated_amount=calc,
+                line_total_source="PRINTED" if prn is not None else ("CALCULATED" if calc is not None else "UNKNOWN"),
+                arithmetic_status=it.validation_status,
+                purchasePrice=pp,
+                confidence=float(it.ocr_confidence or 95.0),
+                confidence_level="HIGH" if not needs_review else "LOW",
+                needs_review=needs_review,
+                source_text=it.raw_row_text,
+                raw_cells=it.raw_cells,
+                extraction_method="TABLE_STRUCTURED",
+                validation_issues=it.validation_issues,
+                suggestions=[],
+                suggested_rate=None,
+                matched_product_id=matched_prod_id,
+                matched_product_name=matched_prod_name,
+                match_score=match_score,
+                pack_size=(
+                    float(it.package_size.value)
+                    if (it.package_size and it.package_size.value is not None)
+                    else None
+                ),
+                pack_size_unit=it.package_size.unit if it.package_size else None,
+                classification_status=(
+                    "GROCERY_CONFIDENT"
+                    if it.is_grocery and it.review_status == "CONFIRMED"
+                    else ("NON_GROCERY" if not it.is_grocery else "GROCERY_REVIEW")
+                ),
+                is_grocery=it.is_grocery,
+                brand=it.brand,
+                normalized_name=it.normalized_product_name or it.raw_product_name,
+                category=it.category,
+                is_verified=verified,
+                user_edited=False,
+                original_values=orig,
+            )
+        )
+
+    tot_amt = round(sum(i.line_total for i in items if i.line_total is not None), 2)
+    tot_units = round(sum(i.quantity for i in items if i.quantity is not None), 2)
+    hdr_detected = len(extracted.metadata.tables_detected) > 0 and extracted.metadata.tables_detected[0].has_table
+    t0 = extracted.metadata.tables_detected[0] if hdr_detected else None
+
+    columns = (
+        [
+            DetectedColumnSchema(role=c.role, header_text=c.header_text, x_start=c.x_start, x_end=c.x_end)
+            for c in (t0.columns or [])
+        ]
+        if t0
+        else []
+    )
+
+    raw_text = extracted.metadata.ocr_evidence.full_text if extracted.metadata.ocr_evidence else ""
+    diag = DiagnosticInfo(
+        document_type=extracted.metadata.document_type,
+        engine_used="backend_ocr_pipeline",
+        total_raw_lines=(
+            sum(len(p.lines) for p in extracted.metadata.ocr_evidence.pages)
+            if extracted.metadata.ocr_evidence
+            else len(items)
+        ),
+        total_raw_words=len(raw_text.split()),
+        header_detected=hdr_detected,
+        header_text=t0.header_text if t0 else None,
+        detected_columns=[c.role for c in (t0.columns or [])] if t0 else [],
+        columns=columns,
+        rows=[],
+        detected_sections=["HEADER", "LINE_ITEMS"] if hdr_detected else [],
+        warnings=extracted.metadata.warnings,
+        ocr_psm="3",
+        ocr_language_data="eng+osd",
+        pages_processed=extracted.metadata.page_count,
+        mrp_provider="openmrp",
+    )
+
+    excel_download_url = (
+        f"/api/v1/invoices/{extracted.invoice_id}/excel"
+        if extracted.metadata.custom_properties.get("xlsx_file_path")
+        else None
+    )
+
+    status_str = "needs_review" if (not items or any(i.needs_review for i in items)) else "success"
+    reason_str = (
+        None
+        if items
+        else (
+            extracted.metadata.warnings[0]
+            if extracted.metadata.warnings
+            else "No product line items were detected in the document"
+        )
+    )
+
+    return InvoiceExtractResponse(
+        id=extracted.invoice_id,
+        supplier_name=extracted.supplier_name,
+        supplier_confidence=85.0 if extracted.supplier_name else 0.0,
+        invoice_number=extracted.invoice_number,
+        invoice_no_confidence=85.0 if extracted.invoice_number else 0.0,
+        invoice_date=extracted.invoice_date,
+        date_confidence=85.0 if extracted.invoice_date else 0.0,
+        gstin=None,
+        invoice_total=tot_amt,
+        total_amount=tot_amt,
+        total_units=tot_units,
+        total_items=len(items),
+        confidence_score=round(sum(i.confidence for i in items) / len(items), 1) if items else 90.0,
+        raw_ocr_text=raw_text,
+        engine_used="backend_ocr_pipeline",
+        extraction_method="TABLE_STRUCTURED" if hdr_detected else "TEXT_LINE_ITEM",
+        items=items,
+        status=status_str,
+        reason=reason_str,
+        diagnostics=diag,
+        excel_download_url=excel_download_url,
+        total_grocery_items=sum(1 for i in items if i.is_grocery and i.classification_status == "GROCERY_CONFIDENT"),
+        total_review_items=sum(1 for i in items if i.classification_status in ("GROCERY_REVIEW", "UNKNOWN_REVIEW")),
+        total_excluded_items=sum(1 for i in items if i.classification_status == "NON_GROCERY"),
+        pipeline_stages=extracted.metadata.pipeline_stages_completed,
+    )
+
+
+def extract_invoice_from_bytes(
+    file_bytes: bytes, filename: str, db: Session, shop_id: UUID
+) -> InvoiceExtractResponse:
+    """
+    Primary invoice scanning orchestrator.
+    Routes to the new modular Grocery OCR engine by default.
+    Features instant, safe fallback to the legacy scanner if the new pipeline
+    encounters unexpected errors, or if USE_NEW_GROCERY_OCR is disabled.
+    """
+    if not file_bytes or len(file_bytes.strip()) == 0:
+        raise ValueError("Uploaded file is empty. Please upload a valid invoice document.")
+
+    if not USE_NEW_GROCERY_OCR:
+        logger.info("USE_NEW_GROCERY_OCR=false: Using legacy invoice extractor")
+        return _extract_invoice_legacy(file_bytes, filename, db, shop_id)
+
+    if filename.lower().endswith(".txt"):
+        logger.info("Plain-text invoice document detected (%s); routing to text extractor", filename)
+        return _extract_invoice_legacy(file_bytes, filename, db, shop_id)
+
+    try:
+        resp = _extract_invoice_with_new_pipeline(file_bytes, filename, db, shop_id)
+        if len(resp.items) == 0:
+            logger.info("New grocery OCR produced 0 items on '%s'; falling back to legacy extractor", filename)
+            return _extract_invoice_legacy(file_bytes, filename, db, shop_id)
+        return resp
+    except Exception as exc:
+        logger.warning(
+            "New Grocery OCR pipeline encountered an unexpected error on '%s': %s; safely falling back to legacy extractor",
+            filename,
+            exc,
+        )
+        return _extract_invoice_legacy(file_bytes, filename, db, shop_id)
 
 
 
@@ -741,7 +1040,8 @@ def confirm_and_update_stock(db: Session, shop_id: UUID, confirm_in: InvoiceConf
             raise InvoiceValidationError("Selling price is required for new products: " + ", ".join(missing_sp))
 
         db_purchase = Purchase(shop_id=shop_id, supplier_id=supplier_id, total_amount=0.0,
-                               invoice_number=invoice_number, invoice_date=confirm_in.invoice_date)
+                               invoice_number=invoice_number, invoice_date=confirm_in.invoice_date,
+                               processing_status="CONFIRMED", review_status="REVIEWED")
         db.add(db_purchase)
         db.flush()
 
@@ -806,6 +1106,8 @@ def confirm_and_update_stock(db: Session, shop_id: UUID, confirm_in: InvoiceConf
             items_restocked=restocked,
             items_created=created,
             created_at=db_purchase.created_at or now,
+            processing_status=db_purchase.processing_status or "CONFIRMED",
+            review_status=db_purchase.review_status or "REVIEWED",
         )
     except Exception:
         db.rollback()

@@ -1,8 +1,12 @@
 import logging
+import os
+import re
+import tempfile
+from pathlib import Path
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
-
+from fastapi.responses import FileResponse
 from fastapi.concurrency import run_in_threadpool
 
 from api import deps
@@ -15,6 +19,7 @@ from schemas.invoice import (
 from services import shop as shop_service
 from services import invoice as invoice_service
 from services.ocr import OcrUnavailableError
+from services.excel_invoice import get_invoice_workbook_path
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -104,10 +109,16 @@ def download_invoice_excel(
     Download the genuine .xlsx workbook generated during invoice extraction.
     Contains: Raw Invoice, Grocery Items, Review Required, and OCR Audit worksheets.
     """
-    from fastapi.responses import FileResponse
-    from services.excel_invoice import get_invoice_workbook_path
-
     path = get_invoice_workbook_path(invoice_id)
+    if not path or not path.exists():
+        safe_inv = re.sub(r"[^\w\-]", "_", invoice_id)
+        candidates = list(Path("backend/uploads/invoices").glob(f"invoice_audit_{safe_inv}_*.xlsx"))
+        if not candidates:
+            candidates = list((Path(tempfile.gettempdir()) / "shoppulse_invoices").glob(f"invoice_audit_{safe_inv}_*.xlsx"))
+        if candidates:
+            candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            path = candidates[0]
+
     if not path or not path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

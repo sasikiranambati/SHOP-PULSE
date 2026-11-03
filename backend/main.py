@@ -29,6 +29,8 @@ INCREMENTAL_COLUMNS = {
     "purchases": {
         "invoice_number": "VARCHAR",
         "invoice_date": "VARCHAR",
+        "processing_status": "VARCHAR",
+        "review_status": "VARCHAR",
     },
     "purchase_items": {
         "line_amount": "FLOAT",
@@ -109,4 +111,3 @@ def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="127.0.0.1", port=settings.PORT, reload=True, reload_dirs=[str(_backend_dir)])
-

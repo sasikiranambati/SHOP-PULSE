@@ -46,6 +46,8 @@ class CanonicalInvoiceItemSchema(BaseModel):
     barcode: Optional[str] = Field(None, description="Barcode / GTIN printed on the invoice")
     line_total: Optional[float] = Field(None, description="Line amount")
     amount: Optional[float] = Field(None, description="Alias of line_total")
+    printed_amount: Optional[float] = Field(None, description="Printed line amount on the invoice")
+    calculated_amount: Optional[float] = Field(None, description="Calculated line amount (quantity × purchase_price)")
     line_total_source: Optional[str] = Field(None, description="INVOICE (printed) | CALCULATED (qty × rate) | null")
     arithmetic_status: str = Field("INSUFFICIENT_DATA", description="VERIFIED | MISMATCH | INSUFFICIENT_DATA")
     purchasePrice: Optional[float] = Field(None, description="camelCase alias of purchase_price")
@@ -68,6 +70,9 @@ class CanonicalInvoiceItemSchema(BaseModel):
     brand: Optional[str] = Field(None, description="Identified brand name")
     normalized_name: Optional[str] = Field(None, description="Standardized product name")
     category: Optional[str] = Field("Groceries", description="Detected grocery category")
+    is_verified: bool = Field(False, description="Whether item has been verified by user or math")
+    user_edited: bool = Field(False, description="Whether item has been edited by user")
+    original_values: Optional[Dict[str, Any]] = Field(None, description="Original OCR extraction values prior to edits")
 
 
 class DetectedColumnSchema(BaseModel):
@@ -120,6 +125,7 @@ class InvoiceExtractResponse(BaseModel):
     total_grocery_items: int = 0
     total_review_items: int = 0
     total_excluded_items: int = 0
+    pipeline_stages: List[str] = Field(default_factory=list, description="Stages completed during extraction")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -163,5 +169,7 @@ class InvoiceConfirmResponse(BaseModel):
     items_restocked: int
     items_created: int
     created_at: datetime
+    processing_status: Optional[str] = "CONFIRMED"
+    review_status: Optional[str] = "REVIEWED"
 
     model_config = ConfigDict(from_attributes=True)

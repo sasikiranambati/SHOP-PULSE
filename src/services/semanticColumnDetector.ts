@@ -255,6 +255,64 @@ export function isCandidateHeaderLine(lineText: string): boolean {
 }
 
 /**
+ * Checks whether an unknown column's cells across data rows are numeric.
+ * Returns true if at least one data row has content in this column and
+ * most (>= 50%) non-empty cells in this column contain numeric values.
+ */
+export function isColumnNumericInData(
+  col: DetectedColumn,
+  dataRows?: Array<{ words?: OCRWord[]; text?: string } | OCRWord[] | string>
+): boolean {
+  if (!dataRows || dataRows.length === 0) return false;
+
+  let totalWithContent = 0;
+  let numericCount = 0;
+
+  for (const row of dataRows) {
+    let cellText = '';
+    let cellWords: OCRWord[] = [];
+
+    if (Array.isArray(row)) {
+      cellWords = row.filter((w) => {
+        const cx = (w.bbox.x0 + w.bbox.x1) / 2;
+        return cx >= col.minX && cx < col.maxX;
+      });
+      cellText = cellWords.map((w) => w.text).join(' ').trim();
+    } else if (typeof row === 'string') {
+      continue;
+    } else if (row && typeof row === 'object') {
+      if (Array.isArray(row.words) && row.words.length > 0) {
+        cellWords = row.words.filter((w) => {
+          const cx = (w.bbox.x0 + w.bbox.x1) / 2;
+          return cx >= col.minX && cx < col.maxX;
+        });
+        cellText = cellWords.map((w) => w.text).join(' ').trim();
+      }
+    }
+
+    if (!cellText || /^[|:;.\-_=~()\[\]{}]+$/.test(cellText)) {
+      continue;
+    }
+
+    totalWithContent++;
+    const cleaned = cleanNumericToken(cellText);
+    const parsed = parseFloat(cleaned);
+    const looksNumeric =
+      (!isNaN(parsed) && /^[\d.,\-–—]+$/.test(cleaned.replace(/[₹$€£\s]/g, ''))) ||
+      cellWords.some((w) => {
+        const wc = cleanNumericToken(w.text);
+        return !isNaN(parseFloat(wc)) && /^[\d.,\-–—]+$/.test(wc.replace(/[₹$€£\s]/g, ''));
+      });
+
+    if (looksNumeric) {
+      numericCount++;
+    }
+  }
+
+  return totalWithContent > 0 && numericCount / totalWithContent >= 0.5;
+}
+
+/**
  * Groups adjacent words in a header line into coherent column definitions.
  * Example: ["Item", "Description"] -> "Item Description" (productName)
  *          ["Unit", "Price"] -> "Unit Price" (unitPrice)
@@ -262,7 +320,8 @@ export function isCandidateHeaderLine(lineText: string): boolean {
  */
 export function detectColumnsFromHeaderWords(
   words: OCRWord[],
-  lineWidth: number = 1000
+  lineWidth: number = 1000,
+  dataRows?: Array<{ words?: OCRWord[]; text?: string } | OCRWord[] | string>
 ): DetectedColumn[] {
   if (!words || words.length === 0) return [];
 
@@ -390,35 +449,21 @@ export function detectColumnsFromHeaderWords(
   // Deduce unknown column roles from positional layout:
   const rateIdx = columns.findIndex((c) => c.type === 'unitPrice' || c.type === 'purchasePrice');
   const mrpIdx = columns.findIndex((c) => c.type === 'mrp');
-  const unitIdx = columns.findIndex((c) => c.type === 'unit');
-  if (rateIdx !== -1 && mrpIdx > rateIdx) {
-    for (let j = rateIdx + 1; j < mrpIdx; j++) {
-      if (columns[j].type === 'unknown') {
-        columns[j].type = 'sellingPrice';
-        columns[j].confidence = 85;
-      }
-    }
-  } else if (unitIdx !== -1 && mrpIdx > unitIdx + 1) {
-    const between = columns.slice(unitIdx + 1, mrpIdx).filter((c) => c.type === 'unknown');
-    if (between.length === 2) {
-      between[0].type = 'unitPrice';
-      between[0].confidence = 85;
-      between[1].type = 'sellingPrice';
-      between[1].confidence = 85;
-    } else if (between.length === 1) {
-      between[0].type = 'unitPrice';
-      between[0].confidence = 85;
+  if (rateIdx !== -1 && mrpIdx > rateIdx + 1) {
+    const gapUnknowns = columns.slice(rateIdx + 1, mrpIdx).filter((c) => c.type === 'unknown');
+    if (gapUnknowns.length === 1 && isColumnNumericInData(gapUnknowns[0], dataRows)) {
+      gapUnknowns[0].type = 'sellingPrice';
+      gapUnknowns[0].confidence = 65;
     }
   }
 
   const discIdx = columns.findIndex((c) => c.type === 'discount');
   const totIdx = columns.findIndex((c) => c.type === 'total' || c.type === 'taxableAmount');
-  if (discIdx !== -1 && totIdx > discIdx) {
-    for (let j = discIdx + 1; j < totIdx; j++) {
-      if (columns[j].type === 'unknown') {
-        columns[j].type = 'tax';
-        columns[j].confidence = 85;
-      }
+  if (discIdx !== -1 && totIdx > discIdx + 1) {
+    const gapUnknowns = columns.slice(discIdx + 1, totIdx).filter((c) => c.type === 'unknown');
+    if (gapUnknowns.length === 1 && isColumnNumericInData(gapUnknowns[0], dataRows)) {
+      gapUnknowns[0].type = 'tax';
+      gapUnknowns[0].confidence = 65;
     }
   }
 

@@ -67,6 +67,17 @@ import { ImageTableCropper } from '../components/ImageTableCropper';
 import { parseProductTableFromImage } from '../services/productTableScanner';
 import type { CropRegion } from '../services/imagePreprocessor';
 
+export const OCR_PIPELINE_STAGES = [
+  { id: 'file_validation', label: 'File Validation', desc: 'Format & size check' },
+  { id: 'page_preparation', label: 'Page Preparation', desc: 'Rasterization & layout' },
+  { id: 'ocr_recognition', label: 'OCR Recognition', desc: 'Word & coordinate extraction' },
+  { id: 'table_and_column_detection', label: 'Table & Column Detection', desc: 'Spatial reconstruction' },
+  { id: 'invoice_validation', label: 'Invoice Validation', desc: 'Cross-field arithmetic checks' },
+  { id: 'workbook_generation', label: 'Workbook Generation', desc: 'Genuine 4-sheet .xlsx generation' },
+  { id: 'workbook_parsing', label: 'Workbook Parsing', desc: 'Direct Excel cell extraction' },
+  { id: 'integrity_validation', label: 'Integrity Validation', desc: 'Post-Excel parity verification' },
+];
+
 const ENGINE_LABELS: Record<string, string> = {
   backend_ocr_pipeline: 'Server OCR',
   backend_pdf_direct: 'Server PDF text',
@@ -118,6 +129,8 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
   const [stockSuccessData, setStockSuccessData] = useState<StockSuccessStats | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [scanWarning, setScanWarning] = useState<string | null>(null);
+  const [uploadFileInfo, setUploadFileInfo] = useState<{ name: string; size: number; type: string } | null>(null);
+  const [completedStages, setCompletedStages] = useState<string[]>([]);
 
   // Workflow mode: Table Crop V2 vs Full Invoice
   const [scanWorkflow, setScanWorkflow] = useState<'table' | 'full'>('table');
@@ -288,6 +301,33 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
   const processUploadedFile = async (file: File) => {
     // One scan at a time: a second drop or tap while a bill is being read is ignored.
     if (scanInFlightRef.current) return;
+
+    const extMatch = file.name.match(/\.([0-9a-z]+)(?:[\?#]|$)/i);
+    const ext = extMatch ? `.${extMatch[1].toLowerCase()}` : '';
+    const validExtensions = ['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tiff'];
+    if (!validExtensions.includes(ext)) {
+      setScanError({
+        title: 'Unsupported file format',
+        message: `File format "${ext || 'unknown'}" is not supported. Please upload a PDF or image (.pdf, .png, .jpg, .jpeg, .webp, .bmp, .tiff).`,
+      });
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      setScanError({
+        title: 'File too large',
+        message: `File size (${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeds the 25 MB limit. Please upload a smaller file.`,
+      });
+      return;
+    }
+
+    const fileInfo = {
+      name: file.name,
+      size: file.size,
+      type: file.type || ext.replace('.', '').toUpperCase(),
+    };
+    setUploadFileInfo(fileInfo);
+    setCompletedStages(['file_validation']);
+
     scanInFlightRef.current = true;
     setSuccessMessage(null);
     setScanWarning(null);
@@ -321,6 +361,12 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
           if (backendResp && backendResp.items && backendResp.items.length > 0) {
             setScanStatusText('Matching items with your inventory…');
             const parsed = mapBackendResponseToParsedInvoice(backendResp, products);
+            parsed.uploadFileInfo = fileInfo;
+            const stages = backendResp.pipeline_stages && backendResp.pipeline_stages.length > 0
+              ? backendResp.pipeline_stages
+              : ['file_validation', 'page_preparation', 'ocr_recognition', 'table_and_column_detection', 'invoice_validation', 'workbook_generation', 'workbook_parsing', 'integrity_validation'];
+            parsed.pipelineStages = stages;
+            setCompletedStages(stages);
             showScanResult(parsed, '');
             return;
           }
@@ -438,7 +484,26 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
       items: invoiceData.items.map((item) => {
         if (item.id !== id) return item;
         if (field === 'packSize') return setPackSizeText(item, String(value ?? ''));
-        const updated = { ...item, [field]: value };
+        const originalValues = item.originalValues || {
+          name: item.name,
+          brand: item.brand,
+          category: item.category,
+          packSize: item.packSize,
+          quantity: item.quantity,
+          unit: item.unit,
+          purchasePrice: item.purchasePrice ?? item.rate,
+          sellingPrice: item.sellingPrice,
+          mrp: item.mrp,
+          discount: item.discount,
+          gstRate: item.gstRate,
+          lineTotal: item.lineTotal,
+        };
+        const updated = {
+          ...item,
+          [field]: value,
+          userEdited: true,
+          originalValues,
+        };
         // Auto-detect store match on name change if not user-confirmed
         if (field === 'name' && !item.isMatchConfirmed) {
           const found = products.find(
@@ -460,6 +525,11 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
           updated.mrpSource = value === null ? null : 'MANUAL';
         }
         if (field === 'quantity' || field === 'purchasePrice') {
+          if (updated.quantity != null && updated.purchasePrice != null) {
+            updated.calculatedAmount = Math.round(Number(updated.quantity) * Number(updated.purchasePrice) * 100) / 100;
+          } else {
+            updated.calculatedAmount = null;
+          }
           recalculateLineTotal(updated);
         }
         return updated;
@@ -468,6 +538,17 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
     if (validationErrors.length > 0) {
       setValidationErrors((prev) => prev.filter((e) => e.itemId !== id));
     }
+  };
+
+  const handleToggleVerifyItem = (id: string) => {
+    if (!invoiceData) return;
+    setInvoiceData({
+      ...invoiceData,
+      items: invoiceData.items.map((item) => {
+        if (item.id !== id) return item;
+        return { ...item, isVerified: !item.isVerified };
+      }),
+    });
   };
 
   const handleSaveEditingItem = (savedItem: InvoiceLineItem) => {
@@ -623,6 +704,16 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
   const nonGroceryCount = invoiceData?.items.filter(
     (i) => i.classificationStatus === 'NON_GROCERY'
   ).length ?? 0;
+
+  const reviewRequiredItems = (invoiceData?.items || []).filter((item) => {
+    const isMissingPrice = item.purchasePrice === null && item.rate === null;
+    const isMissingQty = item.quantity === null;
+    const isMismatch = item.arithmeticStatus === 'MISMATCH';
+    const isGroceryReview = item.classificationStatus === 'GROCERY_REVIEW' || item.classificationStatus === 'UNKNOWN_REVIEW';
+    const isLowConf = item.lowConfidence || (typeof item.confidence === 'number' && item.confidence < 70);
+    const hasIssues = (item.validationIssues && item.validationIssues.length > 0) || Boolean(item.validationWarning);
+    return (isMissingPrice || isMissingQty || isMismatch || isGroceryReview || isLowConf || hasIssues) && !item.isVerified;
+  });
 
   const filteredItems = (invoiceData?.items || []).filter((item) => {
     if (groceryFilter === 'grocery') return item.classificationStatus === 'GROCERY_CONFIDENT';
@@ -1190,6 +1281,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                   <span>
                     {scanStatusText}
                     {scanPhase === 'uploading' && uploadPercent !== null ? ` ${uploadPercent}%` : ''}
+                    {uploadFileInfo && <span className="ml-2 text-[11px] font-normal text-[#69736C]">({uploadFileInfo.name} • {(uploadFileInfo.size / 1024).toFixed(1)} KB)</span>}
                   </span>
                 </p>
 
@@ -1208,7 +1300,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                 <p className="text-[11px] text-[#69736C] font-normal">
                   {scanPhase === 'uploading'
                     ? 'Sending the file to the ShopPulse server.'
-                    : 'This can take up to a minute for photos. Nothing is added to stock until you review and confirm.'}
+                    : `Processing stages completed: ${completedStages.length || 1} / 8. This can take up to a minute for photos. Nothing is added to stock until you review and confirm.`}
                 </p>
               </div>
             ) : (
@@ -1406,6 +1498,52 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
               <span>
                 Extraction requires review: Sum of line items (₹{calculatedTotal.toLocaleString('en-IN')}) differs from invoice total (₹{(invoiceData.canonical?.totalAmount || invoiceData.totalAmount).toLocaleString('en-IN')}). Please check and edit lines if needed.
               </span>
+            </div>
+          )}
+
+          {/* Dedicated Review Required Section */}
+          {reviewRequiredItems.length > 0 && (
+            <div className="p-4 bg-amber-50/90 border border-amber-300 rounded-2xl shadow-xs space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+                  <h4 className="text-sm font-black text-amber-950">
+                    Review Required ({reviewRequiredItems.length} {reviewRequiredItems.length === 1 ? 'item' : 'items'} need verification)
+                  </h4>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setGroceryFilter(groceryFilter === 'review' ? 'all' : 'review')}
+                  className="text-xs font-bold text-amber-800 hover:text-amber-950 underline cursor-pointer"
+                >
+                  {groceryFilter === 'review' ? 'Show all items' : 'Filter table to review items'}
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                {reviewRequiredItems.slice(0, 6).map((it) => {
+                  const issues = [];
+                  if (it.purchasePrice === null && it.rate === null) issues.push('Missing purchase price');
+                  if (it.quantity === null) issues.push('Missing quantity');
+                  if (it.arithmeticStatus === 'MISMATCH') issues.push('Qty × rate ≠ line total');
+                  if (it.classificationStatus === 'GROCERY_REVIEW' || it.classificationStatus === 'UNKNOWN_REVIEW') issues.push('Unconfirmed grocery classification');
+                  if (it.lowConfidence) issues.push('Low OCR confidence');
+                  return (
+                    <div key={it.id} className="p-2.5 bg-white/90 rounded-xl border border-amber-200 flex items-center justify-between gap-2 shadow-2xs">
+                      <div className="min-w-0">
+                        <p className="font-bold text-slate-900 truncate">{it.name}</p>
+                        <p className="text-[11px] text-amber-800 font-medium">{issues.join(' • ') || 'Please verify values'}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleVerifyItem(it.id)}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold text-[10px] border border-emerald-300 shrink-0 cursor-pointer"
+                      >
+                        Verify
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -1819,14 +1957,18 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                 <thead className="sticky top-0 z-10 bg-[#F7F5EF] text-[#69736C] font-extrabold uppercase text-[11px] select-none shadow-[inset_0_-1px_0_0_rgb(227_229_222)]">
                   <tr>
                     <th className="py-3 px-3 sm:px-4">Product Name</th>
+                    <th className="py-3 px-2">Brand</th>
                     <th className="py-3 px-2">Category</th>
+                    <th className="py-3 px-2 text-center">Pack Size</th>
                     <th className="py-3 px-2 text-center">Qty</th>
                     <th className="py-3 px-2 text-center">Unit</th>
-                    <th className="py-3 px-2 text-center">Pack</th>
                     <th className="py-3 px-2 text-right">Purchase Price (₹)</th>
                     <th className="py-3 px-2 text-right">Selling Price (₹)</th>
                     <th className="py-3 px-2 text-right">MRP (₹)</th>
-                    <th className="py-3 px-2 text-right">Line Amount (₹)</th>
+                    <th className="py-3 px-2 text-right">Discount (₹)</th>
+                    <th className="py-3 px-2 text-right">GST (%)</th>
+                    <th className="py-3 px-2 text-right">Printed Amt (₹)</th>
+                    <th className="py-3 px-2 text-right">Calculated Amt (₹)</th>
                     <th className="py-3 px-2 text-center">Validation</th>
                     <th className="py-3 px-2 text-center">Store Status</th>
                     <th className="py-3 px-2 text-center">Actions</th>
@@ -1835,7 +1977,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {filteredItems.length === 0 && (
                     <tr>
-                      <td colSpan={12} className="py-8 text-center text-xs text-slate-500">
+                      <td colSpan={16} className="py-8 text-center text-xs text-slate-500">
                         No items matching filter <span className="font-bold">"{groceryFilter}"</span>.
                         <button
                           type="button"
@@ -1871,6 +2013,21 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                         />
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           {renderGroceryBadge(item)}
+                          {item.userEdited && (
+                            <span
+                              className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-300 select-none"
+                              title={`Original OCR: ${item.originalValues?.name || item.name}`}
+                            >
+                              Edited
+                            </span>
+                          )}
+                          {item.isVerified && (
+                            <span
+                              className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-300 select-none"
+                            >
+                              ✓ Verified
+                            </span>
+                          )}
                           {itemError && (
                             <span
                               className="px-1.5 py-0.5 rounded bg-rose-200 text-rose-900 text-[10px] font-black select-none"
@@ -1934,38 +2091,23 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                         )}
                         <LineReviewNotes item={item} onApplyRate={() => applySuggestedRate(item)} />
                       </td>
+                      <td className="py-2.5 px-2 text-slate-700">
+                        <input
+                          type="text"
+                          value={item.brand || ''}
+                          placeholder="—"
+                          onChange={(e) => handleItemChange(item.id, 'brand', e.target.value.trim() || null)}
+                          className="w-16 sm:w-20 text-xs font-semibold bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none placeholder:text-slate-300"
+                        />
+                      </td>
                       <td className="py-2.5 px-2 text-slate-600">
                         <input
                           type="text"
-                          value={item.category}
-                          onChange={(e) => handleItemChange(item.id, 'category', e.target.value)}
-                          className="w-16 sm:w-20 text-xs font-semibold bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none"
-                        />
-                      </td>
-                      <td className="py-2.5 px-2 text-center">
-                        <input
-                          type="number"
-                          min="1"
-                          value={item.quantity ?? ''}
+                          value={item.category || ''}
                           placeholder="—"
-                          onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value.trim() === '' ? null : Number(e.target.value))}
-                          className="w-12 text-center font-extrabold text-slate-900 bg-slate-100 rounded-lg py-1 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          onChange={(e) => handleItemChange(item.id, 'category', e.target.value)}
+                          className="w-16 sm:w-20 text-xs font-semibold bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none placeholder:text-slate-300"
                         />
-                      </td>
-                      <td className="py-2.5 px-2 text-center">
-                        <select
-                          value={item.unit || ''}
-                          onChange={(e) => handleItemChange(item.id, 'unit', e.target.value)}
-                          className="text-xs font-bold text-slate-800 bg-slate-100 rounded-lg py-1 px-1 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 capitalize"
-                        >
-                          <option value="" disabled>Select</option>
-                          {COMMON_UNITS.map((u) => (
-                            <option key={u} value={u}>{u}</option>
-                          ))}
-                          {item.unit && !COMMON_UNITS.includes(item.unit.toLowerCase()) && (
-                            <option value={item.unit}>{item.unit}</option>
-                          )}
-                        </select>
                       </td>
                       <td className="py-2.5 px-2 text-center">
                         <input
@@ -1974,16 +2116,42 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                           placeholder="—"
                           title="Packaging size printed on product (e.g. 400g, 1L, 25kg)"
                           onChange={(e) => handleItemChange(item.id, 'packSize' as any, e.target.value)}
-                          className="w-16 text-center text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg py-1 px-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-300"
+                          className="w-14 text-center text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg py-1 px-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-300"
                         />
+                      </td>
+                      <td className="py-2.5 px-2 text-center">
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={item.quantity ?? ''}
+                          placeholder="—"
+                          onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value.trim() === '' ? null : Number(e.target.value))}
+                          className="w-12 text-center font-extrabold text-slate-900 bg-slate-100 rounded-lg py-1 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-300"
+                        />
+                      </td>
+                      <td className="py-2.5 px-2 text-center">
+                        <select
+                          value={item.unit || ''}
+                          onChange={(e) => handleItemChange(item.id, 'unit', e.target.value)}
+                          className="text-xs font-bold text-slate-800 bg-slate-100 rounded-lg py-1 px-1 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 capitalize"
+                        >
+                          <option value="" disabled>—</option>
+                          {COMMON_UNITS.map((u) => (
+                            <option key={u} value={u}>{u}</option>
+                          ))}
+                          {item.unit && !COMMON_UNITS.includes(item.unit.toLowerCase()) && (
+                            <option value={item.unit}>{item.unit}</option>
+                          )}
+                        </select>
                       </td>
                       <td className="py-2.5 px-2 text-right">
                         <input
                           type="number"
-                          step="0.5"
+                          step="0.01"
                           value={item.purchasePrice ?? item.rate ?? ''}
                           placeholder="—"
-                          title={item.purchasePrice === null && item.rate === null ? 'Purchase price not provided in invoice' : undefined}
+                          title={item.originalValues?.purchasePrice != null ? `Original OCR: ₹${item.originalValues.purchasePrice}` : (item.purchasePrice === null && item.rate === null ? 'Purchase price not provided in invoice' : undefined)}
                           onChange={(e) => {
                             const val = e.target.value.trim();
                             handleItemChange(item.id, 'purchasePrice', val === '' ? null : Number(val));
@@ -1994,7 +2162,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                       <td className="py-2.5 px-2 text-right">
                         <input
                           type="number"
-                          step="0.5"
+                          step="0.01"
                           value={item.sellingPrice ?? ''}
                           placeholder="—"
                           title={item.sellingPrice === null ? 'Selling price not provided in invoice' : undefined}
@@ -2008,7 +2176,7 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                       <td className="py-2.5 px-2 text-right">
                         <input
                           type="number"
-                          step="0.5"
+                          step="0.01"
                           value={item.mrp ?? ''}
                           placeholder="—"
                           title={item.mrp === null ? 'MRP not provided in invoice' : undefined}
@@ -2023,10 +2191,64 @@ export const InvoiceScanner: React.FC<InvoiceScannerProps> = ({
                         </div>
                       </td>
                       <td className="py-2.5 px-2 text-right">
-                        <LineAmount item={item} />
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={item.discount ?? ''}
+                          placeholder="—"
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            handleItemChange(item.id, 'discount', val === '' ? null : Number(val));
+                          }}
+                          className="w-14 text-right text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-300"
+                        />
+                      </td>
+                      <td className="py-2.5 px-2 text-right">
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={item.gstRate ?? ''}
+                          placeholder="—"
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            handleItemChange(item.id, 'gstRate', val === '' ? null : Number(val));
+                          }}
+                          className="w-12 text-right text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-300"
+                        />
+                      </td>
+                      <td className="py-2.5 px-2 text-right">
+                        {item.printedAmount !== null && item.printedAmount !== undefined ? (
+                          <span className="font-bold text-slate-900">₹{item.printedAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        ) : item.lineTotalSource !== 'CALCULATED' && item.lineTotal !== null && item.lineTotal !== undefined ? (
+                          <span className="font-bold text-slate-900">₹{item.lineTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        ) : (
+                          <span className="text-slate-400 font-normal" title="Printed line amount not detected on invoice">—</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-2 text-right">
+                        {(() => {
+                          const calc = item.calculatedAmount ?? (item.quantity != null && (item.purchasePrice ?? item.rate) != null ? Math.round(Number(item.quantity) * Number(item.purchasePrice ?? item.rate) * 100) / 100 : null);
+                          return calc !== null ? (
+                            <span className="font-bold text-emerald-800">₹{calc.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          ) : (
+                            <span className="text-slate-400 font-normal" title="Cannot calculate: missing quantity or purchase price">—</span>
+                          );
+                        })()}
                       </td>
                       <td className="py-2.5 px-2 text-center">
                         <ValidationStatusBadge status={item.validationStatus} />
+                        <button
+                          type="button"
+                          onClick={() => handleToggleVerifyItem(item.id)}
+                          className={`mt-1 inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
+                            item.isVerified
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                              : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
+                          }`}
+                          title="Toggle line verification"
+                        >
+                          {item.isVerified ? '✓ Verified' : 'Verify'}
+                        </button>
                       </td>
                       <td className="py-2.5 px-2 text-center">
                         <button

@@ -1,0 +1,474 @@
+{
+  "dataset_size_invoices": 32,
+  "dataset_total_ground_truth_items": 158,
+  "comparison_table": [
+    {
+      "dimension": "1. Product Name Extraction",
+      "old": 91.8,
+      "new": 91.8,
+      "delta": 0.0
+    },
+    {
+      "dimension": "2. Brand Recognition",
+      "old": 22.2,
+      "new": 19.0,
+      "delta": -3.2
+    },
+    {
+      "dimension": "3. Grocery Classification",
+      "old": 87.3,
+      "new": 87.3,
+      "delta": 0.0
+    },
+    {
+      "dimension": "4. Quantity Extraction",
+      "old": 84.8,
+      "new": 86.7,
+      "delta": 1.9
+    },
+    {
+      "dimension": "5. Unit Extraction",
+      "old": 83.5,
+      "new": 84.2,
+      "delta": 0.7
+    },
+    {
+      "dimension": "6. Package-Size Recognition",
+      "old": 6.3,
+      "new": 13.9,
+      "delta": 7.6
+    },
+    {
+      "dimension": "7. Purchase Price Extraction",
+      "old": 89.2,
+      "new": 89.9,
+      "delta": 0.7
+    },
+    {
+      "dimension": "8. Selling Price Extraction",
+      "old": 90.5,
+      "new": 91.1,
+      "delta": 0.6
+    },
+    {
+      "dimension": "9. MRP Extraction",
+      "old": 86.7,
+      "new": 87.3,
+      "delta": 0.6
+    },
+    {
+      "dimension": "10. Printed Amount Extraction",
+      "old": 88.6,
+      "new": 89.2,
+      "delta": 0.6
+    },
+    {
+      "dimension": "11. Row Association Accuracy",
+      "old": 88.6,
+      "new": 89.2,
+      "delta": 0.6
+    },
+    {
+      "dimension": "12. Complete-Row Accuracy",
+      "old": 84.2,
+      "new": 86.7,
+      "delta": 2.5
+    },
+    {
+      "dimension": "13. Excel Generation Success",
+      "old": 96.9,
+      "new": 96.9,
+      "delta": 0.0
+    },
+    {
+      "dimension": "14. Excel Parsing Success",
+      "old": 96.9,
+      "new": 96.9,
+      "delta": 0.0
+    },
+    {
+      "dimension": "15. End-to-End Success Rate",
+      "old": 100.0,
+      "new": 100.0,
+      "delta": 0.0
+    }
+  ],
+  "overall_precision": {
+    "old": 96.7,
+    "new": 94.8,
+    "delta": -1.9
+  },
+  "overall_recall": {
+    "old": 91.8,
+    "new": 91.8,
+    "delta": 0.0
+  },
+  "field_error_rate": {
+    "old": 3.3,
+    "new": 5.2,
+    "delta": 1.9
+  },
+  "manual_correction_rate": {
+    "old": 15.8,
+    "new": 13.3,
+    "delta": -2.5
+  },
+  "avg_latency_ms": {
+    "old": 3762.0,
+    "new": 3240.1
+  },
+  "per_invoice_details": [
+    {
+      "invoice_id": "TC01_clean_digital",
+      "filename": "TC01_clean_digital.pdf",
+      "expected_items": 5,
+      "old_extracted_items": 5,
+      "new_extracted_items": 5,
+      "old_matched": 5,
+      "new_matched": 5,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC02_bordered_image",
+      "filename": "TC02_bordered_image.png",
+      "expected_items": 5,
+      "old_extracted_items": 5,
+      "new_extracted_items": 5,
+      "old_matched": 5,
+      "new_matched": 5,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC03_phone_photo",
+      "filename": "TC03_phone_photo.jpg",
+      "expected_items": 5,
+      "old_extracted_items": 0,
+      "new_extracted_items": 0,
+      "old_matched": 0,
+      "new_matched": 0,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC04_no_rate_column",
+      "filename": "TC04_no_rate_column.pdf",
+      "expected_items": 3,
+      "old_extracted_items": 3,
+      "new_extracted_items": 3,
+      "old_matched": 3,
+      "new_matched": 3,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC05_amount_mismatch",
+      "filename": "TC05_amount_mismatch.pdf",
+      "expected_items": 3,
+      "old_extracted_items": 3,
+      "new_extracted_items": 3,
+      "old_matched": 3,
+      "new_matched": 3,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC06_no_mrp_column",
+      "filename": "TC06_no_mrp_column.pdf",
+      "expected_items": 3,
+      "old_extracted_items": 3,
+      "new_extracted_items": 3,
+      "old_matched": 2,
+      "new_matched": 2,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC07_long_40_lines",
+      "filename": "TC07_long_40_lines.pdf",
+      "expected_items": 40,
+      "old_extracted_items": 40,
+      "new_extracted_items": 40,
+      "old_matched": 40,
+      "new_matched": 40,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC08_numbers_in_names",
+      "filename": "TC08_numbers_in_names.pdf",
+      "expected_items": 4,
+      "old_extracted_items": 4,
+      "new_extracted_items": 4,
+      "old_matched": 3,
+      "new_matched": 3,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC09_discount_and_gst",
+      "filename": "TC09_discount_and_gst.pdf",
+      "expected_items": 3,
+      "old_extracted_items": 3,
+      "new_extracted_items": 3,
+      "old_matched": 3,
+      "new_matched": 3,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC10_no_item_table",
+      "filename": "TC10_no_item_table.png",
+      "expected_items": 0,
+      "old_extracted_items": 0,
+      "new_extracted_items": 0,
+      "old_matched": 0,
+      "new_matched": 0,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC11_empty_file",
+      "filename": "TC11_empty_file.pdf",
+      "expected_items": 0,
+      "old_extracted_items": 0,
+      "new_extracted_items": 0,
+      "old_matched": 0,
+      "new_matched": 0,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC12_text_invoice",
+      "filename": "TC12_text_invoice.txt",
+      "expected_items": 3,
+      "old_extracted_items": 3,
+      "new_extracted_items": 3,
+      "old_matched": 3,
+      "new_matched": 3,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC13_sri_balaji_13items",
+      "filename": "TC13_sri_balaji_13items.png",
+      "expected_items": 13,
+      "old_extracted_items": 13,
+      "new_extracted_items": 13,
+      "old_matched": 10,
+      "new_matched": 7,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC14_non_grocery_tools",
+      "filename": "TC14_non_grocery_tools.jpeg",
+      "expected_items": 0,
+      "old_extracted_items": 0,
+      "new_extracted_items": 0,
+      "old_matched": 0,
+      "new_matched": 0,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC15_decimal_quantities",
+      "filename": "TC15_decimal_quantities.png",
+      "expected_items": 3,
+      "old_extracted_items": 3,
+      "new_extracted_items": 3,
+      "old_matched": 3,
+      "new_matched": 3,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC16_borderless_table",
+      "filename": "TC16_borderless_table.png",
+      "expected_items": 4,
+      "old_extracted_items": 4,
+      "new_extracted_items": 4,
+      "old_matched": 4,
+      "new_matched": 4,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC17_multi_tier_gst",
+      "filename": "TC17_multi_tier_gst.png",
+      "expected_items": 4,
+      "old_extracted_items": 4,
+      "new_extracted_items": 4,
+      "old_matched": 4,
+      "new_matched": 4,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC18_trade_and_cash_discount",
+      "filename": "TC18_trade_and_cash_discount.png",
+      "expected_items": 3,
+      "old_extracted_items": 3,
+      "new_extracted_items": 3,
+      "old_matched": 3,
+      "new_matched": 3,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC19_mixed_grocery_fmcg",
+      "filename": "TC19_mixed_grocery_fmcg.png",
+      "expected_items": 4,
+      "old_extracted_items": 4,
+      "new_extracted_items": 4,
+      "old_matched": 4,
+      "new_matched": 4,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC20_faded_thermal_receipt",
+      "filename": "TC20_faded_thermal_receipt.png",
+      "expected_items": 3,
+      "old_extracted_items": 3,
+      "new_extracted_items": 3,
+      "old_matched": 3,
+      "new_matched": 3,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC21_rotated_skewed",
+      "filename": "TC21_rotated_skewed.png",
+      "expected_items": 3,
+      "old_extracted_items": 0,
+      "new_extracted_items": 3,
+      "old_matched": 0,
+      "new_matched": 3,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC22_diverse_pack_sizes",
+      "filename": "TC22_diverse_pack_sizes.png",
+      "expected_items": 4,
+      "old_extracted_items": 4,
+      "new_extracted_items": 4,
+      "old_matched": 4,
+      "new_matched": 4,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC23_regional_spices",
+      "filename": "TC23_regional_spices.png",
+      "expected_items": 4,
+      "old_extracted_items": 4,
+      "new_extracted_items": 4,
+      "old_matched": 4,
+      "new_matched": 4,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC24_dairy_and_staples",
+      "filename": "TC24_dairy_and_staples.png",
+      "expected_items": 4,
+      "old_extracted_items": 4,
+      "new_extracted_items": 4,
+      "old_matched": 4,
+      "new_matched": 4,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC25_split_column_headers",
+      "filename": "TC25_split_column_headers.png",
+      "expected_items": 3,
+      "old_extracted_items": 3,
+      "new_extracted_items": 3,
+      "old_matched": 3,
+      "new_matched": 3,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC26_promotional_scheme",
+      "filename": "TC26_promotional_scheme.png",
+      "expected_items": 3,
+      "old_extracted_items": 3,
+      "new_extracted_items": 3,
+      "old_matched": 3,
+      "new_matched": 3,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC27_south_indian_staples",
+      "filename": "TC27_south_indian_staples.png",
+      "expected_items": 4,
+      "old_extracted_items": 4,
+      "new_extracted_items": 4,
+      "old_matched": 4,
+      "new_matched": 4,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC28_bakery_confectionery",
+      "filename": "TC28_bakery_confectionery.png",
+      "expected_items": 4,
+      "old_extracted_items": 4,
+      "new_extracted_items": 4,
+      "old_matched": 4,
+      "new_matched": 4,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC29_flours_and_pulses",
+      "filename": "TC29_flours_and_pulses.png",
+      "expected_items": 4,
+      "old_extracted_items": 4,
+      "new_extracted_items": 4,
+      "old_matched": 4,
+      "new_matched": 4,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC30_beverages_breakfast",
+      "filename": "TC30_beverages_breakfast.png",
+      "expected_items": 4,
+      "old_extracted_items": 4,
+      "new_extracted_items": 4,
+      "old_matched": 4,
+      "new_matched": 4,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC31_high_density_compact",
+      "filename": "TC31_high_density_compact.png",
+      "expected_items": 10,
+      "old_extracted_items": 10,
+      "new_extracted_items": 10,
+      "old_matched": 10,
+      "new_matched": 10,
+      "old_e2e": true,
+      "new_e2e": true
+    },
+    {
+      "invoice_id": "TC32_alternate_column_order",
+      "filename": "TC32_alternate_column_order.png",
+      "expected_items": 3,
+      "old_extracted_items": 3,
+      "new_extracted_items": 3,
+      "old_matched": 3,
+      "new_matched": 3,
+      "old_e2e": true,
+      "new_e2e": true
+    }
+  ]
+}

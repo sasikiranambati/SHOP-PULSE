@@ -274,7 +274,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                   }}
                   title={`${userDisplayName} • ${currentShopName} (${isOnline ? 'Online' : 'Offline'})`}
                   aria-label="User account menu"
-                  aria-haspopup="menu"
                   aria-expanded={isProfileOpen}
                   aria-controls="user-profile-dropdown"
                   className="w-9 h-9 rounded-lg bg-[#E5EEE6] text-[#234B3A] hover:bg-[#D7E6D9] border border-[#52745D]/25 flex items-center justify-center font-bold text-xs tracking-wider transition-all cursor-pointer relative focus-visible:ring-2 focus-visible:ring-[#234B3A] focus-visible:outline-none active:scale-95"
@@ -300,8 +299,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <div
                     ref={dropdownRef}
                     id="user-profile-dropdown"
-                    role="menu"
-                    aria-orientation="vertical"
                     aria-labelledby="user-profile-menu-button"
                     className="absolute right-0 top-full mt-2 w-72 max-w-[calc(100vw-1.25rem)] rounded-xl bg-white border border-[#E3E5DE] shadow-lg shadow-[#18382B]/8 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100"
                   >
@@ -363,7 +360,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                       {/* Profile & Account Link */}
                       <button
                         type="button"
-                        role="menuitem"
                         onClick={() => {
                           setActivePage('settings');
                           setIsProfileOpen(false);
@@ -377,7 +373,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                       {/* Store Settings Link */}
                       <button
                         type="button"
-                        role="menuitem"
                         onClick={() => {
                           setActivePage('settings');
                           setIsProfileOpen(false);
@@ -391,7 +386,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                       {/* Language Preferences Action */}
                       <button
                         type="button"
-                        role="menuitem"
                         onClick={() => {
                           setIsLangModalOpen(true);
                           setIsProfileOpen(false);
@@ -410,7 +404,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                       {/* General Settings Link */}
                       <button
                         type="button"
-                        role="menuitem"
                         onClick={() => {
                           setActivePage('settings');
                           setIsProfileOpen(false);
@@ -430,7 +423,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <div className="px-1 py-0.5">
                         <button
                           type="button"
-                          role="menuitem"
                           onClick={() => {
                             setIsProfileOpen(false);
                             onLogout();

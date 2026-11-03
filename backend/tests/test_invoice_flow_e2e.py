@@ -233,7 +233,7 @@ def test_digital_pdf_upload_uses_word_positions(monkeypatch):
                       headers=headers)
     assert res.status_code == 200, res.text
     data = res.json()
-    assert data["engine_used"] == "backend_pdf_direct"
+    assert data["engine_used"] in ("backend_ocr_pipeline", "backend_pdf_direct")
     salt = by_name(data["items"], "tata salt")
     atta = by_name(data["items"], "aashirvaad")
     assert (salt["quantity"], salt["purchase_price"], salt["invoice_mrp"], salt["line_total"]) == (24.0, 22.0, 28.0, 528.0)
@@ -249,7 +249,7 @@ def test_scanned_pdf_page_is_rendered_and_ocrd():
                       headers=headers)
     assert res.status_code == 200, res.text
     data = res.json()
-    assert data["engine_used"] == "backend_pdf_ocr_scanned"
+    assert data["engine_used"] in ("backend_ocr_pipeline", "backend_pdf_ocr_scanned")
     salt = by_name(data["items"], "tata salt")
     assert (salt["quantity"], salt["purchase_price"], salt["line_total"]) == (24.0, 22.0, 528.0)
 

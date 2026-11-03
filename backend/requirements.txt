@@ -12,3 +12,5 @@ httpx
 pillow
 pdfplumber
 openpyxl
+pypdfium2
+opencv-python-headless

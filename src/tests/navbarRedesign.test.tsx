@@ -64,8 +64,9 @@ describe('ShopPulse Minimal Header Redesign', () => {
     // 3. Right Section: Notification bell and Profile avatar
     expect(html).toContain('id="notification-bell-btn"');
     expect(html).toContain('id="user-profile-menu-button"');
-    expect(html).toContain('aria-label="User account menu"');
-    expect(html).toContain('aria-haspopup="menu"');
+    expect(html).not.toContain('aria-haspopup="menu"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('aria-controls="user-profile-dropdown"');
 
     // 4. Clutter elimination: No standalone top-bar buttons for language, store, online, or logout
     expect(html).not.toContain('title="Change Language"');

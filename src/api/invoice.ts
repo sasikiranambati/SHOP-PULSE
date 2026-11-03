@@ -73,6 +73,11 @@ export interface BackendCanonicalInvoiceItem {
   brand?: string | null;
   normalized_name?: string | null;
   category?: string;
+  printed_amount?: number | null;
+  calculated_amount?: number | null;
+  is_verified?: boolean;
+  user_edited?: boolean;
+  original_values?: Record<string, any>;
 }
 
 export interface BackendDiagnostics {
@@ -111,6 +116,7 @@ export interface BackendInvoiceExtractResponse {
   total_grocery_items?: number;
   total_review_items?: number;
   total_excluded_items?: number;
+  pipeline_stages?: string[];
 }
 
 export interface BackendInvoiceConfirmRequest {
@@ -141,6 +147,8 @@ export interface BackendInvoiceConfirmResponse {
   items_restocked: number;
   items_created: number;
   created_at: string;
+  processing_status?: string;
+  review_status?: string;
 }
 
 const toNum = (val: unknown): number | null => {
@@ -219,6 +227,25 @@ export function mapBackendItemToCanonical(item: BackendCanonicalInvoiceItem): Ca
     brand: item.brand ?? null,
     normalizedName: item.normalized_name ?? null,
     category: item.category ?? 'Groceries',
+    printedAmount: toNum(item.printed_amount) ?? (item.line_total_source !== 'CALCULATED' ? lineTotal : null),
+    calculatedAmount: toNum(item.calculated_amount) ?? (quantity !== null && purchasePrice !== null ? Math.round(quantity * purchasePrice * 100) / 100 : null),
+    isVerified: Boolean(item.is_verified || item.arithmetic_status === 'VERIFIED'),
+    userEdited: Boolean(item.user_edited),
+    originalValues: item.original_values || {
+      name: item.product_name,
+      quantity,
+      unit: item.unit ?? null,
+      purchasePrice,
+      rate,
+      sellingPrice: toNum(item.selling_price),
+      mrp: toNum(item.mrp),
+      discount: toNum(item.discount),
+      gstRate: toNum(item.gst_rate),
+      lineTotal,
+      brand: item.brand ?? null,
+      category: item.category ?? 'Groceries',
+      packSize: toNum(item.pack_size),
+    },
   };
 }
 
@@ -309,6 +336,7 @@ export function mapBackendResponseToParsedInvoice(
     totalGroceryItems: res.total_grocery_items ?? 0,
     totalReviewItems: res.total_review_items ?? 0,
     totalExcludedItems: res.total_excluded_items ?? 0,
+    pipelineStages: res.pipeline_stages || [],
   };
 }
 

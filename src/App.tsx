@@ -7,6 +7,7 @@ import { ProtectedRoute, PublicOnlyRoute } from './components/ProtectedRoute';
 
 // Layouts
 import { DashboardLayout } from './layouts/DashboardLayout';
+import { RouteErrorBoundary } from './components/RouteErrorBoundary';
 
 // Pages: Landing remains eager for instant initial paint
 import { Landing } from './pages/Landing';
@@ -172,14 +173,16 @@ export function App() {
   if (activePage === 'login') {
     return (
       <PublicOnlyRoute setActivePage={setActivePage} targetPage="dashboard">
-        <Suspense fallback={<PageFallback />}>
-          <Login
-            setActivePage={setActivePage}
-            onLoginSuccess={(name) => {
-              setShopName(name || 'Kiran General Store');
-            }}
-          />
-        </Suspense>
+        <RouteErrorBoundary>
+          <Suspense fallback={<PageFallback />}>
+            <Login
+              setActivePage={setActivePage}
+              onLoginSuccess={(name) => {
+                setShopName(name || 'Kiran General Store');
+              }}
+            />
+          </Suspense>
+        </RouteErrorBoundary>
       </PublicOnlyRoute>
     );
   }
@@ -187,14 +190,16 @@ export function App() {
   if (activePage === 'signup') {
     return (
       <PublicOnlyRoute setActivePage={setActivePage} targetPage="dashboard">
-        <Suspense fallback={<PageFallback />}>
-          <Signup
-            setActivePage={setActivePage}
-            onSignupSuccess={(name) => {
-              setShopName(name || 'Kiran General Store');
-            }}
-          />
-        </Suspense>
+        <RouteErrorBoundary>
+          <Suspense fallback={<PageFallback />}>
+            <Signup
+              setActivePage={setActivePage}
+              onSignupSuccess={(name) => {
+                setShopName(name || 'Kiran General Store');
+              }}
+            />
+          </Suspense>
+        </RouteErrorBoundary>
       </PublicOnlyRoute>
     );
   }
@@ -210,61 +215,63 @@ export function App() {
         onOpenSearchResult={handleOpenSearchResult}
         onShowAllProducts={handleShowAllProducts}
       >
-        <Suspense fallback={<PageFallback />}>
-          {activePage === 'dashboard' && (
-            <Dashboard
-              setActivePage={navigate}
-              products={products}
-              shopName={shopName}
-            />
-          )}
+        <RouteErrorBoundary key={activePage}>
+          <Suspense fallback={<PageFallback />}>
+            {activePage === 'dashboard' && (
+              <Dashboard
+                setActivePage={navigate}
+                products={products}
+                shopName={shopName}
+              />
+            )}
 
-          {activePage === 'inventory' && (
-            <Inventory
-              key={inventoryRequest?.key ?? 'inventory'}
-              searchRequest={inventoryRequest}
-              shopName={shopName}
-              products={products}
-              loading={productsLoading}
-              loadError={productsLoadError}
-              onRetryLoad={refreshInventory}
-              onAddProduct={handleAddProduct}
-              onRestock={increaseStock}
-              onUpdateProduct={updateProduct}
-              onDeleteProduct={deleteProduct}
-            />
-          )}
+            {activePage === 'inventory' && (
+              <Inventory
+                key={inventoryRequest?.key ?? 'inventory'}
+                searchRequest={inventoryRequest}
+                shopName={shopName}
+                products={products}
+                loading={productsLoading}
+                loadError={productsLoadError}
+                onRetryLoad={refreshInventory}
+                onAddProduct={handleAddProduct}
+                onRestock={increaseStock}
+                onUpdateProduct={updateProduct}
+                onDeleteProduct={deleteProduct}
+              />
+            )}
 
-          {activePage === 'sales' && (
-            <Sales
-              key={saleRequest?.key ?? 'sales'}
-              products={products}
-              shopName={shopName}
-              focusSaleId={saleRequest?.saleId ?? null}
-            />
-          )}
+            {activePage === 'sales' && (
+              <Sales
+                key={saleRequest?.key ?? 'sales'}
+                products={products}
+                shopName={shopName}
+                focusSaleId={saleRequest?.saleId ?? null}
+              />
+            )}
 
-          {activePage === 'scanner' && (
-            <InvoiceScanner
-              products={products}
-              onAddProduct={handleAddProduct}
-              onRestock={increaseStock}
-              setActivePage={navigate}
-            />
-          )}
+            {activePage === 'scanner' && (
+              <InvoiceScanner
+                products={products}
+                onAddProduct={handleAddProduct}
+                onRestock={increaseStock}
+                setActivePage={navigate}
+              />
+            )}
 
-          {activePage === 'insights' && (
-            <Insights />
-          )}
+            {activePage === 'insights' && (
+              <Insights />
+            )}
 
-          {activePage === 'settings' && (
-            <Settings
-              shopName={shopName}
-              setActivePage={navigate}
-              onLogout={handleLogout}
-            />
-          )}
-        </Suspense>
+            {activePage === 'settings' && (
+              <Settings
+                shopName={shopName}
+                setActivePage={navigate}
+                onLogout={handleLogout}
+              />
+            )}
+          </Suspense>
+        </RouteErrorBoundary>
       </DashboardLayout>
     </ProtectedRoute>
   );

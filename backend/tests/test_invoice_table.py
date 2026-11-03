@@ -120,6 +120,46 @@ def test_purchase_selling_and_mrp_columns_kept_separate():
     assert (item.purchase_price, item.selling_price, item.invoice_mrp, item.line_total) == (520.0, 580.0, 620.0, 2600.0)
 
 
+def test_positional_inference_single_unknown_numeric_assigns_selling_price_and_lowers_confidence():
+    res = text_table(
+        "Product | Qty | Rate | Custom | MRP | Amount\n"
+        "Sugar 1kg | 2 | 40 | 45 | 50 | 80\n"
+    )
+    col_roles = [c.role for c in res.columns]
+    assert col_roles == ["product", "qty", "rate", "selling_price", "mrp", "total"]
+    sp_col = next(c for c in res.columns if c.role == "selling_price")
+    assert sp_col.confidence == 65.0
+
+
+def test_positional_inference_non_numeric_gap_leaves_column_unknown():
+    res = text_table(
+        "Product | Qty | Rate | CustomText | MRP | Amount\n"
+        "Sugar 1kg | 2 | 40 | Fragile | 50 | 80\n"
+    )
+    col_roles = [c.role for c in res.columns]
+    assert col_roles == ["product", "qty", "rate", "unknown", "mrp", "total"]
+
+
+def test_positional_inference_two_unknowns_leaves_columns_unknown():
+    res = text_table(
+        "Product | Qty | Rate | Extra1 | Extra2 | MRP | Amount\n"
+        "Sugar 1kg | 2 | 40 | 42 | 45 | 50 | 80\n"
+    )
+    col_roles = [c.role for c in res.columns]
+    assert col_roles == ["product", "qty", "rate", "unknown", "unknown", "mrp", "total"]
+
+
+def test_positional_inference_single_unknown_numeric_assigns_tax_amount_and_lowers_confidence():
+    res = text_table(
+        "Product | Qty | Rate | Disc | GSTVal | Amount\n"
+        "Sugar 1kg | 2 | 40 | 5 | 3.5 | 78.5\n"
+    )
+    col_roles = [c.role for c in res.columns]
+    assert col_roles == ["product", "qty", "rate", "discount", "tax_amount", "total"]
+    tax_col = next(c for c in res.columns if c.role == "tax_amount")
+    assert tax_col.confidence == 65.0
+
+
 def test_gst_percent_and_discount_columns_reconcile():
     # 10 × 100 = 1000, less 5% = 950, plus 18% GST = 1121
     res = text_table("Item | Qty | Rate | Disc % | GST % | Amount\nShampoo 180ml | 10 | 100 | 5 | 18 | 1121.00\n")

@@ -578,7 +578,7 @@ function tryStructuredTableExtraction(
     if (isCandidateHeaderLine(lines[i].text)) {
       if (lines[i].words && lines[i].words!.length > 0) {
         const maxW = Math.max(1600, ...lines.flatMap((ln) => (ln.words || []).map((w) => w.bbox.x1)));
-        detectedColumns = detectColumnsFromHeaderWords(lines[i].words!, maxW);
+        detectedColumns = detectColumnsFromHeaderWords(lines[i].words!, maxW, lines.slice(i + 1));
       } else {
         detectedColumns = detectColumnsFromHeaderText(lines[i].text);
       }
