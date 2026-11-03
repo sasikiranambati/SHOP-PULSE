@@ -251,6 +251,12 @@ export function matchCanonicalItemsWithInventory(
       validationWarning: item.validationIssues?.join('; '),
       sourceText: item.sourceText,
       extractionMethod: item.extractionMethod,
+      packSize: item.packSize ?? null,
+      packSizeUnit: item.packSizeUnit ?? null,
+      classificationStatus: item.classificationStatus ?? 'GROCERY_CONFIDENT',
+      isGrocery: item.isGrocery ?? true,
+      brand: item.brand ?? null,
+      normalizedName: item.normalizedName ?? null,
     };
   });
 }

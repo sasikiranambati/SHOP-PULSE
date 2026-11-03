@@ -113,7 +113,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ isOpen, onCl
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-[#141E18]/60 backdrop-blur-xs"
       onClick={requestClose}
     >
       <div
@@ -121,12 +121,14 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ isOpen, onCl
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="bg-white rounded-t-3xl sm:rounded-3xl max-w-md w-full p-5 sm:p-6 max-h-[90dvh] overflow-y-auto shadow-2xl border border-slate-200 animate-slide-up sm:animate-fade-in pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]"
+        className="bg-white rounded-t-2xl sm:rounded-xl max-w-md w-full p-5 sm:p-6 max-h-[90dvh] overflow-y-auto shadow-2xl border border-[#E3E5DE] animate-slide-up sm:animate-fade-in pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2 text-slate-800 font-extrabold text-base sm:text-xl truncate">
-            <Edit3 className="w-5 h-5 text-emerald-600 shrink-0" aria-hidden="true" />
+        <div className="flex items-center justify-between pb-3.5 border-b border-[#E3E5DE]">
+          <div className="flex items-center gap-2.5 text-[#202923] font-bold text-base sm:text-lg truncate">
+            <div className="w-8 h-8 rounded-lg bg-[#E5EEE6] text-[#234B3A] flex items-center justify-center shrink-0">
+              <Edit3 className="w-4 h-4 sm:w-5 sm:h-5" aria-hidden="true" />
+            </div>
             <h2 id={titleId} className="truncate">Edit Product</h2>
           </div>
           <button
@@ -134,17 +136,17 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ isOpen, onCl
             onClick={requestClose}
             disabled={isSubmitting}
             aria-label="Close"
-            className="w-10 h-10 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+            className="w-9 h-9 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-[#69736C] hover:text-[#202923] hover:bg-[#F7F5EF] cursor-pointer transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {submitError && (
-          <div role="alert" className="mt-3 p-3 bg-rose-50 border border-rose-300 text-rose-800 text-xs font-semibold rounded-xl flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
+          <div role="alert" className="mt-3 p-3 bg-[#FDF2F2] border border-[#B93838]/25 text-[#B93838] text-xs font-semibold rounded-lg flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
             <span>
-              <strong className="font-black">Changes were not saved.</strong> {submitError}
+              <strong className="font-bold">Changes were not saved.</strong> {submitError}
             </span>
           </div>
         )}
@@ -159,8 +161,8 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ isOpen, onCl
             onChange={handleChange}
           />
 
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 mt-5">
-            <Button type="button" variant="outline" onClick={requestClose} disabled={isSubmitting} className="rounded-xl min-h-[44px] px-4">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#E3E5DE] mt-5">
+            <Button type="button" variant="outline" onClick={requestClose} disabled={isSubmitting} className="rounded-lg min-h-[42px] px-4 font-bold border-[#E3E5DE] text-[#202923] hover:bg-[#F7F5EF]">
               Cancel
             </Button>
             <Button
@@ -168,7 +170,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ isOpen, onCl
               variant="primary"
               loading={isSubmitting}
               icon={<Save className="w-4 h-4" />}
-              className="rounded-xl font-bold min-h-[44px] px-5"
+              className="rounded-lg font-bold min-h-[42px] px-5"
             >
               {isSubmitting ? 'Saving…' : 'Save Changes'}
             </Button>

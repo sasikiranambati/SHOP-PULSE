@@ -130,13 +130,14 @@ export function parsePriceToken(token: string): number | null {
  */
 export function detectTableColumnsFromHeaders(
   headerLine: OCRLine,
-  tableWidth: number
+  tableWidth: number,
+  dataLines?: OCRLine[]
 ): DetectedColumn[] {
   const words = headerLine.words || [];
   if (words.length === 0) return [];
 
   // Group adjacent words using proven semantic column detector
-  const detected = detectColumnsFromHeaderWords(words, tableWidth);
+  const detected = detectColumnsFromHeaderWords(words, tableWidth, dataLines);
   const recognized = detected.filter((c) => c.type !== 'unknown');
   return recognized;
 }
@@ -601,7 +602,7 @@ export async function parseProductTableFromImage(
   for (let i = 0; i < Math.min(ocrResult.lines.length, 6); i++) {
     const line = ocrResult.lines[i];
     if (isCandidateHeaderLine(line.text)) {
-      const cols = detectTableColumnsFromHeaders(line, tableWidth);
+      const cols = detectTableColumnsFromHeaders(line, tableWidth, ocrResult.lines.slice(i + 1));
       if (cols.length >= 2) {
         columns = cols;
         headerLineIndex = i;

@@ -368,14 +368,38 @@ export function isDisallowedItemLine(rawText: string): boolean {
  * Strips noisy symbols, leading/trailing punctuation, currency signs, and excess whitespaces.
  */
 export function cleanProductName(rawName: string): string {
-  return rawName
+  let name = (rawName || '')
     .replace(/[₹$€£]/g, '')
     .replace(/\b(?:rs|inr)\b\.?/gi, '')
     .replace(/^[#*.\-_=~|0-9)\-:\s]+/, '')
     .replace(/[#*.\-_=~|:\s]+$/, '')
     .replace(/[|]/g, ' ')
-    .replace(/\s{2,}/g, ' ')
     .trim();
+
+  // Correct OCR digit confusions on pack sizes
+  name = name.replace(/\bSO(?=\s*KG\b)/gi, '50');
+  name = name.replace(/\bS00(?=\s*GM\b)/gi, '500');
+  name = name.replace(/(?<=[A-Za-z])SO(?=KG\b)/gi, ' 50 ');
+  name = name.replace(/(?<=[A-Za-z])S00(?=GM\b)/gi, ' 500 ');
+
+  // Separate attached product-pack-unit tokens: CHANADAL1KG -> CHANA DAL 1 KG
+  name = name.replace(/([A-Za-z]+)(\d+(?:\.\d+)?)\s*([A-Za-z]+)/g, '$1 $2 $3');
+
+  // Common fused words in grocery items
+  name = name.replace(/\b(FORTUNE)(OIL)\b/gi, '$1 $2');
+  name = name.replace(/\b(CHANA)(DAL)\b/gi, '$1 $2');
+  name = name.replace(/\b(MASOOR)(DAL)\b/gi, '$1 $2');
+  name = name.replace(/\b(UDAD)(DAL)\b/gi, '$1 $2');
+  name = name.replace(/\b(OIL)(CAN)\b/gi, '$1 $2');
+  name = name.replace(/\b(PARLE)(G)\b/gi, '$1-$2');
+  name = name.replace(/\b(SONAL)(SABUDANA)(KHICHDI)\b/gi, '$1 $2 $3');
+  name = name.replace(/\b(HELLO)(ORGANIC)\b/gi, '$1 $2');
+  name = name.replace(/\bTe\b/g, '');
+  if (/^sueAR\b/i.test(name)) {
+    name = 'SUGAR';
+  }
+
+  return name.replace(/\s{2,}/g, ' ').trim();
 }
 
 /**

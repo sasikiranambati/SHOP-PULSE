@@ -1,13 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { Navbar } from '../components/Navbar';
 import { Sidebar } from '../components/Sidebar';
 import { BottomNav } from '../components/BottomNav';
-import { AiChatBox } from '../components/AiChatBox';
+import { MobileNavDrawer } from '../components/MobileNavDrawer';
 import { GlobalSearch } from '../components/GlobalSearch';
-import { PurchaseRecordModal } from '../components/PurchaseRecordModal';
-import { Plus } from 'lucide-react';
+import { LanguageSelectorModal } from '../components/LanguageSelectorModal';
 import type { PageRoute } from '../types';
 import type { SearchOption } from '../utils/searchResults';
+
+// Defer heavy auxiliary modals so initial shell renders instantly
+const AiChatBox = lazy(() => import('../components/AiChatBox').then((m) => ({ default: m.AiChatBox })));
+const PurchaseRecordModal = lazy(() => import('../components/PurchaseRecordModal').then((m) => ({ default: m.PurchaseRecordModal })));
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -38,6 +41,29 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 }) => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [openPurchaseId, setOpenPurchaseId] = useState<string | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isLangModalOpen, setIsLangModalOpen] = useState(false);
+
+  // Persist desktop sidebar collapse preference
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('shoppulse_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleSidebar = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('shoppulse_sidebar_collapsed', String(next));
+      } catch {
+        // Ignore localStorage write errors
+      }
+      return next;
+    });
+  };
 
   // Ctrl/Cmd+K anywhere, or "/" when not typing, opens search (not on top of another dialog).
   useEffect(() => {
@@ -62,10 +88,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans relative">
+    <div className="min-h-screen bg-[#F7F5EF] flex flex-col font-sans relative">
       <a
         href="#main-content"
-        className="no-print sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[80] focus:px-3 focus:py-2 focus:rounded-lg focus:bg-white focus:text-emerald-800 focus:font-bold focus:shadow-lg"
+        className="no-print sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[80] focus:px-3.5 focus:py-2 focus:rounded-lg focus:bg-white focus:text-[#234B3A] focus:font-bold focus:shadow-md focus:outline-2 focus:outline-[#234B3A]"
       >
         Skip to main content
       </a>
@@ -77,39 +103,57 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         isLoggedIn={true}
         onLogout={onLogout}
         onOpenSearch={() => setIsSearchOpen(true)}
+        isSidebarCollapsed={isSidebarCollapsed}
+        onToggleSidebar={handleToggleSidebar}
+        onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
       />
 
-      <div className="flex-1 flex max-w-7xl w-full mx-auto">
-        <Sidebar activePage={activePage} setActivePage={setActivePage} />
+      {/* Main Application Workspace: Edge-to-edge layout with docked sidebar and centered content container */}
+      <div className="flex-1 flex w-full min-w-0">
+        <Sidebar 
+          activePage={activePage} 
+          setActivePage={setActivePage} 
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={handleToggleSidebar}
+        />
 
         <main
           id="main-content"
           tabIndex={-1}
-          className="flex-1 min-w-0 p-3 sm:p-6 lg:p-8 pb-[calc(6.5rem+env(safe-area-inset-bottom,0px))] md:pb-12 overflow-x-hidden max-w-full focus:outline-none"
+          className="flex-1 min-w-0 flex flex-col max-w-full focus:outline-none transition-all duration-200"
         >
-          {children}
+          <div className="w-full max-w-7xl mx-auto p-3 sm:p-6 lg:p-8 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] md:pb-10 flex-1 flex flex-col min-w-0">
+            {children}
+          </div>
         </main>
       </div>
 
-      {/* Floating Action Button (FAB) for Mobile Quick Sale */}
-      {activePage !== 'sales' && (
-        <button
-          type="button"
-          onClick={() => setActivePage('sales')}
-          aria-label="Open Quick Sale POS"
-          className="no-print md:hidden fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] left-3.5 sm:left-4 z-30 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold px-3.5 py-2.5 rounded-full shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 transition-all cursor-pointer min-h-[44px]"
-        >
-          <Plus className="w-4 h-4" />
-          <span className="text-xs font-black">Quick Sale</span>
-        </button>
-      )}
 
       {/* ShopPulse AI Floating Assistant */}
       <div className="no-print">
-        <AiChatBox />
+        <Suspense fallback={null}>
+          <AiChatBox />
+        </Suspense>
       </div>
 
-      <BottomNav activePage={activePage} setActivePage={setActivePage} />
+      {/* App-like Mobile Bottom Navigation */}
+      <BottomNav 
+        activePage={activePage} 
+        setActivePage={setActivePage} 
+        onOpenMenu={() => setIsMobileMenuOpen(true)}
+      />
+
+      {/* Mobile Slide-Over Navigation Drawer */}
+      <MobileNavDrawer
+        isOpen={isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
+        activePage={activePage}
+        setActivePage={setActivePage}
+        shopName={shopName}
+        isLoggedIn={true}
+        onLogout={onLogout}
+        onOpenLanguageModal={() => setIsLangModalOpen(true)}
+      />
 
       {isSearchOpen && (
         <GlobalSearch
@@ -121,11 +165,20 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       )}
 
       {openPurchaseId && (
-        <PurchaseRecordModal
-          key={openPurchaseId}
-          purchaseId={openPurchaseId}
-          shopName={shopName}
-          onClose={() => setOpenPurchaseId(null)}
+        <Suspense fallback={null}>
+          <PurchaseRecordModal
+            key={openPurchaseId}
+            purchaseId={openPurchaseId}
+            shopName={shopName}
+            onClose={() => setOpenPurchaseId(null)}
+          />
+        </Suspense>
+      )}
+
+      {isLangModalOpen && (
+        <LanguageSelectorModal
+          isOpen={isLangModalOpen}
+          onClose={() => setIsLangModalOpen(false)}
         />
       )}
     </div>

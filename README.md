@@ -22,6 +22,7 @@
 | **📶 Offline-First Engine** | Zero-latency local caching, persistent queueing of offline sales and product mutations, atomic Firestore `increment()` conflict resolution, and automatic background sync upon reconnection. |
 | **⏱️ Sub-Millisecond Dashboard** | Stale-While-Revalidate (SWR) snapshot architecture delivering synchronous dashboard metric loads in **`0.005 ms`** (< 5 ms SLA). |
 | **📡 ESP32 IoT Counter & Scale** | Ready-to-pair hardware communication bridge for ESP32 digital scales and smart optical counters with simulator fallback mode. |
+| **🧾 Modular Grocery OCR Engine** | 10-stage hybrid deterministic & AI-assisted pipeline for Kirana wholesale invoices with genuine 4-sheet .xlsx generation, Decimal arithmetic, and idempotent stock updates. |
 
 ---
 

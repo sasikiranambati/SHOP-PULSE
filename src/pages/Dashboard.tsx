@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { SmartCounterWidget } from '../components/SmartCounterWidget';
 import { AddProductModal } from '../components/AddProductModal';
 import { DashboardHeader } from '../components/dashboard/DashboardHeader';
 import { TodaySummary } from '../components/dashboard/TodaySummary';
@@ -8,7 +7,7 @@ import { QuickActionGrid } from '../components/dashboard/QuickActionGrid';
 import { TopSellers } from '../components/dashboard/TopSellers';
 import { SalesOverview } from '../components/dashboard/SalesOverview';
 import { Card } from '../components/Card';
-import { Receipt, ArrowUpRight } from 'lucide-react';
+import { Receipt, ArrowUpRight, AlertCircle, RefreshCw } from 'lucide-react';
 
 import type { PageRoute, Product } from '../types';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -29,16 +28,33 @@ export const Dashboard: React.FC<DashboardProps> = ({
   shopName,
 }) => {
   const { t } = useLanguage();
-  const { todaySummary, dashboardStats } = useSales();
+  const { todaySummary, dashboardStats, error: salesError, refreshSales } = useSales();
   const { lowStockAlerts } = useAlerts(products);
-  const { weeklyTrend } = useAnalytics();
+  const { 
+    weeklyTrend, 
+    monthlyTrend, 
+    loading: analyticsLoading, 
+    error: analyticsError, 
+    refresh: refreshAnalytics 
+  } = useAnalytics();
 
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
+  const [chartPeriod, setChartPeriod] = useState<'7days' | '30days'>('7days');
+  const [isRetrying, setIsRetrying] = useState(false);
 
-  // Live performance metrics from backend API
+  // Live verified performance metrics from backend API
   const todayRevenue = todaySummary ? todaySummary.todaySales : (dashboardStats?.todayRevenue ?? 0);
   const itemsSoldToday = todaySummary ? todaySummary.itemsSoldToday : (dashboardStats?.itemsSoldToday ?? 0);
   const productsCount = products ? products.length : 0;
+  const billsCount = todaySummary?.salesCount ?? dashboardStats?.totalTransactionsToday ?? 0;
+
+  // Selected time series dataset for SalesOverview Line Chart
+  const activeTrend = chartPeriod === '30days' ? monthlyTrend : weeklyTrend;
+  const periodRevenue = activeTrend?.totalRevenue ?? 0;
+  const periodAvgDaily = activeTrend?.averageDailyRevenue ?? 0;
+  const periodGrowthFormatted = activeTrend?.growthRatePercentage !== undefined && activeTrend.growthRatePercentage !== null
+    ? `${activeTrend.growthRatePercentage >= 0 ? '+' : ''}${Math.round(activeTrend.growthRatePercentage)}%`
+    : undefined;
 
   // Filter low stock items from live products list
   const lowStockItems = products.filter(
@@ -47,7 +63,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
       p.status === 'Out of Stock' ||
       p.stock <= (p.reorderLevel ?? p.minStock ?? 10)
   );
-  // Total alerts considered
   const hasAlerts = lowStockAlerts.length > 0 || lowStockItems.length > 0;
 
   // Handle restock with live inventory service
@@ -79,23 +94,53 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
+  const handleRetryAll = async () => {
+    setIsRetrying(true);
+    try {
+      await Promise.all([refreshSales(), refreshAnalytics()]);
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
   const recentSalesList = dashboardStats?.recentSales ?? [];
+  const displayError = salesError || analyticsError;
 
   return (
-    <div className="space-y-5 sm:space-y-6 max-w-5xl mx-auto pb-10">
-      
+    <div className="space-y-4 sm:space-y-6 max-w-5xl mx-auto min-w-0">
+
       {/* 1. Header Greeting & Store Identity */}
       <DashboardHeader
         shopName={shopName}
         setActivePage={setActivePage}
       />
 
-      {/* 2. Coherent Today Performance Summary */}
+      {/* Error Notice (if API issue occurs) */}
+      {displayError && (
+        <div className="bg-[#FDF2F2] border border-[#B93838]/25 rounded-xl p-3.5 sm:p-4 flex items-center justify-between gap-3 text-xs sm:text-sm">
+          <div className="flex items-center gap-2.5 text-[#B93838] min-w-0">
+            <AlertCircle className="w-5 h-5 shrink-0" />
+            <span className="font-semibold truncate">
+              Unable to sync latest live metrics. Displaying last verified records.
+            </span>
+          </div>
+          <button
+            onClick={handleRetryAll}
+            disabled={isRetrying}
+            className="px-3 py-1.5 rounded-lg bg-[#B93838] text-white font-bold text-xs hover:bg-[#992626] transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
+            <span>Retry</span>
+          </button>
+        </div>
+      )}
+
+      {/* 2. Key Business Metrics */}
       <TodaySummary
         revenue={todayRevenue}
         itemsSold={itemsSoldToday}
         productsCount={productsCount}
-        growthPercent="+12%"
+        billsCount={billsCount}
         setActivePage={setActivePage}
       />
 
@@ -115,49 +160,53 @@ export const Dashboard: React.FC<DashboardProps> = ({
         />
       </div>
 
-      {/* 4. Top Sellers & Sales Overview */}
+      {/* 4. Business Performance Visualization (Line Chart) & Top Sellers */}
       {/* On mobile: Top Sellers displays first (order-1), then Sales Overview (order-2) */}
       {/* On desktop: Sales Overview on left (lg:order-1), Top Sellers on right (lg:order-2) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className="order-2 lg:order-1">
           <SalesOverview
-            totalWeekRevenue={48320}
-            weekGrowthPercent="+18%"
-            data={weeklyTrend?.points && weeklyTrend.points.length > 0 ? weeklyTrend.points : undefined}
+            totalRevenue={periodRevenue}
+            growthPercent={periodGrowthFormatted}
+            averageDailyRevenue={periodAvgDaily}
+            data={activeTrend?.points && activeTrend.points.length > 0 ? activeTrend.points : []}
+            period={chartPeriod}
+            onPeriodChange={setChartPeriod}
             setActivePage={setActivePage}
+            isLoading={analyticsLoading && !activeTrend}
           />
         </div>
 
         <div className="order-1 lg:order-2">
           <TopSellers
+            items={dashboardStats?.topProducts ?? []}
             setActivePage={setActivePage}
           />
         </div>
       </div>
 
-      {/* 5. Smart Counter IoT Hardware Widget (Preserved) */}
-      <SmartCounterWidget />
-
-      {/* 6. Recent Activity Log */}
+      {/* 5. Recent Activity Log */}
       <Card>
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <h3 className="font-black text-slate-900 text-sm sm:text-base flex items-center gap-2">
-            <Receipt className="w-5 h-5 text-emerald-600" />
+        <div className="flex items-center justify-between pb-3 border-b border-[#E3E5DE]">
+          <h3 className="font-extrabold text-[#202923] text-sm sm:text-base flex items-center gap-2">
+            <span className="w-7 h-7 rounded-lg bg-[#E5EEE6] text-[#234B3A] flex items-center justify-center shrink-0 border border-[#52745D]/20">
+              <Receipt className="w-4 h-4 text-[#234B3A]" />
+            </span>
             <span>{t('dashboard.recentActivity')}</span>
           </h3>
           <button
             onClick={() => setActivePage('sales')}
-            className="text-xs font-black text-emerald-700 hover:underline flex items-center gap-0.5 cursor-pointer"
+            className="text-xs font-bold text-[#234B3A] hover:underline flex items-center gap-0.5 cursor-pointer"
           >
             <span>{t('dashboard.createSale')}</span>
             <ArrowUpRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        <div className="divide-y divide-slate-100 mt-1">
+        <div className="divide-y divide-[#E3E5DE] mt-1">
           {recentSalesList.length === 0 ? (
-            <div className="py-6 text-center text-slate-400 text-xs font-semibold">
-              No sales recorded yet today.
+            <div className="py-7 text-center text-[#69736C] text-xs font-medium">
+              No sales recorded yet today. Completed customer checkouts will appear here in real time.
             </div>
           ) : (
             recentSalesList.slice(0, 5).map((sale: any) => {
@@ -167,15 +216,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
               const timeFormatted = sale.time || (sale.createdAt ? new Date(sale.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently');
 
               return (
-                <div key={sale.id} className="py-2.5 sm:py-3 flex items-center justify-between gap-2">
+                <div key={sale.id} className="py-2.5 sm:py-3 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-extrabold text-slate-900 text-xs sm:text-sm leading-tight truncate">
+                    <p className="font-bold text-[#202923] text-xs sm:text-sm leading-tight truncate">
                       {itemSummary}
                     </p>
-                    <p className="text-[11px] text-slate-400 font-medium mt-0.5">{timeFormatted}</p>
+                    <p className="text-[11px] text-[#69736C] font-medium mt-0.5">{timeFormatted}</p>
                   </div>
-                  <div className="text-right font-black text-emerald-700 text-sm sm:text-base shrink-0">
-                    ₹{sale.total ?? sale.totalAmount ?? 0}
+                  <div className="text-right font-extrabold text-[#234B3A] text-sm sm:text-base shrink-0">
+                    ₹{(sale.total ?? sale.totalAmount ?? 0).toLocaleString('en-IN')}
                   </div>
                 </div>
               );

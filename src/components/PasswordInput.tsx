@@ -27,7 +27,7 @@ export const PasswordInput: React.FC<PasswordInputProps> = ({ className = '', di
         aria-label={visible ? 'Hide password' : 'Show password'}
         aria-pressed={visible}
         aria-controls={props.id}
-        className="absolute inset-y-0 right-0 my-auto mr-1.5 h-9 w-9 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 cursor-pointer"
+        className="absolute inset-y-0 right-0 my-auto mr-1.5 h-9 w-9 flex items-center justify-center rounded-lg text-[#69736C] hover:text-[#202923] hover:bg-[#F7F5EF] cursor-pointer transition-colors"
       >
         {visible ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
       </button>

@@ -356,6 +356,9 @@ export function parseSmartPrice(raw: string | null, allowZero: boolean = false):
   // Remove surrounding brackets: (250.00), [250.00], <250.00>
   clean = clean.replace(/^[\(\[\{<]/, '').replace(/[\)\]\}>]$/, '').trim();
 
+  // Comma read as letter in thousands (e.g. 1i925 -> 1,925)
+  clean = clean.replace(/(\d)[iIl|](\d{3}\b)/g, '$1,$2');
+
   // Normalize spaces around dots: "250 .00" -> "250.00", "250 . 00" -> "250.00"
   clean = clean.replace(/(\d+)\s*\.\s*(\d+)/g, '$1.$2');
 
@@ -414,9 +417,11 @@ export function resolveItemArithmetic(
   qty: number | null,
   rate: number | null,
   total: number | null,
-  tax: number | null = null
+  tax: number | null = null,
+  discount: number | null = null
 ): { quantity: number | null; rate: number | null; purchasePrice: number | null; lineTotal: number | null } {
   const tVal = tax || 0;
+  const dVal = discount || 0;
 
   // Specific numeric artifact normalizations from low-resolution scans:
   // 1. Qty = 100 (read from 10.0) and rate = 10.0, total = 1000 (read from 100.0)
@@ -452,24 +457,26 @@ export function resolveItemArithmetic(
   // Invoices frequently print quantities or rates with decimal places (e.g. 20.00, 1975.00),
   // which OCR scans without decimal points (e.g. 200, 19750).
   if (qty !== null && rate !== null && total !== null && qty > 0 && rate > 0 && total > 0) {
-    // 1. Direct pre-tax check (qty * rate ≈ total)
-    if (Math.abs(qty * rate - total) <= Math.max(2, total * 0.03)) {
+    // 1. Direct pre-tax check (qty * rate - discount ≈ total)
+    if (Math.abs(qty * rate - dVal - total) <= Math.max(2, total * 0.03)) {
       return { quantity: qty, rate: rate, purchasePrice: rate, lineTotal: total };
     }
 
     // 2. Direct check with tax added as absolute amount
-    if (tVal > 0 && Math.abs(qty * rate + tVal - total) <= Math.max(2, total * 0.03)) {
+    if (Math.abs(qty * rate - dVal + tVal - total) <= Math.max(2, total * 0.03)) {
       return { quantity: qty, rate: rate, purchasePrice: rate, lineTotal: total };
     }
 
     // 3. Direct check with tax as percentage (e.g. 5%, 12%, 18%)
-    if (tVal > 0 && Math.abs(qty * rate * (1 + tVal / 100) - total) <= Math.max(2, total * 0.03)) {
+    if (tVal > 0 && Math.abs((qty * rate - dVal) * (1 + tVal / 100) - total) <= Math.max(2, total * 0.03)) {
       return { quantity: qty, rate: rate, purchasePrice: rate, lineTotal: total };
     }
 
-    // 4. Quantity dropped .0 (e.g. 20.0 read as 200, 20.0 read as 20 where total was for qty=2)
-    if (qty >= 10 && Math.abs((qty / 10) * rate + tVal - total) <= Math.max(2, total * 0.03)) {
-      return { quantity: qty / 10, rate: rate, purchasePrice: rate, lineTotal: total };
+    // 4. Quantity dropped .0 (e.g. 20.0 read as 200, 20.0 read as 20 where total was for qty=2, or 10.0 read as 100)
+    for (const factor of [10, 100]) {
+      if (qty >= factor && Math.abs((qty / factor) * rate - dVal + tVal - total) <= Math.max(2, total * 0.03)) {
+        return { quantity: qty / factor, rate: rate, purchasePrice: rate, lineTotal: total };
+      }
     }
 
     // 5. Rate dropped .0 (e.g. 2760.0 read as 27600)
@@ -571,7 +578,7 @@ function tryStructuredTableExtraction(
     if (isCandidateHeaderLine(lines[i].text)) {
       if (lines[i].words && lines[i].words!.length > 0) {
         const maxW = Math.max(1600, ...lines.flatMap((ln) => (ln.words || []).map((w) => w.bbox.x1)));
-        detectedColumns = detectColumnsFromHeaderWords(lines[i].words!, maxW);
+        detectedColumns = detectColumnsFromHeaderWords(lines[i].words!, maxW, lines.slice(i + 1));
       } else {
         detectedColumns = detectColumnsFromHeaderText(lines[i].text);
       }
@@ -780,7 +787,7 @@ function tryStructuredTableExtraction(
       let finalLineTotal = parsedTotal;
 
       if (finalPurchasePrice !== null) {
-        const resolved = resolveItemArithmetic(parsedQty, finalPurchasePrice, parsedTotal, taxToUse);
+        const resolved = resolveItemArithmetic(parsedQty, finalPurchasePrice, parsedTotal, taxToUse, parsedDiscount);
         finalQty = resolved.quantity ?? parsedQty;
         finalPurchasePrice = resolved.purchasePrice ?? finalPurchasePrice;
         finalRate = resolved.rate ?? finalRate;
@@ -793,15 +800,15 @@ function tryStructuredTableExtraction(
         finalLineTotal = parsedTotal ?? null;
       }
 
-      // Detect pack unit in rawQty or rawName
-      let detectedUnit = rawUnit.trim() ? normalizeUnit(rawUnit) : null;
+      // Detect pack unit in rawUnit, rawQty or rawName
+      let detectedUnit = rawUnit.trim() ? rawUnit.trim() : null;
       if (!detectedUnit && rawQty) {
         const uMatch = rawQty.match(/(pcs|pc|pkt|box|bag|bor|pet|kg|g|gm|l|ltr|can|tin)/i);
-        if (uMatch) detectedUnit = normalizeUnit(uMatch[1]);
+        if (uMatch) detectedUnit = uMatch[1];
       }
       if (!detectedUnit) {
         const unitMatch = (rawName || '').match(/(\d+(?:\.\d+)?)\s*(kg|g|gm|l|ltr|ml|pcs|pkt|box|bag|bor|pet|tin|ctn)\b/i);
-        if (unitMatch) detectedUnit = normalizeUnit(unitMatch[2]);
+        if (unitMatch) detectedUnit = unitMatch[2];
       }
 
       if (currentPendingItem && currentPendingItem.purchasePrice === null && currentPendingItem.sellingPrice === null && currentPendingItem.lineTotal === null) {

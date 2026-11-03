@@ -6,20 +6,29 @@
  * canvas and falls back to OCR pipeline.
  */
 
-import * as pdfjsLib from 'pdfjs-dist';
 import type { OCRLine, OCRWord, BoundingBox } from './ocrService';
 
-// Configure pdfjs worker if in browser
-if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  try {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-      'pdfjs-dist/build/pdf.worker.min.mjs',
-      import.meta.url
-    ).toString();
-  } catch {
-    // Fallback to unpkg CDN worker if URL resolution is not supported
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+// Lazy loader for pdfjs-dist so it is not bundled into the main invoice scanner chunk
+let pdfjsLibPromise: Promise<typeof import('pdfjs-dist')> | null = null;
+
+async function getPdfJs() {
+  if (!pdfjsLibPromise) {
+    pdfjsLibPromise = import('pdfjs-dist').then((lib) => {
+      if (typeof window !== 'undefined' && !lib.GlobalWorkerOptions.workerSrc) {
+        try {
+          lib.GlobalWorkerOptions.workerSrc = new URL(
+            'pdfjs-dist/build/pdf.worker.min.mjs',
+            import.meta.url
+          ).toString();
+        } catch {
+          // Fallback to unpkg CDN worker if URL resolution is not supported
+          lib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${lib.version}/pdf.worker.min.mjs`;
+        }
+      }
+      return lib;
+    });
   }
+  return pdfjsLibPromise;
 }
 
 export interface PdfExtractionResult {
@@ -36,6 +45,7 @@ export interface PdfExtractionResult {
  * If the PDF has no selectable text (scanned PDF), renders pages to image data URLs.
  */
 export async function extractFromPdf(file: File | ArrayBuffer): Promise<PdfExtractionResult> {
+  const pdfjsLib = await getPdfJs();
   const arrayBuffer = file instanceof ArrayBuffer ? file : await file.arrayBuffer();
 
   const loadingTask = pdfjsLib.getDocument({

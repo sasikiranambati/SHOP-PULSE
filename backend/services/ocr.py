@@ -98,20 +98,35 @@ def run_ocr_on_preprocessed_png(png_bytes: bytes, psm_mode: str = "auto") -> Dic
     if not WORKER_PATH.exists():
         raise OcrUnavailableError(f"OCR worker script not found at {WORKER_PATH}")
 
+    debug_dir_env = os.environ.get("OCR_DEBUG_DIR")
+    debug_path = None
+    ts = None
+    if debug_dir_env:
+        try:
+            debug_path = Path(debug_dir_env)
+            debug_path.mkdir(parents=True, exist_ok=True)
+            import time
+            ts = int(time.time() * 1000)
+            (debug_path / f"preprocessed_{ts}.png").write_bytes(png_bytes)
+        except Exception as e:
+            logger.debug("Failed to write OCR debug image: %s", e)
+
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
         tmp_path = tmp_file.name
         tmp_file.write(png_bytes)
 
     try:
         cmd = ["node", str(WORKER_PATH), tmp_path]
-        if psm_mode and psm_mode != "auto":
-            cmd.append(psm_mode)
+        if psm_mode:
+            cmd.append(str(psm_mode))
 
         try:
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=OCR_TIMEOUT_SECONDS,
                 check=False,
                 env=_worker_env(),
@@ -131,6 +146,12 @@ def run_ocr_on_preprocessed_png(png_bytes: bytes, psm_mode: str = "auto") -> Dic
         except json.JSONDecodeError as jde:
             logger.error("Failed to parse OCR worker output (%d bytes)", len(result.stdout or ""))
             raise OcrUnavailableError(f"Invalid output from OCR engine: {str(jde)}")
+
+        if debug_path and ts is not None:
+            try:
+                (debug_path / f"ocr_result_{ts}.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
+            except Exception:
+                pass
 
         return {
             "text": data.get("text", ""),

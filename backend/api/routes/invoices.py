@@ -1,7 +1,13 @@
 import logging
+import os
+import re
+import tempfile
+from pathlib import Path
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
+from fastapi.responses import FileResponse
+from fastapi.concurrency import run_in_threadpool
 
 from api import deps
 from db.models.user import User
@@ -13,6 +19,7 @@ from schemas.invoice import (
 from services import shop as shop_service
 from services import invoice as invoice_service
 from services.ocr import OcrUnavailableError
+from services.excel_invoice import get_invoice_workbook_path
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -41,7 +48,8 @@ async def extract_invoice(
     user_shop = get_user_shop_or_raise(db, current_user)
     content = await file.read()
     try:
-        return invoice_service.extract_invoice_from_bytes(
+        return await run_in_threadpool(
+            invoice_service.extract_invoice_from_bytes,
             file_bytes=content,
             filename=file.filename or "invoice.pdf",
             db=db,
@@ -90,3 +98,34 @@ def confirm_invoice(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to confirm invoice stock update: {type(e).__name__}",
         )
+
+
+@router.get("/{invoice_id}/excel")
+def download_invoice_excel(
+    invoice_id: str,
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    """
+    Download the genuine .xlsx workbook generated during invoice extraction.
+    Contains: Raw Invoice, Grocery Items, Review Required, and OCR Audit worksheets.
+    """
+    path = get_invoice_workbook_path(invoice_id)
+    if not path or not path.exists():
+        safe_inv = re.sub(r"[^\w\-]", "_", invoice_id)
+        candidates = list(Path("backend/uploads/invoices").glob(f"invoice_audit_{safe_inv}_*.xlsx"))
+        if not candidates:
+            candidates = list((Path(tempfile.gettempdir()) / "shoppulse_invoices").glob(f"invoice_audit_{safe_inv}_*.xlsx"))
+        if candidates:
+            candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            path = candidates[0]
+
+    if not path or not path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Excel workbook for invoice '{invoice_id}' not found.",
+        )
+    return FileResponse(
+        path=str(path),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=f"invoice_{invoice_id}.xlsx",
+    )

@@ -13,9 +13,10 @@ import {
   RefreshCw,
   Volume2,
   ChevronDown,
-  Languages
+  Languages,
 } from 'lucide-react';
 import { Button } from './Button';
+import { useDialog } from '../hooks/useDialog';
 import type { Product } from '../types';
 import {
   voiceApi,
@@ -307,6 +308,15 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
       setButtonState('IDLE');
     };
   }, [isOpen, stopRecording]);
+
+  const panelRef = useDialog<HTMLDivElement>({
+    isOpen,
+    onClose: () => {
+      stopRecording();
+      onClose();
+    },
+    closeOnEscape: !isRecording && !isProcessing,
+  });
 
   if (!isOpen) return null;
 
@@ -780,35 +790,53 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div 
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-[#141E18]/60 backdrop-blur-xs animate-in fade-in duration-200"
+      onClick={() => {
+        if (!isRecording && !isProcessing) {
+          stopRecording();
+          onClose();
+        }
+      }}
+    >
       <div 
-        className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+        ref={panelRef}
+        className="bg-white rounded-t-2xl sm:rounded-xl shadow-2xl border border-[#E3E5DE] w-full max-w-2xl max-h-[92dvh] flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-200"
         role="dialog"
         aria-modal="true"
         aria-labelledby="voice-to-bill-title"
+        onClick={(e) => e.stopPropagation()}
       >
+        {/* Screen Reader Voice State Announcement */}
+        <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+          {buttonState === 'LISTENING' && `Listening in ${SPEECH_LANGUAGES[spokenLanguage]?.name || spokenLanguage}... Speak now.`}
+          {buttonState === 'PROCESSING' && 'Processing voice recording and matching products...'}
+          {buttonState === 'SUCCESS' && `Bill generated with ${matchedItems.length} items.`}
+          {buttonState === 'ERROR' && (errorMessage || 'Voice recognition error occurred.')}
+        </div>
+
         {/* Modal Header */}
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-emerald-50 via-teal-50 to-white">
+        <div className="px-5 py-4 border-b border-[#E3E5DE] flex items-center justify-between bg-[#F7F5EF]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center shadow-md shadow-emerald-500/20 shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-[#E5EEE6] text-[#234B3A] border border-[#234B3A]/25 flex items-center justify-center shadow-xs shrink-0">
               <Mic className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 id="voice-to-bill-title" className="text-base font-black text-slate-900">
+                <h2 id="voice-to-bill-title" className="text-base font-bold text-[#202923]">
                   {getLocalizedBillLabel('billTitle', displayLanguage)}
                 </h2>
                 {isMockProvider ? (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-200">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FEF9EB] text-[#A66A16] border border-[#A66A16]/25">
                     Offline / Dev Mode
                   </span>
                 ) : (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#E5EEE6] text-[#234B3A] border border-[#234B3A]/25">
                     Live STT
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-500 font-medium">
+              <p className="text-xs text-[#69736C] font-medium">
                 Speak in Telugu, Hindi, English, Tamil & 12 Indian languages
               </p>
             </div>
@@ -817,7 +845,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white hover:bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer border border-slate-200"
+            className="w-8 h-8 rounded-lg bg-white hover:bg-[#F7F5EF] text-[#69736C] hover:text-[#202923] flex items-center justify-center transition-colors cursor-pointer border border-[#E3E5DE]"
             aria-label="Close Voice-to-Bill"
           >
             <X className="w-4 h-4" />
@@ -1451,20 +1479,20 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         </div>
 
         {/* Modal Footer with Actions */}
-        <div className="px-5 py-3.5 border-t border-slate-200 bg-white flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-xs text-slate-500 w-full sm:w-auto">
-            <Info className="w-4 h-4 text-emerald-600 shrink-0" />
+        <div className="px-4 sm:px-5 py-3 sm:py-3.5 border-t border-[#E3E5DE] bg-white flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
+          <div className="flex items-center gap-2 text-xs text-[#69736C]">
+            <Info className="w-4 h-4 text-[#234B3A] shrink-0" />
             <span>
               {matchedItems.length} {getLocalizedBillLabel('itemsReady', displayLanguage)}
             </span>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto">
             <Button
               variant="outline"
               size="md"
               onClick={onClose}
-              className="flex-1 sm:flex-initial rounded-xl text-xs font-bold cursor-pointer"
+              className="col-span-2 sm:col-span-1 sm:flex-initial rounded-lg text-xs font-bold cursor-pointer border-[#E3E5DE] text-[#202923] hover:bg-[#F7F5EF] min-h-[44px]"
             >
               {getLocalizedBillLabel('cancel', displayLanguage)}
             </Button>
@@ -1474,7 +1502,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
               size="md"
               disabled={matchedItems.length === 0}
               onClick={() => handleConfirmBill(false)}
-              className="flex-1 sm:flex-initial rounded-xl text-xs font-black cursor-pointer"
+              className="sm:flex-initial rounded-lg text-xs font-bold cursor-pointer min-h-[44px]"
               icon={<ShoppingCart className="w-4 h-4" />}
             >
               {getLocalizedBillLabel('addToBill', displayLanguage)} ({matchedItems.length})
@@ -1485,7 +1513,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
               size="md"
               disabled={matchedItems.length === 0}
               onClick={() => handleConfirmBill(true)}
-              className="flex-1 sm:flex-initial rounded-xl text-xs font-black shadow-md shadow-emerald-600/20 cursor-pointer"
+              className="sm:flex-initial rounded-lg text-xs font-bold cursor-pointer min-h-[44px]"
               icon={<CheckCircle2 className="w-4 h-4" />}
             >
               {getLocalizedBillLabel('confirmAndPay', displayLanguage)} (₹{total})

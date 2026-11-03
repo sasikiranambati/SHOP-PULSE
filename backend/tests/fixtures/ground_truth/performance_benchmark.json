@@ -1,0 +1,59 @@
+{
+  "small": {
+    "doc_key": "small",
+    "filename": "TC02_bordered_image.png",
+    "description": "Small 1-page image (4 items, crisp layout)",
+    "file_size_kb": 119.4,
+    "items_extracted": 5,
+    "status": "SUCCESS",
+    "total_latency_ms": 3266.24,
+    "peak_memory_mb": 55.39,
+    "stage_timings_ms": {
+      "file_validation": 39.90239999257028,
+      "page_preparation": 0.023900007363408804,
+      "ocr_recognition": 1138.6053999885917,
+      "table_and_column_detection": 130.6097999913618,
+      "invoice_validation": 0.6751999899279326,
+      "workbook_generation": 67.46809999458492,
+      "workbook_reopening_and_parsing": 0.0
+    }
+  },
+  "medium": {
+    "doc_key": "medium",
+    "filename": "TC13_sri_balaji_13items.png",
+    "description": "Medium 1-page image (13 wholesale items, dot matrix table)",
+    "file_size_kb": 2327.6,
+    "items_extracted": 13,
+    "status": "NEEDS_REVIEW",
+    "total_latency_ms": 3883.36,
+    "peak_memory_mb": 89.82,
+    "stage_timings_ms": {
+      "file_validation": 37.73899999214336,
+      "page_preparation": 0.017799990018829703,
+      "ocr_recognition": 3020.4208999930415,
+      "table_and_column_detection": 471.36520000640303,
+      "invoice_validation": 1.331700012087822,
+      "workbook_generation": 169.5381999888923,
+      "workbook_reopening_and_parsing": 0.0
+    }
+  },
+  "large": {
+    "doc_key": "large",
+    "filename": "TC07_long_40_lines.pdf",
+    "description": "Large multi-line document (40 line items)",
+    "file_size_kb": 30.1,
+    "items_extracted": 40,
+    "status": "SUCCESS",
+    "total_latency_ms": 2904.34,
+    "peak_memory_mb": 15.41,
+    "stage_timings_ms": {
+      "file_validation": 0.09759998647496104,
+      "page_preparation": 1423.1545999937225,
+      "ocr_recognition": 0.0040000013541430235,
+      "table_and_column_detection": 937.9039999912493,
+      "invoice_validation": 3.7669999874196947,
+      "workbook_generation": 316.26299998606555,
+      "workbook_reopening_and_parsing": 0.0
+    }
+  }
+}

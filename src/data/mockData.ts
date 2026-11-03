@@ -328,16 +328,5 @@ export const MOCK_RECENT_SALES: RecentSale[] = [
   }
 ];
 
-export const PRODUCT_CATEGORIES = [
-  'All',
-  'Dairy',
-  'Groceries',
-  'Snacks',
-  'Beverages',
-  'Household',
-  'Personal Care',
-  'Bakery',
-  'Staples',
-  'General',
-  'Other',
-];
+export { PRODUCT_CATEGORIES } from '../constants/categories';
+

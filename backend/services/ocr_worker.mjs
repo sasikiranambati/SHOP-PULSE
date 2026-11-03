@@ -50,12 +50,16 @@ function resolveCacheDir() {
 
 const PSM_BY_ARG = {
   '3': PSM.AUTO,
+  auto: PSM.AUTO,
   AUTO: PSM.AUTO,
   '4': PSM.SINGLE_COLUMN,
+  single_column: PSM.SINGLE_COLUMN,
   SINGLE_COLUMN: PSM.SINGLE_COLUMN,
   '6': PSM.SINGLE_BLOCK,
+  single_block: PSM.SINGLE_BLOCK,
   SINGLE_BLOCK: PSM.SINGLE_BLOCK,
   '11': PSM.SPARSE_TEXT,
+  sparse_text: PSM.SPARSE_TEXT,
   SPARSE_TEXT: PSM.SPARSE_TEXT,
 };
 

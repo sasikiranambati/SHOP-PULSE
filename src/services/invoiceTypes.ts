@@ -167,6 +167,7 @@ export interface LineEvidence {
   lineTotalSource?: LineTotalSource | null;
   arithmeticStatus?: 'VERIFIED' | 'MISMATCH' | 'INSUFFICIENT_DATA';
   needsReview?: boolean;
+  validationIssues?: string[];
   suggestions?: string[];
   suggestedRate?: number | null;
   rawCells?: Record<string, string>;
@@ -208,6 +209,16 @@ export interface CanonicalInvoiceItem extends LineEvidence {
   validationStatus?: TableValidationStatus;
   reviewReasons?: string[];
   fieldConfidence?: FieldConfidence;
+  classificationStatus?: 'GROCERY_CONFIDENT' | 'GROCERY_REVIEW' | 'NON_GROCERY' | 'UNKNOWN_REVIEW' | string;
+  isGrocery?: boolean;
+  brand?: string | null;
+  normalizedName?: string | null;
+  category?: string;
+  printedAmount?: number | null;
+  calculatedAmount?: number | null;
+  isVerified?: boolean;
+  userEdited?: boolean;
+  originalValues?: Record<string, any>;
 }
 
 /**
@@ -268,6 +279,10 @@ export interface InvoiceLineItem extends LineEvidence {
   validationStatus?: TableValidationStatus;
   reviewReasons?: string[];
   fieldConfidence?: FieldConfidence;
+  classificationStatus?: 'GROCERY_CONFIDENT' | 'GROCERY_REVIEW' | 'NON_GROCERY' | 'UNKNOWN_REVIEW' | string;
+  isGrocery?: boolean;
+  brand?: string | null;
+  normalizedName?: string | null;
   inventoryData?: {
     id?: string;
     name?: string;
@@ -280,6 +295,11 @@ export interface InvoiceLineItem extends LineEvidence {
     storeMrp?: number | null;
     currentStock?: number;
   };
+  printedAmount?: number | null;
+  calculatedAmount?: number | null;
+  isVerified?: boolean;
+  userEdited?: boolean;
+  originalValues?: Record<string, any>;
 }
 
 /**
@@ -381,4 +401,10 @@ export interface ParsedInvoice {
   };
   /** Shown above the review table, e.g. when the server could not be used */
   notices?: string[];
+  excelDownloadUrl?: string;
+  totalGroceryItems?: number;
+  totalReviewItems?: number;
+  totalExcludedItems?: number;
+  pipelineStages?: string[];
+  uploadFileInfo?: { name: string; size: number; type: string };
 }

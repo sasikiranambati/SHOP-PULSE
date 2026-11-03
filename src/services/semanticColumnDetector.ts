@@ -47,6 +47,8 @@ export const COLUMN_SEMANTIC_ALIASES: Record<SemanticColumnType, string[]> = {
     'unit rate', 'rate/unit', 'rate / unit', 'rate', 'unit price', 'price/unit', 'price / unit',
     'rate (₹)', 'rate(₹)', 'price (₹)', 'price(₹)', 'unit cost', 'cost/unit', 'cost / unit',
     'price', 'cost', 'item rate', 'item price', 'basic rate', 'basic price',
+    // OCR misread aliases:
+    'reel', 'rale', 'tate', 'rafe', 'reel unit', 'rale unit',
     // Regional languages:
     'दर', 'प्रति दर', 'ధర', 'రేటు', 'விலை', 'ದರ'
   ],
@@ -57,7 +59,9 @@ export const COLUMN_SEMANTIC_ALIASES: Record<SemanticColumnType, string[]> = {
   ],
   sellingPrice: [
     'selling price', 'selling rate', 'sale price', 'sale rate', 'sp', 'selling value',
-    'retail rate', 'sales price', 'selling', 'sale', 'sale value', 'विक्रय मूल्य', 'అమ్మకపు ధర'
+    'retail rate', 'sales price', 'selling', 'sale', 'sale value', 'विक्रय मूल्य', 'అమ్మకపు ధర',
+    // OCR misread aliases:
+    'i fo', 'ifo', 'pms', 'seling'
   ],
   mrp: [
     'maximum retail price', 'max retail price', 'retail price', 'maximum retail', 'max retail',
@@ -73,6 +77,8 @@ export const COLUMN_SEMANTIC_ALIASES: Record<SemanticColumnType, string[]> = {
   ],
   tax: [
     'gst amount', 'tax amount', 'total tax', 'tax amt', 'tax value', 'gst', 'tax', 'cgst', 'sgst', 'igst', 'vat',
+    // OCR misread aliases:
+    'rel', 'lax', 'tex', '1ax', 'fe',
     'कर', 'పన్ను', 'வரி'
   ],
   gstRate: [
@@ -109,9 +115,10 @@ export function cleanHeaderToken(token: string): string {
 export function isCurrencyOrUnitModifier(text: string): boolean {
   const clean = text.trim().toLowerCase();
   return /^[(\[{<]?(?:₹|rs\.?|inr|€|\$|£|[-=\/]|each|per\s*unit|\/unit)[)\]}>]?$/i.test(clean) ||
-         /^[(\[{<](?:₹|rs\.?|inr|€|\$|£)[)\]}>]$/i.test(clean) ||
-         /^[(\[{<]\s*(?:₹|rs\.?|inr|€|\$|£)\s*[)\]}>]$/i.test(clean) ||
-         /^\((?:₹|rs\.?|inr|€|\$|£)\)$/i.test(clean);
+         /^[(\[{<](?:₹|rs\.?|inr|€|\$|£|[0-9a-z?.%])[)\]}>]$/i.test(clean) ||
+         /^[(\[{<]\s*(?:₹|rs\.?|inr|€|\$|£|[0-9a-z?.%]+)\s*[)\]}>]$/i.test(clean) ||
+         /^\((?:₹|rs\.?|inr|€|\$|£|[0-9a-z?.%]+)\)$/i.test(clean) ||
+         /^[(\[{<][0-9₹rs.inr%a-z?. ]+[)\]}>]$/i.test(clean);
 }
 
 /**
@@ -248,6 +255,64 @@ export function isCandidateHeaderLine(lineText: string): boolean {
 }
 
 /**
+ * Checks whether an unknown column's cells across data rows are numeric.
+ * Returns true if at least one data row has content in this column and
+ * most (>= 50%) non-empty cells in this column contain numeric values.
+ */
+export function isColumnNumericInData(
+  col: DetectedColumn,
+  dataRows?: Array<{ words?: OCRWord[]; text?: string } | OCRWord[] | string>
+): boolean {
+  if (!dataRows || dataRows.length === 0) return false;
+
+  let totalWithContent = 0;
+  let numericCount = 0;
+
+  for (const row of dataRows) {
+    let cellText = '';
+    let cellWords: OCRWord[] = [];
+
+    if (Array.isArray(row)) {
+      cellWords = row.filter((w) => {
+        const cx = (w.bbox.x0 + w.bbox.x1) / 2;
+        return cx >= col.minX && cx < col.maxX;
+      });
+      cellText = cellWords.map((w) => w.text).join(' ').trim();
+    } else if (typeof row === 'string') {
+      continue;
+    } else if (row && typeof row === 'object') {
+      if (Array.isArray(row.words) && row.words.length > 0) {
+        cellWords = row.words.filter((w) => {
+          const cx = (w.bbox.x0 + w.bbox.x1) / 2;
+          return cx >= col.minX && cx < col.maxX;
+        });
+        cellText = cellWords.map((w) => w.text).join(' ').trim();
+      }
+    }
+
+    if (!cellText || /^[|:;.\-_=~()\[\]{}]+$/.test(cellText)) {
+      continue;
+    }
+
+    totalWithContent++;
+    const cleaned = cleanNumericToken(cellText);
+    const parsed = parseFloat(cleaned);
+    const looksNumeric =
+      (!isNaN(parsed) && /^[\d.,\-–—]+$/.test(cleaned.replace(/[₹$€£\s]/g, ''))) ||
+      cellWords.some((w) => {
+        const wc = cleanNumericToken(w.text);
+        return !isNaN(parseFloat(wc)) && /^[\d.,\-–—]+$/.test(wc.replace(/[₹$€£\s]/g, ''));
+      });
+
+    if (looksNumeric) {
+      numericCount++;
+    }
+  }
+
+  return totalWithContent > 0 && numericCount / totalWithContent >= 0.5;
+}
+
+/**
  * Groups adjacent words in a header line into coherent column definitions.
  * Example: ["Item", "Description"] -> "Item Description" (productName)
  *          ["Unit", "Price"] -> "Unit Price" (unitPrice)
@@ -255,7 +320,8 @@ export function isCandidateHeaderLine(lineText: string): boolean {
  */
 export function detectColumnsFromHeaderWords(
   words: OCRWord[],
-  lineWidth: number = 1000
+  lineWidth: number = 1000,
+  dataRows?: Array<{ words?: OCRWord[]; text?: string } | OCRWord[] | string>
 ): DetectedColumn[] {
   if (!words || words.length === 0) return [];
 
@@ -344,8 +410,13 @@ export function detectColumnsFromHeaderWords(
     const p = phrases[i];
     const type = identifyColumnType(p.text);
 
+    // If type is unknown and phrase is a standalone modifier or bracket noise, DO NOT emit a column
+    if (type === 'unknown' && (isCurrencyOrUnitModifier(p.text) || /^[|:;.\-_=~()\[\]{}]+$/.test(p.text.trim()))) {
+      continue;
+    }
+
     // Estimate column boundaries: midpoint between this column's maxX and next column's minX
-    const prevMax = i > 0 ? (phrases[i - 1].maxX + p.minX) / 2 : 0;
+    const prevMax = columns.length > 0 ? (columns[columns.length - 1].maxX + p.minX) / 2 : 0;
     const nextMin = i < phrases.length - 1 ? (p.maxX + phrases[i + 1].minX) / 2 : effectiveLineWidth;
 
     columns.push({
@@ -372,6 +443,27 @@ export function detectColumnsFromHeaderWords(
     if (candidateIdx !== -1) {
       columns[candidateIdx].type = 'productName';
       columns[candidateIdx].confidence = 85;
+    }
+  }
+
+  // Deduce unknown column roles from positional layout:
+  const rateIdx = columns.findIndex((c) => c.type === 'unitPrice' || c.type === 'purchasePrice');
+  const mrpIdx = columns.findIndex((c) => c.type === 'mrp');
+  if (rateIdx !== -1 && mrpIdx > rateIdx + 1) {
+    const gapUnknowns = columns.slice(rateIdx + 1, mrpIdx).filter((c) => c.type === 'unknown');
+    if (gapUnknowns.length === 1 && isColumnNumericInData(gapUnknowns[0], dataRows)) {
+      gapUnknowns[0].type = 'sellingPrice';
+      gapUnknowns[0].confidence = 65;
+    }
+  }
+
+  const discIdx = columns.findIndex((c) => c.type === 'discount');
+  const totIdx = columns.findIndex((c) => c.type === 'total' || c.type === 'taxableAmount');
+  if (discIdx !== -1 && totIdx > discIdx + 1) {
+    const gapUnknowns = columns.slice(discIdx + 1, totIdx).filter((c) => c.type === 'unknown');
+    if (gapUnknowns.length === 1 && isColumnNumericInData(gapUnknowns[0], dataRows)) {
+      gapUnknowns[0].type = 'tax';
+      gapUnknowns[0].confidence = 65;
     }
   }
 

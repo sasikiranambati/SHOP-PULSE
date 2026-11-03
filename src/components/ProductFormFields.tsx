@@ -14,8 +14,8 @@ interface ProductFormFieldsProps {
 }
 
 const inputBase =
-  'w-full rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium disabled:bg-slate-100 disabled:cursor-not-allowed';
-const labelBase = 'block text-xs font-bold uppercase text-slate-600 mb-1';
+  'w-full rounded-lg border border-[#E3E5DE] focus:outline-none focus:ring-2 focus:ring-[#234B3A]/20 focus:border-[#234B3A] font-medium text-[#202923] disabled:bg-[#F7F5EF]/60 disabled:cursor-not-allowed transition-colors';
+const labelBase = 'block text-xs font-semibold uppercase tracking-wider text-[#69736C] mb-1.5';
 
 /** Shared, labelled inputs for the add and edit product forms, with a message under each invalid field. */
 export const ProductFormFields: React.FC<ProductFormFieldsProps> = ({
@@ -41,7 +41,7 @@ export const ProductFormFields: React.FC<ProductFormFieldsProps> = ({
 
   const fieldError = (field: ProductFormField) =>
     errors[field] ? (
-      <p id={errorId(field)} className="mt-1 text-xs font-bold text-rose-700 flex items-start gap-1">
+      <p id={errorId(field)} className="mt-1 text-xs font-bold text-[#B93838] flex items-start gap-1">
         <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-px" aria-hidden="true" />
         <span>{errors[field]}</span>
       </p>
@@ -75,7 +75,7 @@ export const ProductFormFields: React.FC<ProductFormFieldsProps> = ({
                 {cat}
               </option>
             ))}
-            {values.category && !PRODUCT_CATEGORIES.includes(values.category) && (
+            {values.category && !(PRODUCT_CATEGORIES as readonly string[]).includes(values.category) && (
               <option value={values.category}>{values.category}</option>
             )}
           </select>

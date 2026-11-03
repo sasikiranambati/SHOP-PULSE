@@ -10,7 +10,7 @@ import {
   mapBackendResponseToParsedInvoice,
   type BackendInvoiceExtractResponse,
 } from '../../api/invoice';
-import { validateInvoiceItems } from '../../pages/InvoiceScanner';
+import { validateInvoiceItems } from '../invoiceValidation';
 import { recalculateLineTotal, describeMrp } from '../invoiceReview';
 import { MrpStatus, LineAmount } from '../../components/InvoiceLineCells';
 import type { InvoiceLineItem } from '../invoiceTypes';

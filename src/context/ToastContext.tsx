@@ -6,7 +6,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
 import {
   ToastContext,
   defaultToastDuration,
@@ -28,6 +28,11 @@ const TONE_STYLES: Record<ToastTone, { box: string; icon: React.ReactNode; label
     box: 'bg-white border-rose-300 text-slate-900',
     icon: <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" aria-hidden="true" />,
     label: 'Error',
+  },
+  warning: {
+    box: 'bg-white border-amber-300 text-slate-900',
+    icon: <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" aria-hidden="true" />,
+    label: 'Warning',
   },
   info: {
     box: 'bg-white border-slate-300 text-slate-900',
@@ -114,6 +119,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     () => ({
       success: (message, options) => push('success', message, options),
       error: (message, options) => push('error', message, options),
+      warning: (message, options) => push('warning', message, options),
       info: (message, options) => push('info', message, options),
       dismiss,
     }),

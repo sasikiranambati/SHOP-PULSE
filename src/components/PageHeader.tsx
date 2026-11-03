@@ -12,18 +12,18 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   action,
 }) => {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6 min-w-0">
+      <div className="min-w-0 flex-1">
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-[#202923] tracking-tight break-words">
           {title}
         </h1>
         {description && (
-          <p className="mt-1 text-sm sm:text-base text-slate-600">
+          <p className="mt-1 text-xs sm:text-sm text-[#69736C] font-normal break-words">
             {description}
           </p>
         )}
       </div>
-      {action && <div className="shrink-0">{action}</div>}
+      {action && <div className="shrink-0 w-full sm:w-auto flex items-center gap-2 flex-wrap">{action}</div>}
     </div>
   );
 };

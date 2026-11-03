@@ -15,6 +15,8 @@ class Purchase(Base):
     total_amount = Column(Float, nullable=False, default=0.0)
     invoice_number = Column(String, nullable=True, index=True)
     invoice_date = Column(String, nullable=True)
+    processing_status = Column(String, nullable=True, default="CONFIRMED")
+    review_status = Column(String, nullable=True, default="REVIEWED")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

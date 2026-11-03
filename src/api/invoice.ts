@@ -66,6 +66,18 @@ export interface BackendCanonicalInvoiceItem {
   matched_product_id?: string | null;
   matched_product_name?: string | null;
   match_score?: number | null;
+  pack_size?: number | null;
+  pack_size_unit?: string | null;
+  classification_status?: string;
+  is_grocery?: boolean;
+  brand?: string | null;
+  normalized_name?: string | null;
+  category?: string;
+  printed_amount?: number | null;
+  calculated_amount?: number | null;
+  is_verified?: boolean;
+  user_edited?: boolean;
+  original_values?: Record<string, any>;
 }
 
 export interface BackendDiagnostics {
@@ -100,6 +112,11 @@ export interface BackendInvoiceExtractResponse {
   status?: string;
   reason?: string | null;
   diagnostics?: BackendDiagnostics | null;
+  excel_download_url?: string | null;
+  total_grocery_items?: number;
+  total_review_items?: number;
+  total_excluded_items?: number;
+  pipeline_stages?: string[];
 }
 
 export interface BackendInvoiceConfirmRequest {
@@ -130,6 +147,8 @@ export interface BackendInvoiceConfirmResponse {
   items_restocked: number;
   items_created: number;
   created_at: string;
+  processing_status?: string;
+  review_status?: string;
 }
 
 const toNum = (val: unknown): number | null => {
@@ -201,6 +220,32 @@ export function mapBackendItemToCanonical(item: BackendCanonicalInvoiceItem): Ca
     sourceText: item.source_text || '',
     extractionMethod: (item.extraction_method || 'TABLE_STRUCTURED') as ExtractionMethod,
     validationIssues: item.validation_issues || [],
+    packSize: toNum(item.pack_size),
+    packSizeUnit: item.pack_size_unit ?? null,
+    classificationStatus: item.classification_status ?? 'GROCERY_CONFIDENT',
+    isGrocery: item.is_grocery ?? true,
+    brand: item.brand ?? null,
+    normalizedName: item.normalized_name ?? null,
+    category: item.category ?? 'Groceries',
+    printedAmount: toNum(item.printed_amount) ?? (item.line_total_source !== 'CALCULATED' ? lineTotal : null),
+    calculatedAmount: toNum(item.calculated_amount) ?? (quantity !== null && purchasePrice !== null ? Math.round(quantity * purchasePrice * 100) / 100 : null),
+    isVerified: Boolean(item.is_verified || item.arithmetic_status === 'VERIFIED'),
+    userEdited: Boolean(item.user_edited),
+    originalValues: item.original_values || {
+      name: item.product_name,
+      quantity,
+      unit: item.unit ?? null,
+      purchasePrice,
+      rate,
+      sellingPrice: toNum(item.selling_price),
+      mrp: toNum(item.mrp),
+      discount: toNum(item.discount),
+      gstRate: toNum(item.gst_rate),
+      lineTotal,
+      brand: item.brand ?? null,
+      category: item.category ?? 'Groceries',
+      packSize: toNum(item.pack_size),
+    },
   };
 }
 
@@ -287,6 +332,11 @@ export function mapBackendResponseToParsedInvoice(
       mrpProvider: diag?.mrp_provider ?? null,
     },
     notices: diag?.warnings || [],
+    excelDownloadUrl: res.excel_download_url || undefined,
+    totalGroceryItems: res.total_grocery_items ?? 0,
+    totalReviewItems: res.total_review_items ?? 0,
+    totalExcludedItems: res.total_excluded_items ?? 0,
+    pipelineStages: res.pipeline_stages || [],
   };
 }
 

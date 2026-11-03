@@ -1,0 +1,8058 @@
+{
+  "text": "SRI BALAJI GENERAL STORES                                                  Ee         CC \u2014\nWholesale & Retail Groceries                                                                         Invoice No.       : SBGS/2026/0912\n#110. 5-33, Market Road, Labbipet,       22 Date ~~ : 15-09-2026\nVijayawada - 520010, Andhra Pradesh                                                                                   Place of Supply : Andhra Pradesh (37)\nGSTIN: 37ABCDE1234F125                                                           Reverse Charge : No\nPhone: 0866-2476789 | Email: sribalaji.stores@gmail.com                                    EC oh A SPS Pe\nBILL TO                                                                                                        SHIP TO\nWAGHADE KIRANA SHOP  WAGHADE KIRANA SHOP\n| D.No. 5-12-88, Main Road,  D.No. 5-12-88, Main Road,\n| Vijayawada - 520012, Andhra Pradesh                                                | Vijayawada - 520012, Andhra Pradesh\n=\" 8806925060                                          [RRICg=de=06 225050\n    1      CHANA 50 KG                     0713        1.0  |   BOR         2,760.00       2,950.00  |   3,200.00  |         0.00         0.00         2,760.00\n|E2       FORTUNE BESAN 500 GM              1106        10.0      PCS              70.00           78.00         90.00            0.00           0.00            700.00 |\n    3      FORTUNE OIL 1 KG                  1515        3.0    PET          1,378.62       1,520.00   1,680.00       124.08         4.01         4,015.80\n| 4 | HELLO ORGANIC CHANADAL KG | 0713        50 | PCS           129.46         140.00 | 160.00 |         0.00        77.68           725.00\n    5      MASOOR DAL 50 KG              |  0713         1.0   BOR         4,825.00       5,200.00   5,600.00         0.00         0.00    ]     4,825.00  |\n   6    OIL CAN 10   Sl re  3923     10.0 | PCS af 1,975.00     2,150.00 |  2,400.00 |      0.00      0.00     19,750.00\n7      SUGAR                             1701         2.0      PCS          1,925.00       2,050.00 | 2,300.00           0.00          0.00         3,850.00\n| 8 | SOYABEAN CHUNKS 15 KG           2106        20 | BOR          1,230.00       1,350.00 | 1,500.00 |         0.00          0.00         2,460.00  |\n    9      SONAL SABUDANA KHICHDI 500GM | 1108  25.0   KGS            40.18          45.00        50.00         0.00       120.54         1,125.00\n   10     SABUDANA 30 KG    1108        1.0    KGS          1,336.66       1,450.00     1,600.00         0.00          3.34         1,340.00\n1     UDAD DAL 1 KG                   0713       20.0     KGS           47.95         52.00       60.00        0.00         0.96          960.00\n   12     RAJAMM                           0713       25.0   KGS            44.96          50.00      58.00         0.00          1.12         1,125.00\n[15 NFPARIEG                         1905        50 | PET           648.38         700.00 | 800.00 |         0.00         8.10         3,250.00 |\nTotal Quantity | 110.0                                              Total Amount (7)                    46,885.80\nSr.                       124.08\nTotal Tax (3)                                                                                     215.76\nRL         BEES. ow\nAmount in Words:                                                                      PPE ACTON SRA eA ES\nRupees Forty Six Thousand Eight Hundred Eighty Five and Eighty Paise Only                                                    For SRI BALAJI GENERAL STORES          SGENERS\nTerms & Conditions:                                                                                                                                                                                 57              a)\n1.   Goods once sold will not be taken back or exchanged.                                                                                     A = pe\u201d                   \u00ab@ [oe\n2. Subject to Vijayawada jurisdiction only. >        &                                                                             ji                    Q           4)\n35   Hs @ 24% p.a. will be charged on bills remaining unpaid after 30 days.                                                        Authorised Signatory                            *\n",
+  "confidence": 83.0,
+  "lines": [
+    {
+      "text": "SRI BALAJI GENERAL STORES                                                  Ee         CC \u2014",
+      "confidence": 52,
+      "bbox": {
+        "x0": 92,
+        "y0": 33,
+        "x1": 2141,
+        "y1": 83
+      },
+      "words": [
+        {
+          "text": "SRI",
+          "confidence": 93,
+          "bbox": {
+            "x0": 92,
+            "y0": 33,
+            "x1": 201,
+            "y1": 80
+          }
+        },
+        {
+          "text": "BALAJI",
+          "confidence": 87,
+          "bbox": {
+            "x0": 225,
+            "y0": 34,
+            "x1": 453,
+            "y1": 80
+          }
+        },
+        {
+          "text": "GENERAL",
+          "confidence": 96,
+          "bbox": {
+            "x0": 474,
+            "y0": 34,
+            "x1": 730,
+            "y1": 81
+          }
+        },
+        {
+          "text": "STORES",
+          "confidence": 96,
+          "bbox": {
+            "x0": 746,
+            "y0": 35,
+            "x1": 960,
+            "y1": 83
+          }
+        },
+        {
+          "text": "Ee",
+          "confidence": 0,
+          "bbox": {
+            "x0": 1662,
+            "y0": 73,
+            "x1": 1749,
+            "y1": 74
+          }
+        },
+        {
+          "text": "CC",
+          "confidence": 0,
+          "bbox": {
+            "x0": 1874,
+            "y0": 38,
+            "x1": 1908,
+            "y1": 103
+          }
+        },
+        {
+          "text": "\u2014",
+          "confidence": 0,
+          "bbox": {
+            "x0": 1892,
+            "y0": 70,
+            "x1": 2141,
+            "y1": 73
+          }
+        }
+      ]
+    },
+    {
+      "text": "#110. 5-33, Market Road, Labbipet,       22 Date ~~ : 15-09-2026",
+      "confidence": 74,
+      "bbox": {
+        "x0": 96,
+        "y0": 73,
+        "x1": 2143,
+        "y1": 288
+      },
+      "words": [
+        {
+          "text": "#110.",
+          "confidence": 66,
+          "bbox": {
+            "x0": 96,
+            "y0": 152,
+            "x1": 166,
+            "y1": 174
+          }
+        },
+        {
+          "text": "5-33,",
+          "confidence": 65,
+          "bbox": {
+            "x0": 178,
+            "y0": 152,
+            "x1": 247,
+            "y1": 178
+          }
+        },
+        {
+          "text": "Market",
+          "confidence": 95,
+          "bbox": {
+            "x0": 260,
+            "y0": 151,
+            "x1": 353,
+            "y1": 175
+          }
+        },
+        {
+          "text": "Road,",
+          "confidence": 93,
+          "bbox": {
+            "x0": 365,
+            "y0": 152,
+            "x1": 440,
+            "y1": 179
+          }
+        },
+        {
+          "text": "Labbipet,",
+          "confidence": 89,
+          "bbox": {
+            "x0": 453,
+            "y0": 152,
+            "x1": 578,
+            "y1": 181
+          }
+        },
+        {
+          "text": "22",
+          "confidence": 59,
+          "bbox": {
+            "x0": 1635,
+            "y0": 73,
+            "x1": 1754,
+            "y1": 288
+          }
+        },
+        {
+          "text": "Date",
+          "confidence": 88,
+          "bbox": {
+            "x0": 1783,
+            "y0": 146,
+            "x1": 1851,
+            "y1": 171
+          }
+        },
+        {
+          "text": "~~",
+          "confidence": 25,
+          "bbox": {
+            "x0": 1883,
+            "y0": 141,
+            "x1": 1904,
+            "y1": 191
+          }
+        },
+        {
+          "text": ":",
+          "confidence": 62,
+          "bbox": {
+            "x0": 1932,
+            "y0": 152,
+            "x1": 1937,
+            "y1": 170
+          }
+        },
+        {
+          "text": "15-09-2026",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1973,
+            "y0": 145,
+            "x1": 2143,
+            "y1": 171
+          }
+        }
+      ]
+    },
+    {
+      "text": "Wholesale & Retail Groceries                                                                         Invoice No.       : SBGS/2026/0912",
+      "confidence": 85,
+      "bbox": {
+        "x0": 94,
+        "y0": 95,
+        "x1": 2224,
+        "y1": 133
+      },
+      "words": [
+        {
+          "text": "Wholesale",
+          "confidence": 93,
+          "bbox": {
+            "x0": 94,
+            "y0": 101,
+            "x1": 277,
+            "y1": 131
+          }
+        },
+        {
+          "text": "&",
+          "confidence": 93,
+          "bbox": {
+            "x0": 291,
+            "y0": 102,
+            "x1": 316,
+            "y1": 131
+          }
+        },
+        {
+          "text": "Retail",
+          "confidence": 96,
+          "bbox": {
+            "x0": 330,
+            "y0": 101,
+            "x1": 425,
+            "y1": 132
+          }
+        },
+        {
+          "text": "Groceries",
+          "confidence": 96,
+          "bbox": {
+            "x0": 439,
+            "y0": 102,
+            "x1": 605,
+            "y1": 133
+          }
+        },
+        {
+          "text": "Invoice",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1665,
+            "y0": 96,
+            "x1": 1771,
+            "y1": 122
+          }
+        },
+        {
+          "text": "No.",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1783,
+            "y0": 97,
+            "x1": 1831,
+            "y1": 121
+          }
+        },
+        {
+          "text": ":",
+          "confidence": 51,
+          "bbox": {
+            "x0": 1931,
+            "y0": 102,
+            "x1": 1936,
+            "y1": 121
+          }
+        },
+        {
+          "text": "SBGS/2026/0912",
+          "confidence": 54,
+          "bbox": {
+            "x0": 1970,
+            "y0": 95,
+            "x1": 2224,
+            "y1": 124
+          }
+        }
+      ]
+    },
+    {
+      "text": "Vijayawada - 520010, Andhra Pradesh                                                                                   Place of Supply : Andhra Pradesh (37)",
+      "confidence": 93,
+      "bbox": {
+        "x0": 95,
+        "y0": 188,
+        "x1": 2271,
+        "y1": 225
+      },
+      "words": [
+        {
+          "text": "Vijayawada",
+          "confidence": 93,
+          "bbox": {
+            "x0": 95,
+            "y0": 188,
+            "x1": 252,
+            "y1": 217
+          }
+        },
+        {
+          "text": "-",
+          "confidence": 92,
+          "bbox": {
+            "x0": 264,
+            "y0": 200,
+            "x1": 273,
+            "y1": 204
+          }
+        },
+        {
+          "text": "520010,",
+          "confidence": 96,
+          "bbox": {
+            "x0": 285,
+            "y0": 189,
+            "x1": 394,
+            "y1": 215
+          }
+        },
+        {
+          "text": "Andhra",
+          "confidence": 96,
+          "bbox": {
+            "x0": 405,
+            "y0": 188,
+            "x1": 504,
+            "y1": 212
+          }
+        },
+        {
+          "text": "Pradesh",
+          "confidence": 96,
+          "bbox": {
+            "x0": 517,
+            "y0": 188,
+            "x1": 628,
+            "y1": 212
+          }
+        },
+        {
+          "text": "Place",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1667,
+            "y0": 192,
+            "x1": 1745,
+            "y1": 218
+          }
+        },
+        {
+          "text": "of",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1756,
+            "y0": 192,
+            "x1": 1785,
+            "y1": 218
+          }
+        },
+        {
+          "text": "Supply",
+          "confidence": 83,
+          "bbox": {
+            "x0": 1796,
+            "y0": 192,
+            "x1": 1895,
+            "y1": 225
+          }
+        },
+        {
+          "text": ":",
+          "confidence": 83,
+          "bbox": {
+            "x0": 1934,
+            "y0": 199,
+            "x1": 1938,
+            "y1": 217
+          }
+        },
+        {
+          "text": "Andhra",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1971,
+            "y0": 192,
+            "x1": 2075,
+            "y1": 218
+          }
+        },
+        {
+          "text": "Pradesh",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2088,
+            "y0": 192,
+            "x1": 2204,
+            "y1": 218
+          }
+        },
+        {
+          "text": "(37)",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2217,
+            "y0": 192,
+            "x1": 2271,
+            "y1": 224
+          }
+        }
+      ]
+    },
+    {
+      "text": "GSTIN: 37ABCDE1234F125                                                           Reverse Charge : No",
+      "confidence": 89,
+      "bbox": {
+        "x0": 95,
+        "y0": 225,
+        "x1": 2012,
+        "y1": 271
+      },
+      "words": [
+        {
+          "text": "GSTIN:",
+          "confidence": 92,
+          "bbox": {
+            "x0": 95,
+            "y0": 225,
+            "x1": 189,
+            "y1": 248
+          }
+        },
+        {
+          "text": "37ABCDE1234F125",
+          "confidence": 77,
+          "bbox": {
+            "x0": 202,
+            "y0": 225,
+            "x1": 470,
+            "y1": 248
+          }
+        },
+        {
+          "text": "Reverse",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1668,
+            "y0": 240,
+            "x1": 1785,
+            "y1": 265
+          }
+        },
+        {
+          "text": "Charge",
+          "confidence": 90,
+          "bbox": {
+            "x0": 1796,
+            "y0": 238,
+            "x1": 1901,
+            "y1": 271
+          }
+        },
+        {
+          "text": ":",
+          "confidence": 82,
+          "bbox": {
+            "x0": 1934,
+            "y0": 246,
+            "x1": 1939,
+            "y1": 264
+          }
+        },
+        {
+          "text": "No",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1974,
+            "y0": 240,
+            "x1": 2012,
+            "y1": 264
+          }
+        }
+      ]
+    },
+    {
+      "text": "Phone: 0866-2476789 | Email: sribalaji.stores@gmail.com                                    EC oh A SPS Pe",
+      "confidence": 57,
+      "bbox": {
+        "x0": 96,
+        "y0": 261,
+        "x1": 2241,
+        "y1": 294
+      },
+      "words": [
+        {
+          "text": "Phone:",
+          "confidence": 93,
+          "bbox": {
+            "x0": 96,
+            "y0": 261,
+            "x1": 189,
+            "y1": 285
+          }
+        },
+        {
+          "text": "0866-2476789",
+          "confidence": 92,
+          "bbox": {
+            "x0": 202,
+            "y0": 262,
+            "x1": 404,
+            "y1": 285
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 96,
+          "bbox": {
+            "x0": 424,
+            "y0": 262,
+            "x1": 427,
+            "y1": 289
+          }
+        },
+        {
+          "text": "Email:",
+          "confidence": 93,
+          "bbox": {
+            "x0": 448,
+            "y0": 262,
+            "x1": 529,
+            "y1": 286
+          }
+        },
+        {
+          "text": "sribalaji.stores@gmail.com",
+          "confidence": 89,
+          "bbox": {
+            "x0": 541,
+            "y0": 262,
+            "x1": 913,
+            "y1": 294
+          }
+        },
+        {
+          "text": "EC",
+          "confidence": 31,
+          "bbox": {
+            "x0": 1669,
+            "y0": 287,
+            "x1": 1737,
+            "y1": 288
+          }
+        },
+        {
+          "text": "oh",
+          "confidence": 33,
+          "bbox": {
+            "x0": 1845,
+            "y0": 261,
+            "x1": 1869,
+            "y1": 301
+          }
+        },
+        {
+          "text": "A",
+          "confidence": 5,
+          "bbox": {
+            "x0": 1878,
+            "y0": 261,
+            "x1": 1909,
+            "y1": 301
+          }
+        },
+        {
+          "text": "SPS",
+          "confidence": 14,
+          "bbox": {
+            "x0": 1920,
+            "y0": 286,
+            "x1": 2037,
+            "y1": 288
+          }
+        },
+        {
+          "text": "Pe",
+          "confidence": 24,
+          "bbox": {
+            "x0": 2097,
+            "y0": 287,
+            "x1": 2121,
+            "y1": 288
+          }
+        }
+      ]
+    },
+    {
+      "text": "BILL TO                                                                                                        SHIP TO",
+      "confidence": 92,
+      "bbox": {
+        "x0": 100,
+        "y0": 327,
+        "x1": 2358,
+        "y1": 373
+      },
+      "words": [
+        {
+          "text": "BILL",
+          "confidence": 93,
+          "bbox": {
+            "x0": 100,
+            "y0": 327,
+            "x1": 168,
+            "y1": 353
+          }
+        },
+        {
+          "text": "TO",
+          "confidence": 93,
+          "bbox": {
+            "x0": 178,
+            "y0": 327,
+            "x1": 221,
+            "y1": 353
+          }
+        },
+        {
+          "text": "SHIP",
+          "confidence": 91,
+          "bbox": {
+            "x0": 1260,
+            "y0": 331,
+            "x1": 1335,
+            "y1": 357
+          }
+        },
+        {
+          "text": "TO",
+          "confidence": 91,
+          "bbox": {
+            "x0": 1345,
+            "y0": 331,
+            "x1": 1388,
+            "y1": 356
+          }
+        }
+      ]
+    },
+    {
+      "text": "WAGHADE KIRANA SHOP  WAGHADE KIRANA SHOP",
+      "confidence": 93,
+      "bbox": {
+        "x0": 97,
+        "y0": 381,
+        "x1": 1687,
+        "y1": 413
+      },
+      "words": [
+        {
+          "text": "WAGHADE",
+          "confidence": 92,
+          "bbox": {
+            "x0": 97,
+            "y0": 381,
+            "x1": 278,
+            "y1": 410
+          }
+        },
+        {
+          "text": "KIRANA",
+          "confidence": 92,
+          "bbox": {
+            "x0": 292,
+            "y0": 382,
+            "x1": 422,
+            "y1": 410
+          }
+        },
+        {
+          "text": "SHOP",
+          "confidence": 96,
+          "bbox": {
+            "x0": 434,
+            "y0": 382,
+            "x1": 531,
+            "y1": 411
+          }
+        },
+        {
+          "text": "WAGHADE",
+          "confidence": 93,
+          "bbox": {
+            "x0": 1259,
+            "y0": 384,
+            "x1": 1438,
+            "y1": 413
+          }
+        },
+        {
+          "text": "KIRANA",
+          "confidence": 91,
+          "bbox": {
+            "x0": 1451,
+            "y0": 384,
+            "x1": 1581,
+            "y1": 412
+          }
+        },
+        {
+          "text": "SHOP",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1592,
+            "y0": 384,
+            "x1": 1687,
+            "y1": 412
+          }
+        }
+      ]
+    },
+    {
+      "text": "| D.No. 5-12-88, Main Road,  D.No. 5-12-88, Main Road,",
+      "confidence": 95,
+      "bbox": {
+        "x0": 76,
+        "y0": 430,
+        "x1": 1624,
+        "y1": 461
+      },
+      "words": [
+        {
+          "text": "|",
+          "confidence": 91,
+          "bbox": {
+            "x0": 76,
+            "y0": 433,
+            "x1": 77,
+            "y1": 461
+          }
+        },
+        {
+          "text": "D.No.",
+          "confidence": 91,
+          "bbox": {
+            "x0": 99,
+            "y0": 430,
+            "x1": 172,
+            "y1": 454
+          }
+        },
+        {
+          "text": "5-12-88,",
+          "confidence": 96,
+          "bbox": {
+            "x0": 185,
+            "y0": 430,
+            "x1": 300,
+            "y1": 458
+          }
+        },
+        {
+          "text": "Main",
+          "confidence": 96,
+          "bbox": {
+            "x0": 313,
+            "y0": 430,
+            "x1": 377,
+            "y1": 454
+          }
+        },
+        {
+          "text": "Road,",
+          "confidence": 96,
+          "bbox": {
+            "x0": 390,
+            "y0": 431,
+            "x1": 466,
+            "y1": 458
+          }
+        },
+        {
+          "text": "D.No.",
+          "confidence": 92,
+          "bbox": {
+            "x0": 1261,
+            "y0": 433,
+            "x1": 1333,
+            "y1": 457
+          }
+        },
+        {
+          "text": "5-12-88,",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1346,
+            "y0": 433,
+            "x1": 1460,
+            "y1": 460
+          }
+        },
+        {
+          "text": "Main",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1473,
+            "y0": 432,
+            "x1": 1536,
+            "y1": 456
+          }
+        },
+        {
+          "text": "Road,",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1549,
+            "y0": 432,
+            "x1": 1624,
+            "y1": 460
+          }
+        }
+      ]
+    },
+    {
+      "text": "| Vijayawada - 520012, Andhra Pradesh                                                | Vijayawada - 520012, Andhra Pradesh",
+      "confidence": 95,
+      "bbox": {
+        "x0": 76,
+        "y0": 468,
+        "x1": 1791,
+        "y1": 509
+      },
+      "words": [
+        {
+          "text": "|",
+          "confidence": 96,
+          "bbox": {
+            "x0": 76,
+            "y0": 468,
+            "x1": 77,
+            "y1": 502
+          }
+        },
+        {
+          "text": "Vijayawada",
+          "confidence": 92,
+          "bbox": {
+            "x0": 97,
+            "y0": 468,
+            "x1": 255,
+            "y1": 499
+          }
+        },
+        {
+          "text": "-",
+          "confidence": 91,
+          "bbox": {
+            "x0": 266,
+            "y0": 481,
+            "x1": 276,
+            "y1": 484
+          }
+        },
+        {
+          "text": "520012,",
+          "confidence": 95,
+          "bbox": {
+            "x0": 288,
+            "y0": 469,
+            "x1": 398,
+            "y1": 496
+          }
+        },
+        {
+          "text": "Andhra",
+          "confidence": 96,
+          "bbox": {
+            "x0": 408,
+            "y0": 468,
+            "x1": 509,
+            "y1": 493
+          }
+        },
+        {
+          "text": "Pradesh",
+          "confidence": 96,
+          "bbox": {
+            "x0": 521,
+            "y0": 469,
+            "x1": 633,
+            "y1": 494
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1235,
+            "y0": 491,
+            "x1": 1237,
+            "y1": 509
+          }
+        },
+        {
+          "text": "Vijayawada",
+          "confidence": 93,
+          "bbox": {
+            "x0": 1259,
+            "y0": 471,
+            "x1": 1416,
+            "y1": 502
+          }
+        },
+        {
+          "text": "-",
+          "confidence": 92,
+          "bbox": {
+            "x0": 1428,
+            "y0": 484,
+            "x1": 1437,
+            "y1": 487
+          }
+        },
+        {
+          "text": "520012,",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1449,
+            "y0": 471,
+            "x1": 1558,
+            "y1": 499
+          }
+        },
+        {
+          "text": "Andhra",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1569,
+            "y0": 470,
+            "x1": 1668,
+            "y1": 495
+          }
+        },
+        {
+          "text": "Pradesh",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1680,
+            "y0": 470,
+            "x1": 1791,
+            "y1": 495
+          }
+        }
+      ]
+    },
+    {
+      "text": "=\" 8806925060                                          [RRICg=de=06 225050",
+      "confidence": 27,
+      "bbox": {
+        "x0": 98,
+        "y0": 507,
+        "x1": 1538,
+        "y1": 573
+      },
+      "words": [
+        {
+          "text": "=\"",
+          "confidence": 12,
+          "bbox": {
+            "x0": 98,
+            "y0": 507,
+            "x1": 191,
+            "y1": 573
+          }
+        },
+        {
+          "text": "8806925060",
+          "confidence": 90,
+          "bbox": {
+            "x0": 208,
+            "y0": 519,
+            "x1": 380,
+            "y1": 573
+          }
+        },
+        {
+          "text": "[RRICg=de=06",
+          "confidence": 0,
+          "bbox": {
+            "x0": 1235,
+            "y0": 534,
+            "x1": 1431,
+            "y1": 565
+          }
+        },
+        {
+          "text": "225050",
+          "confidence": 35,
+          "bbox": {
+            "x0": 1444,
+            "y0": 534,
+            "x1": 1538,
+            "y1": 558
+          }
+        }
+      ]
+    },
+    {
+      "text": "1      CHANA 50 KG                     0713        1.0  |   BOR         2,760.00       2,950.00  |   3,200.00  |         0.00         0.00         2,760.00",
+      "confidence": 85,
+      "bbox": {
+        "x0": 133,
+        "y0": 692,
+        "x1": 2340,
+        "y1": 750
+      },
+      "words": [
+        {
+          "text": "1",
+          "confidence": 96,
+          "bbox": {
+            "x0": 133,
+            "y0": 704,
+            "x1": 141,
+            "y1": 727
+          }
+        },
+        {
+          "text": "CHANA",
+          "confidence": 92,
+          "bbox": {
+            "x0": 228,
+            "y0": 704,
+            "x1": 318,
+            "y1": 728
+          }
+        },
+        {
+          "text": "50",
+          "confidence": 96,
+          "bbox": {
+            "x0": 328,
+            "y0": 704,
+            "x1": 357,
+            "y1": 728
+          }
+        },
+        {
+          "text": "KG",
+          "confidence": 96,
+          "bbox": {
+            "x0": 368,
+            "y0": 704,
+            "x1": 400,
+            "y1": 729
+          }
+        },
+        {
+          "text": "0713",
+          "confidence": 22,
+          "bbox": {
+            "x0": 690,
+            "y0": 692,
+            "x1": 780,
+            "y1": 730
+          }
+        },
+        {
+          "text": "1.0",
+          "confidence": 96,
+          "bbox": {
+            "x0": 898,
+            "y0": 707,
+            "x1": 934,
+            "y1": 731
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 64,
+          "bbox": {
+            "x0": 959,
+            "y0": 708,
+            "x1": 962,
+            "y1": 750
+          }
+        },
+        {
+          "text": "BOR",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1009,
+            "y0": 708,
+            "x1": 1061,
+            "y1": 732
+          }
+        },
+        {
+          "text": "2,760.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1192,
+            "y0": 708,
+            "x1": 1304,
+            "y1": 736
+          }
+        },
+        {
+          "text": "2,950.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1405,
+            "y0": 708,
+            "x1": 1518,
+            "y1": 736
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 70,
+          "bbox": {
+            "x0": 1543,
+            "y0": 747,
+            "x1": 1546,
+            "y1": 750
+          }
+        },
+        {
+          "text": "3,200.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1590,
+            "y0": 708,
+            "x1": 1702,
+            "y1": 736
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 54,
+          "bbox": {
+            "x0": 1727,
+            "y0": 747,
+            "x1": 1729,
+            "y1": 750
+          }
+        },
+        {
+          "text": "0.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1853,
+            "y0": 708,
+            "x1": 1907,
+            "y1": 732
+          }
+        },
+        {
+          "text": "0.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2039,
+            "y0": 708,
+            "x1": 2094,
+            "y1": 732
+          }
+        },
+        {
+          "text": "2,760.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2220,
+            "y0": 707,
+            "x1": 2340,
+            "y1": 736
+          }
+        }
+      ]
+    },
+    {
+      "text": "|E2       FORTUNE BESAN 500 GM              1106        10.0      PCS              70.00           78.00         90.00            0.00           0.00            700.00 |",
+      "confidence": 86,
+      "bbox": {
+        "x0": 76,
+        "y0": 758,
+        "x1": 2369,
+        "y1": 799
+      },
+      "words": [
+        {
+          "text": "|E2",
+          "confidence": 0,
+          "bbox": {
+            "x0": 76,
+            "y0": 758,
+            "x1": 145,
+            "y1": 783
+          }
+        },
+        {
+          "text": "FORTUNE",
+          "confidence": 93,
+          "bbox": {
+            "x0": 230,
+            "y0": 758,
+            "x1": 350,
+            "y1": 782
+          }
+        },
+        {
+          "text": "BESAN",
+          "confidence": 92,
+          "bbox": {
+            "x0": 361,
+            "y0": 759,
+            "x1": 444,
+            "y1": 782
+          }
+        },
+        {
+          "text": "500",
+          "confidence": 96,
+          "bbox": {
+            "x0": 456,
+            "y0": 759,
+            "x1": 500,
+            "y1": 783
+          }
+        },
+        {
+          "text": "GM",
+          "confidence": 96,
+          "bbox": {
+            "x0": 510,
+            "y0": 759,
+            "x1": 548,
+            "y1": 783
+          }
+        },
+        {
+          "text": "1106",
+          "confidence": 96,
+          "bbox": {
+            "x0": 721,
+            "y0": 761,
+            "x1": 780,
+            "y1": 785
+          }
+        },
+        {
+          "text": "10.0",
+          "confidence": 96,
+          "bbox": {
+            "x0": 883,
+            "y0": 761,
+            "x1": 934,
+            "y1": 785
+          }
+        },
+        {
+          "text": "PCS",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1011,
+            "y0": 762,
+            "x1": 1059,
+            "y1": 786
+          }
+        },
+        {
+          "text": "70.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1233,
+            "y0": 762,
+            "x1": 1304,
+            "y1": 786
+          }
+        },
+        {
+          "text": "78.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1446,
+            "y0": 762,
+            "x1": 1517,
+            "y1": 787
+          }
+        },
+        {
+          "text": "90.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1632,
+            "y0": 762,
+            "x1": 1702,
+            "y1": 786
+          }
+        },
+        {
+          "text": "0.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1853,
+            "y0": 762,
+            "x1": 1907,
+            "y1": 787
+          }
+        },
+        {
+          "text": "0.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2039,
+            "y0": 762,
+            "x1": 2094,
+            "y1": 787
+          }
+        },
+        {
+          "text": "700.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2246,
+            "y0": 762,
+            "x1": 2341,
+            "y1": 787
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2367,
+            "y0": 777,
+            "x1": 2369,
+            "y1": 799
+          }
+        }
+      ]
+    },
+    {
+      "text": "3      FORTUNE OIL 1 KG                  1515        3.0    PET          1,378.62       1,520.00   1,680.00       124.08         4.01         4,015.80",
+      "confidence": 96,
+      "bbox": {
+        "x0": 132,
+        "y0": 802,
+        "x1": 2341,
+        "y1": 845
+      },
+      "words": [
+        {
+          "text": "3",
+          "confidence": 96,
+          "bbox": {
+            "x0": 132,
+            "y0": 812,
+            "x1": 145,
+            "y1": 836
+          }
+        },
+        {
+          "text": "FORTUNE",
+          "confidence": 96,
+          "bbox": {
+            "x0": 229,
+            "y0": 812,
+            "x1": 350,
+            "y1": 837
+          }
+        },
+        {
+          "text": "OIL",
+          "confidence": 95,
+          "bbox": {
+            "x0": 360,
+            "y0": 813,
+            "x1": 419,
+            "y1": 837
+          }
+        },
+        {
+          "text": "1",
+          "confidence": 95,
+          "bbox": {
+            "x0": 408,
+            "y0": 808,
+            "x1": 425,
+            "y1": 846
+          }
+        },
+        {
+          "text": "KG",
+          "confidence": 96,
+          "bbox": {
+            "x0": 434,
+            "y0": 813,
+            "x1": 467,
+            "y1": 837
+          }
+        },
+        {
+          "text": "1515",
+          "confidence": 96,
+          "bbox": {
+            "x0": 720,
+            "y0": 815,
+            "x1": 780,
+            "y1": 838
+          }
+        },
+        {
+          "text": "3.0",
+          "confidence": 96,
+          "bbox": {
+            "x0": 897,
+            "y0": 815,
+            "x1": 934,
+            "y1": 839
+          }
+        },
+        {
+          "text": "PET",
+          "confidence": 95,
+          "bbox": {
+            "x0": 1012,
+            "y0": 802,
+            "x1": 1059,
+            "y1": 840
+          }
+        },
+        {
+          "text": "1,378.62",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1194,
+            "y0": 817,
+            "x1": 1304,
+            "y1": 844
+          }
+        },
+        {
+          "text": "1,520.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1406,
+            "y0": 817,
+            "x1": 1517,
+            "y1": 844
+          }
+        },
+        {
+          "text": "1,680.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1592,
+            "y0": 817,
+            "x1": 1702,
+            "y1": 845
+          }
+        },
+        {
+          "text": "124.08",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1820,
+            "y0": 817,
+            "x1": 1907,
+            "y1": 841
+          }
+        },
+        {
+          "text": "4.01",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2039,
+            "y0": 817,
+            "x1": 2090,
+            "y1": 841
+          }
+        },
+        {
+          "text": "4,015.80",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2220,
+            "y0": 816,
+            "x1": 2341,
+            "y1": 845
+          }
+        }
+      ]
+    },
+    {
+      "text": "| 4 | HELLO ORGANIC CHANADAL KG | 0713        50 | PCS           129.46         140.00 | 160.00 |         0.00        77.68           725.00",
+      "confidence": 81,
+      "bbox": {
+        "x0": 76,
+        "y0": 851,
+        "x1": 2341,
+        "y1": 895
+      },
+      "words": [
+        {
+          "text": "|",
+          "confidence": 44,
+          "bbox": {
+            "x0": 76,
+            "y0": 851,
+            "x1": 79,
+            "y1": 860
+          }
+        },
+        {
+          "text": "4",
+          "confidence": 44,
+          "bbox": {
+            "x0": 131,
+            "y0": 867,
+            "x1": 145,
+            "y1": 890
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 60,
+          "bbox": {
+            "x0": 181,
+            "y0": 847,
+            "x1": 210,
+            "y1": 904
+          }
+        },
+        {
+          "text": "HELLO",
+          "confidence": 92,
+          "bbox": {
+            "x0": 229,
+            "y0": 867,
+            "x1": 310,
+            "y1": 891
+          }
+        },
+        {
+          "text": "ORGANIC",
+          "confidence": 90,
+          "bbox": {
+            "x0": 321,
+            "y0": 867,
+            "x1": 435,
+            "y1": 892
+          }
+        },
+        {
+          "text": "CHANADAL",
+          "confidence": 90,
+          "bbox": {
+            "x0": 445,
+            "y0": 868,
+            "x1": 612,
+            "y1": 892
+          }
+        },
+        {
+          "text": "KG",
+          "confidence": 57,
+          "bbox": {
+            "x0": 627,
+            "y0": 868,
+            "x1": 659,
+            "y1": 892
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 96,
+          "bbox": {
+            "x0": 675,
+            "y0": 847,
+            "x1": 695,
+            "y1": 904
+          }
+        },
+        {
+          "text": "0713",
+          "confidence": 96,
+          "bbox": {
+            "x0": 719,
+            "y0": 869,
+            "x1": 780,
+            "y1": 893
+          }
+        },
+        {
+          "text": "50",
+          "confidence": 94,
+          "bbox": {
+            "x0": 898,
+            "y0": 855,
+            "x1": 934,
+            "y1": 894
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 68,
+          "bbox": {
+            "x0": 959,
+            "y0": 854,
+            "x1": 963,
+            "y1": 858
+          }
+        },
+        {
+          "text": "PCS",
+          "confidence": 68,
+          "bbox": {
+            "x0": 1010,
+            "y0": 855,
+            "x1": 1059,
+            "y1": 894
+          }
+        },
+        {
+          "text": "129.46",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1217,
+            "y0": 870,
+            "x1": 1304,
+            "y1": 895
+          }
+        },
+        {
+          "text": "140.00",
+          "confidence": 94,
+          "bbox": {
+            "x0": 1430,
+            "y0": 871,
+            "x1": 1517,
+            "y1": 895
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 92,
+          "bbox": {
+            "x0": 1543,
+            "y0": 855,
+            "x1": 1547,
+            "y1": 908
+          }
+        },
+        {
+          "text": "160.00",
+          "confidence": 57,
+          "bbox": {
+            "x0": 1616,
+            "y0": 871,
+            "x1": 1702,
+            "y1": 895
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1726,
+            "y0": 856,
+            "x1": 1730,
+            "y1": 859
+          }
+        },
+        {
+          "text": "0.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1853,
+            "y0": 871,
+            "x1": 1907,
+            "y1": 895
+          }
+        },
+        {
+          "text": "77.68",
+          "confidence": 94,
+          "bbox": {
+            "x0": 2023,
+            "y0": 871,
+            "x1": 2095,
+            "y1": 895
+          }
+        },
+        {
+          "text": "725.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2246,
+            "y0": 871,
+            "x1": 2341,
+            "y1": 895
+          }
+        }
+      ]
+    },
+    {
+      "text": "5      MASOOR DAL 50 KG              |  0713         1.0   BOR         4,825.00       5,200.00   5,600.00         0.00         0.00    ]     4,825.00  |",
+      "confidence": 85,
+      "bbox": {
+        "x0": 132,
+        "y0": 853,
+        "x1": 2370,
+        "y1": 968
+      },
+      "words": [
+        {
+          "text": "5",
+          "confidence": 96,
+          "bbox": {
+            "x0": 132,
+            "y0": 921,
+            "x1": 145,
+            "y1": 945
+          }
+        },
+        {
+          "text": "MASOOR",
+          "confidence": 54,
+          "bbox": {
+            "x0": 229,
+            "y0": 921,
+            "x1": 340,
+            "y1": 945
+          }
+        },
+        {
+          "text": "DAL",
+          "confidence": 95,
+          "bbox": {
+            "x0": 351,
+            "y0": 922,
+            "x1": 396,
+            "y1": 945
+          }
+        },
+        {
+          "text": "50",
+          "confidence": 95,
+          "bbox": {
+            "x0": 408,
+            "y0": 922,
+            "x1": 438,
+            "y1": 963
+          }
+        },
+        {
+          "text": "KG",
+          "confidence": 95,
+          "bbox": {
+            "x0": 449,
+            "y0": 922,
+            "x1": 482,
+            "y1": 946
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 94,
+          "bbox": {
+            "x0": 684,
+            "y0": 853,
+            "x1": 688,
+            "y1": 959
+          }
+        },
+        {
+          "text": "0713",
+          "confidence": 96,
+          "bbox": {
+            "x0": 719,
+            "y0": 923,
+            "x1": 779,
+            "y1": 947
+          }
+        },
+        {
+          "text": "1.0",
+          "confidence": 96,
+          "bbox": {
+            "x0": 898,
+            "y0": 924,
+            "x1": 934,
+            "y1": 948
+          }
+        },
+        {
+          "text": "BOR",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1009,
+            "y0": 924,
+            "x1": 1061,
+            "y1": 965
+          }
+        },
+        {
+          "text": "4,825.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1192,
+            "y0": 925,
+            "x1": 1304,
+            "y1": 952
+          }
+        },
+        {
+          "text": "5,200.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1405,
+            "y0": 925,
+            "x1": 1517,
+            "y1": 952
+          }
+        },
+        {
+          "text": "5,600.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1591,
+            "y0": 925,
+            "x1": 1702,
+            "y1": 953
+          }
+        },
+        {
+          "text": "0.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1854,
+            "y0": 925,
+            "x1": 1908,
+            "y1": 950
+          }
+        },
+        {
+          "text": "0.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2040,
+            "y0": 925,
+            "x1": 2095,
+            "y1": 967
+          }
+        },
+        {
+          "text": "]",
+          "confidence": 0,
+          "bbox": {
+            "x0": 2147,
+            "y0": 966,
+            "x1": 2152,
+            "y1": 967
+          }
+        },
+        {
+          "text": "4,825.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2220,
+            "y0": 926,
+            "x1": 2341,
+            "y1": 967
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 81,
+          "bbox": {
+            "x0": 2367,
+            "y0": 952,
+            "x1": 2370,
+            "y1": 968
+          }
+        }
+      ]
+    },
+    {
+      "text": "6    OIL CAN 10   Sl re  3923     10.0 | PCS af 1,975.00     2,150.00 |  2,400.00 |      0.00      0.00     19,750.00",
+      "confidence": 73,
+      "bbox": {
+        "x0": 132,
+        "y0": 975,
+        "x1": 2342,
+        "y1": 1023
+      },
+      "words": [
+        {
+          "text": "6",
+          "confidence": 96,
+          "bbox": {
+            "x0": 132,
+            "y0": 976,
+            "x1": 145,
+            "y1": 999
+          }
+        },
+        {
+          "text": "OIL",
+          "confidence": 93,
+          "bbox": {
+            "x0": 229,
+            "y0": 976,
+            "x1": 269,
+            "y1": 1000
+          }
+        },
+        {
+          "text": "CAN",
+          "confidence": 90,
+          "bbox": {
+            "x0": 278,
+            "y0": 976,
+            "x1": 329,
+            "y1": 1000
+          }
+        },
+        {
+          "text": "10",
+          "confidence": 90,
+          "bbox": {
+            "x0": 342,
+            "y0": 976,
+            "x1": 370,
+            "y1": 1000
+          }
+        },
+        {
+          "text": "Sl",
+          "confidence": 10,
+          "bbox": {
+            "x0": 425,
+            "y0": 1016,
+            "x1": 488,
+            "y1": 1017
+          }
+        },
+        {
+          "text": "re",
+          "confidence": 13,
+          "bbox": {
+            "x0": 508,
+            "y0": 1016,
+            "x1": 566,
+            "y1": 1017
+          }
+        },
+        {
+          "text": "3923",
+          "confidence": 96,
+          "bbox": {
+            "x0": 719,
+            "y0": 977,
+            "x1": 780,
+            "y1": 1001
+          }
+        },
+        {
+          "text": "10.0",
+          "confidence": 96,
+          "bbox": {
+            "x0": 882,
+            "y0": 978,
+            "x1": 934,
+            "y1": 1002
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 86,
+          "bbox": {
+            "x0": 959,
+            "y0": 1016,
+            "x1": 963,
+            "y1": 1020
+          }
+        },
+        {
+          "text": "PCS",
+          "confidence": 42,
+          "bbox": {
+            "x0": 988,
+            "y0": 975,
+            "x1": 1076,
+            "y1": 1023
+          }
+        },
+        {
+          "text": "af",
+          "confidence": 41,
+          "bbox": {
+            "x0": 1092,
+            "y0": 1018,
+            "x1": 1144,
+            "y1": 1019
+          }
+        },
+        {
+          "text": "1,975.00",
+          "confidence": 13,
+          "bbox": {
+            "x0": 1163,
+            "y0": 975,
+            "x1": 1304,
+            "y1": 1023
+          }
+        },
+        {
+          "text": "2,150.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1405,
+            "y0": 979,
+            "x1": 1517,
+            "y1": 1007
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 70,
+          "bbox": {
+            "x0": 1544,
+            "y0": 996,
+            "x1": 1547,
+            "y1": 1022
+          }
+        },
+        {
+          "text": "2,400.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1591,
+            "y0": 979,
+            "x1": 1703,
+            "y1": 1007
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 63,
+          "bbox": {
+            "x0": 1727,
+            "y0": 1018,
+            "x1": 1730,
+            "y1": 1021
+          }
+        },
+        {
+          "text": "0.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1854,
+            "y0": 980,
+            "x1": 1908,
+            "y1": 1004
+          }
+        },
+        {
+          "text": "0.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2041,
+            "y0": 980,
+            "x1": 2095,
+            "y1": 1004
+          }
+        },
+        {
+          "text": "19,750.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2205,
+            "y0": 980,
+            "x1": 2342,
+            "y1": 1009
+          }
+        }
+      ]
+    },
+    {
+      "text": "| 8 | SOYABEAN CHUNKS 15 KG           2106        20 | BOR          1,230.00       1,350.00 | 1,500.00 |         0.00          0.00         2,460.00  |",
+      "confidence": 86,
+      "bbox": {
+        "x0": 75,
+        "y0": 1025,
+        "x1": 2371,
+        "y1": 1175
+      },
+      "words": [
+        {
+          "text": "|",
+          "confidence": 53,
+          "bbox": {
+            "x0": 75,
+            "y0": 1069,
+            "x1": 78,
+            "y1": 1097
+          }
+        },
+        {
+          "text": "8",
+          "confidence": 53,
+          "bbox": {
+            "x0": 131,
+            "y0": 1084,
+            "x1": 145,
+            "y1": 1108
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 81,
+          "bbox": {
+            "x0": 179,
+            "y0": 1065,
+            "x1": 211,
+            "y1": 1127
+          }
+        },
+        {
+          "text": "SOYABEAN",
+          "confidence": 85,
+          "bbox": {
+            "x0": 228,
+            "y0": 1084,
+            "x1": 366,
+            "y1": 1108
+          }
+        },
+        {
+          "text": "CHUNKS",
+          "confidence": 95,
+          "bbox": {
+            "x0": 377,
+            "y0": 1084,
+            "x1": 483,
+            "y1": 1109
+          }
+        },
+        {
+          "text": "15",
+          "confidence": 95,
+          "bbox": {
+            "x0": 493,
+            "y0": 1085,
+            "x1": 522,
+            "y1": 1109
+          }
+        },
+        {
+          "text": "KG",
+          "confidence": 95,
+          "bbox": {
+            "x0": 533,
+            "y0": 1085,
+            "x1": 565,
+            "y1": 1109
+          }
+        },
+        {
+          "text": "2106",
+          "confidence": 96,
+          "bbox": {
+            "x0": 719,
+            "y0": 1086,
+            "x1": 780,
+            "y1": 1109
+          }
+        },
+        {
+          "text": "20",
+          "confidence": 90,
+          "bbox": {
+            "x0": 897,
+            "y0": 1086,
+            "x1": 934,
+            "y1": 1110
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 82,
+          "bbox": {
+            "x0": 959,
+            "y0": 1071,
+            "x1": 962,
+            "y1": 1082
+          }
+        },
+        {
+          "text": "BOR",
+          "confidence": 82,
+          "bbox": {
+            "x0": 1010,
+            "y0": 1086,
+            "x1": 1061,
+            "y1": 1110
+          }
+        },
+        {
+          "text": "1,230.00",
+          "confidence": 95,
+          "bbox": {
+            "x0": 1194,
+            "y0": 1087,
+            "x1": 1305,
+            "y1": 1115
+          }
+        },
+        {
+          "text": "1,350.00",
+          "confidence": 84,
+          "bbox": {
+            "x0": 1406,
+            "y0": 1088,
+            "x1": 1517,
+            "y1": 1115
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 85,
+          "bbox": {
+            "x0": 1544,
+            "y0": 1072,
+            "x1": 1547,
+            "y1": 1094
+          }
+        },
+        {
+          "text": "1,500.00",
+          "confidence": 79,
+          "bbox": {
+            "x0": 1593,
+            "y0": 1088,
+            "x1": 1703,
+            "y1": 1116
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1727,
+            "y0": 1072,
+            "x1": 1730,
+            "y1": 1126
+          }
+        },
+        {
+          "text": "0.00",
+          "confidence": 92,
+          "bbox": {
+            "x0": 1854,
+            "y0": 1074,
+            "x1": 1908,
+            "y1": 1113
+          }
+        },
+        {
+          "text": "0.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2041,
+            "y0": 1089,
+            "x1": 2095,
+            "y1": 1113
+          }
+        },
+        {
+          "text": "2,460.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2223,
+            "y0": 1089,
+            "x1": 2342,
+            "y1": 1118
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 94,
+          "bbox": {
+            "x0": 2367,
+            "y0": 1025,
+            "x1": 2371,
+            "y1": 1175
+          }
+        }
+      ]
+    },
+    {
+      "text": "7      SUGAR                             1701         2.0      PCS          1,925.00       2,050.00 | 2,300.00           0.00          0.00         3,850.00",
+      "confidence": 95,
+      "bbox": {
+        "x0": 132,
+        "y0": 1030,
+        "x1": 2343,
+        "y1": 1066
+      },
+      "words": [
+        {
+          "text": "7",
+          "confidence": 96,
+          "bbox": {
+            "x0": 132,
+            "y0": 1030,
+            "x1": 145,
+            "y1": 1054
+          }
+        },
+        {
+          "text": "SUGAR",
+          "confidence": 96,
+          "bbox": {
+            "x0": 228,
+            "y0": 1030,
+            "x1": 316,
+            "y1": 1054
+          }
+        },
+        {
+          "text": "1701",
+          "confidence": 96,
+          "bbox": {
+            "x0": 720,
+            "y0": 1032,
+            "x1": 776,
+            "y1": 1056
+          }
+        },
+        {
+          "text": "2.0",
+          "confidence": 94,
+          "bbox": {
+            "x0": 897,
+            "y0": 1032,
+            "x1": 934,
+            "y1": 1056
+          }
+        },
+        {
+          "text": "PCS",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1012,
+            "y0": 1033,
+            "x1": 1059,
+            "y1": 1057
+          }
+        },
+        {
+          "text": "1,925.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1194,
+            "y0": 1033,
+            "x1": 1304,
+            "y1": 1061
+          }
+        },
+        {
+          "text": "2,050.00",
+          "confidence": 94,
+          "bbox": {
+            "x0": 1405,
+            "y0": 1034,
+            "x1": 1517,
+            "y1": 1061
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 92,
+          "bbox": {
+            "x0": 1545,
+            "y0": 1054,
+            "x1": 1546,
+            "y1": 1066
+          }
+        },
+        {
+          "text": "2,300.00",
+          "confidence": 91,
+          "bbox": {
+            "x0": 1591,
+            "y0": 1034,
+            "x1": 1703,
+            "y1": 1062
+          }
+        },
+        {
+          "text": "0.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1854,
+            "y0": 1034,
+            "x1": 1908,
+            "y1": 1059
+          }
+        },
+        {
+          "text": "0.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2041,
+            "y0": 1034,
+            "x1": 2095,
+            "y1": 1059
+          }
+        },
+        {
+          "text": "3,850.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2224,
+            "y0": 1034,
+            "x1": 2343,
+            "y1": 1064
+          }
+        }
+      ]
+    },
+    {
+      "text": "9      SONAL SABUDANA KHICHDI 500GM | 1108  25.0   KGS            40.18          45.00        50.00         0.00       120.54         1,125.00",
+      "confidence": 93,
+      "bbox": {
+        "x0": 132,
+        "y0": 1128,
+        "x1": 2342,
+        "y1": 1173
+      },
+      "words": [
+        {
+          "text": "9",
+          "confidence": 96,
+          "bbox": {
+            "x0": 132,
+            "y0": 1139,
+            "x1": 145,
+            "y1": 1163
+          }
+        },
+        {
+          "text": "SONAL",
+          "confidence": 92,
+          "bbox": {
+            "x0": 228,
+            "y0": 1139,
+            "x1": 311,
+            "y1": 1162
+          }
+        },
+        {
+          "text": "SABUDANA",
+          "confidence": 92,
+          "bbox": {
+            "x0": 320,
+            "y0": 1139,
+            "x1": 457,
+            "y1": 1162
+          }
+        },
+        {
+          "text": "KHICHDI",
+          "confidence": 88,
+          "bbox": {
+            "x0": 466,
+            "y0": 1139,
+            "x1": 563,
+            "y1": 1163
+          }
+        },
+        {
+          "text": "500GM",
+          "confidence": 88,
+          "bbox": {
+            "x0": 574,
+            "y0": 1140,
+            "x1": 662,
+            "y1": 1163
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 85,
+          "bbox": {
+            "x0": 676,
+            "y0": 1135,
+            "x1": 696,
+            "y1": 1173
+          }
+        },
+        {
+          "text": "1108",
+          "confidence": 85,
+          "bbox": {
+            "x0": 720,
+            "y0": 1141,
+            "x1": 780,
+            "y1": 1165
+          }
+        },
+        {
+          "text": "25.0",
+          "confidence": 96,
+          "bbox": {
+            "x0": 881,
+            "y0": 1141,
+            "x1": 934,
+            "y1": 1166
+          }
+        },
+        {
+          "text": "KGS",
+          "confidence": 95,
+          "bbox": {
+            "x0": 1011,
+            "y0": 1142,
+            "x1": 1060,
+            "y1": 1166
+          }
+        },
+        {
+          "text": "40.18",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1233,
+            "y0": 1143,
+            "x1": 1305,
+            "y1": 1167
+          }
+        },
+        {
+          "text": "45.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1445,
+            "y0": 1143,
+            "x1": 1517,
+            "y1": 1167
+          }
+        },
+        {
+          "text": "50.00",
+          "confidence": 95,
+          "bbox": {
+            "x0": 1633,
+            "y0": 1128,
+            "x1": 1703,
+            "y1": 1168
+          }
+        },
+        {
+          "text": "0.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1855,
+            "y0": 1144,
+            "x1": 1908,
+            "y1": 1168
+          }
+        },
+        {
+          "text": "120.54",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2007,
+            "y0": 1144,
+            "x1": 2095,
+            "y1": 1169
+          }
+        },
+        {
+          "text": "1,125.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2223,
+            "y0": 1145,
+            "x1": 2342,
+            "y1": 1173
+          }
+        }
+      ]
+    },
+    {
+      "text": "10     SABUDANA 30 KG    1108        1.0    KGS          1,336.66       1,450.00     1,600.00         0.00          3.34         1,340.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 125,
+        "y0": 1197,
+        "x1": 2341,
+        "y1": 1231
+      },
+      "words": [
+        {
+          "text": "10",
+          "confidence": 96,
+          "bbox": {
+            "x0": 125,
+            "y0": 1197,
+            "x1": 153,
+            "y1": 1221
+          }
+        },
+        {
+          "text": "SABUDANA",
+          "confidence": 92,
+          "bbox": {
+            "x0": 228,
+            "y0": 1197,
+            "x1": 371,
+            "y1": 1222
+          }
+        },
+        {
+          "text": "30",
+          "confidence": 96,
+          "bbox": {
+            "x0": 381,
+            "y0": 1198,
+            "x1": 410,
+            "y1": 1222
+          }
+        },
+        {
+          "text": "KG",
+          "confidence": 96,
+          "bbox": {
+            "x0": 421,
+            "y0": 1198,
+            "x1": 453,
+            "y1": 1222
+          }
+        },
+        {
+          "text": "1108",
+          "confidence": 96,
+          "bbox": {
+            "x0": 720,
+            "y0": 1199,
+            "x1": 780,
+            "y1": 1223
+          }
+        },
+        {
+          "text": "1.0",
+          "confidence": 96,
+          "bbox": {
+            "x0": 898,
+            "y0": 1200,
+            "x1": 934,
+            "y1": 1224
+          }
+        },
+        {
+          "text": "KGS",
+          "confidence": 95,
+          "bbox": {
+            "x0": 1011,
+            "y0": 1200,
+            "x1": 1060,
+            "y1": 1224
+          }
+        },
+        {
+          "text": "1,336.66",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1194,
+            "y0": 1200,
+            "x1": 1305,
+            "y1": 1228
+          }
+        },
+        {
+          "text": "1,450.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1406,
+            "y0": 1201,
+            "x1": 1517,
+            "y1": 1229
+          }
+        },
+        {
+          "text": "1,600.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1593,
+            "y0": 1201,
+            "x1": 1703,
+            "y1": 1229
+          }
+        },
+        {
+          "text": "0.00",
+          "confidence": 97,
+          "bbox": {
+            "x0": 1855,
+            "y0": 1201,
+            "x1": 1908,
+            "y1": 1226
+          }
+        },
+        {
+          "text": "3.34",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2041,
+            "y0": 1202,
+            "x1": 2095,
+            "y1": 1227
+          }
+        },
+        {
+          "text": "1,340.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2223,
+            "y0": 1202,
+            "x1": 2341,
+            "y1": 1231
+          }
+        }
+      ]
+    },
+    {
+      "text": "1     UDAD DAL 1 KG                   0713       20.0     KGS           47.95         52.00       60.00        0.00         0.96          960.00",
+      "confidence": 94,
+      "bbox": {
+        "x0": 125,
+        "y0": 1253,
+        "x1": 2341,
+        "y1": 1283
+      },
+      "words": [
+        {
+          "text": "1",
+          "confidence": 74,
+          "bbox": {
+            "x0": 125,
+            "y0": 1253,
+            "x1": 149,
+            "y1": 1276
+          }
+        },
+        {
+          "text": "UDAD",
+          "confidence": 92,
+          "bbox": {
+            "x0": 229,
+            "y0": 1253,
+            "x1": 301,
+            "y1": 1277
+          }
+        },
+        {
+          "text": "DAL",
+          "confidence": 96,
+          "bbox": {
+            "x0": 311,
+            "y0": 1254,
+            "x1": 379,
+            "y1": 1278
+          }
+        },
+        {
+          "text": "1",
+          "confidence": 95,
+          "bbox": {
+            "x0": 367,
+            "y0": 1249,
+            "x1": 381,
+            "y1": 1287
+          }
+        },
+        {
+          "text": "KG",
+          "confidence": 95,
+          "bbox": {
+            "x0": 394,
+            "y0": 1254,
+            "x1": 426,
+            "y1": 1278
+          }
+        },
+        {
+          "text": "0713",
+          "confidence": 96,
+          "bbox": {
+            "x0": 719,
+            "y0": 1254,
+            "x1": 779,
+            "y1": 1278
+          }
+        },
+        {
+          "text": "20.0",
+          "confidence": 96,
+          "bbox": {
+            "x0": 881,
+            "y0": 1255,
+            "x1": 934,
+            "y1": 1279
+          }
+        },
+        {
+          "text": "KGS",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1011,
+            "y0": 1255,
+            "x1": 1060,
+            "y1": 1280
+          }
+        },
+        {
+          "text": "47.95",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1233,
+            "y0": 1256,
+            "x1": 1305,
+            "y1": 1280
+          }
+        },
+        {
+          "text": "52.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1446,
+            "y0": 1257,
+            "x1": 1517,
+            "y1": 1281
+          }
+        },
+        {
+          "text": "60.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1633,
+            "y0": 1257,
+            "x1": 1703,
+            "y1": 1281
+          }
+        },
+        {
+          "text": "0.00",
+          "confidence": 97,
+          "bbox": {
+            "x0": 1855,
+            "y0": 1257,
+            "x1": 1908,
+            "y1": 1282
+          }
+        },
+        {
+          "text": "0.96",
+          "confidence": 97,
+          "bbox": {
+            "x0": 2041,
+            "y0": 1258,
+            "x1": 2095,
+            "y1": 1282
+          }
+        },
+        {
+          "text": "960.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2247,
+            "y0": 1258,
+            "x1": 2341,
+            "y1": 1283
+          }
+        }
+      ]
+    },
+    {
+      "text": "12     RAJAMM                           0713       25.0   KGS            44.96          50.00      58.00         0.00          1.12         1,125.00",
+      "confidence": 95,
+      "bbox": {
+        "x0": 125,
+        "y0": 1296,
+        "x1": 2341,
+        "y1": 1343
+      },
+      "words": [
+        {
+          "text": "12",
+          "confidence": 96,
+          "bbox": {
+            "x0": 125,
+            "y0": 1309,
+            "x1": 153,
+            "y1": 1333
+          }
+        },
+        {
+          "text": "RAJAMM",
+          "confidence": 92,
+          "bbox": {
+            "x0": 229,
+            "y0": 1310,
+            "x1": 341,
+            "y1": 1334
+          }
+        },
+        {
+          "text": "0713",
+          "confidence": 96,
+          "bbox": {
+            "x0": 719,
+            "y0": 1311,
+            "x1": 779,
+            "y1": 1335
+          }
+        },
+        {
+          "text": "25.0",
+          "confidence": 94,
+          "bbox": {
+            "x0": 881,
+            "y0": 1296,
+            "x1": 935,
+            "y1": 1336
+          }
+        },
+        {
+          "text": "KGS",
+          "confidence": 95,
+          "bbox": {
+            "x0": 1011,
+            "y0": 1312,
+            "x1": 1060,
+            "y1": 1336
+          }
+        },
+        {
+          "text": "44.96",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1233,
+            "y0": 1313,
+            "x1": 1305,
+            "y1": 1337
+          }
+        },
+        {
+          "text": "50.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1446,
+            "y0": 1313,
+            "x1": 1517,
+            "y1": 1337
+          }
+        },
+        {
+          "text": "58.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1634,
+            "y0": 1313,
+            "x1": 1704,
+            "y1": 1338
+          }
+        },
+        {
+          "text": "0.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1855,
+            "y0": 1314,
+            "x1": 1909,
+            "y1": 1338
+          }
+        },
+        {
+          "text": "1.12",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2042,
+            "y0": 1314,
+            "x1": 2095,
+            "y1": 1339
+          }
+        },
+        {
+          "text": "1,125.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2223,
+            "y0": 1315,
+            "x1": 2341,
+            "y1": 1343
+          }
+        }
+      ]
+    },
+    {
+      "text": "[15 NFPARIEG                         1905        50 | PET           648.38         700.00 | 800.00 |         0.00         8.10         3,250.00 |",
+      "confidence": 69,
+      "bbox": {
+        "x0": 76,
+        "y0": 1350,
+        "x1": 2369,
+        "y1": 1401
+      },
+      "words": [
+        {
+          "text": "[15",
+          "confidence": 22,
+          "bbox": {
+            "x0": 76,
+            "y0": 1350,
+            "x1": 153,
+            "y1": 1394
+          }
+        },
+        {
+          "text": "NFPARIEG",
+          "confidence": 0,
+          "bbox": {
+            "x0": 230,
+            "y0": 1367,
+            "x1": 339,
+            "y1": 1391
+          }
+        },
+        {
+          "text": "1905",
+          "confidence": 96,
+          "bbox": {
+            "x0": 720,
+            "y0": 1368,
+            "x1": 780,
+            "y1": 1392
+          }
+        },
+        {
+          "text": "50",
+          "confidence": 94,
+          "bbox": {
+            "x0": 898,
+            "y0": 1369,
+            "x1": 934,
+            "y1": 1393
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 73,
+          "bbox": {
+            "x0": 960,
+            "y0": 1354,
+            "x1": 962,
+            "y1": 1357
+          }
+        },
+        {
+          "text": "PET",
+          "confidence": 74,
+          "bbox": {
+            "x0": 1012,
+            "y0": 1369,
+            "x1": 1059,
+            "y1": 1393
+          }
+        },
+        {
+          "text": "648.38",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1217,
+            "y0": 1370,
+            "x1": 1305,
+            "y1": 1394
+          }
+        },
+        {
+          "text": "700.00",
+          "confidence": 90,
+          "bbox": {
+            "x0": 1428,
+            "y0": 1370,
+            "x1": 1517,
+            "y1": 1395
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 83,
+          "bbox": {
+            "x0": 1545,
+            "y0": 1355,
+            "x1": 1548,
+            "y1": 1359
+          }
+        },
+        {
+          "text": "800.00",
+          "confidence": 39,
+          "bbox": {
+            "x0": 1617,
+            "y0": 1370,
+            "x1": 1704,
+            "y1": 1395
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1728,
+            "y0": 1356,
+            "x1": 1731,
+            "y1": 1359
+          }
+        },
+        {
+          "text": "0.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1856,
+            "y0": 1371,
+            "x1": 1909,
+            "y1": 1396
+          }
+        },
+        {
+          "text": "8.10",
+          "confidence": 95,
+          "bbox": {
+            "x0": 2041,
+            "y0": 1372,
+            "x1": 2096,
+            "y1": 1396
+          }
+        },
+        {
+          "text": "3,250.00",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2222,
+            "y0": 1372,
+            "x1": 2341,
+            "y1": 1401
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2367,
+            "y0": 1357,
+            "x1": 2369,
+            "y1": 1367
+          }
+        }
+      ]
+    },
+    {
+      "text": "Total Quantity | 110.0                                              Total Amount (7)                    46,885.80",
+      "confidence": 83,
+      "bbox": {
+        "x0": 587,
+        "y0": 1420,
+        "x1": 2344,
+        "y1": 1467
+      },
+      "words": [
+        {
+          "text": "Total",
+          "confidence": 85,
+          "bbox": {
+            "x0": 587,
+            "y0": 1433,
+            "x1": 656,
+            "y1": 1458
+          }
+        },
+        {
+          "text": "Quantity",
+          "confidence": 85,
+          "bbox": {
+            "x0": 666,
+            "y0": 1434,
+            "x1": 779,
+            "y1": 1465
+          }
+        },
+        {
+          "text": "|",
+          "confidence": 84,
+          "bbox": {
+            "x0": 807,
+            "y0": 1413,
+            "x1": 821,
+            "y1": 1469
+          }
+        },
+        {
+          "text": "110.0",
+          "confidence": 84,
+          "bbox": {
+            "x0": 862,
+            "y0": 1435,
+            "x1": 935,
+            "y1": 1460
+          }
+        },
+        {
+          "text": "Total",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1572,
+            "y0": 1436,
+            "x1": 1641,
+            "y1": 1461
+          }
+        },
+        {
+          "text": "Amount",
+          "confidence": 83,
+          "bbox": {
+            "x0": 1650,
+            "y0": 1437,
+            "x1": 1757,
+            "y1": 1461
+          }
+        },
+        {
+          "text": "(7)",
+          "confidence": 51,
+          "bbox": {
+            "x0": 1766,
+            "y0": 1435,
+            "x1": 1799,
+            "y1": 1467
+          }
+        },
+        {
+          "text": "46,885.80",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2206,
+            "y0": 1438,
+            "x1": 2344,
+            "y1": 1467
+          }
+        }
+      ]
+    },
+    {
+      "text": "Sr.                       124.08",
+      "confidence": 58,
+      "bbox": {
+        "x0": 301,
+        "y0": 1469,
+        "x1": 2345,
+        "y1": 1515
+      },
+      "words": [
+        {
+          "text": "Sr.",
+          "confidence": 19,
+          "bbox": {
+            "x0": 301,
+            "y0": 1469,
+            "x1": 474,
+            "y1": 1471
+          }
+        },
+        {
+          "text": "124.08",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2253,
+            "y0": 1490,
+            "x1": 2345,
+            "y1": 1515
+          }
+        }
+      ]
+    },
+    {
+      "text": "Total Tax (3)                                                                                     215.76",
+      "confidence": 85,
+      "bbox": {
+        "x0": 1573,
+        "y0": 1535,
+        "x1": 2345,
+        "y1": 1567
+      },
+      "words": [
+        {
+          "text": "Total",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1573,
+            "y0": 1536,
+            "x1": 1641,
+            "y1": 1561
+          }
+        },
+        {
+          "text": "Tax",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1650,
+            "y0": 1538,
+            "x1": 1698,
+            "y1": 1561
+          }
+        },
+        {
+          "text": "(3)",
+          "confidence": 51,
+          "bbox": {
+            "x0": 1708,
+            "y0": 1535,
+            "x1": 1741,
+            "y1": 1567
+          }
+        },
+        {
+          "text": "215.76",
+          "confidence": 96,
+          "bbox": {
+            "x0": 2252,
+            "y0": 1540,
+            "x1": 2345,
+            "y1": 1565
+          }
+        }
+      ]
+    },
+    {
+      "text": "RL         BEES. ow",
+      "confidence": 21,
+      "bbox": {
+        "x0": 147,
+        "y0": 1592,
+        "x1": 1799,
+        "y1": 1628
+      },
+      "words": [
+        {
+          "text": "RL",
+          "confidence": 14,
+          "bbox": {
+            "x0": 85,
+            "y0": 1607,
+            "x1": 130,
+            "y1": 1608
+          }
+        },
+        {
+          "text": "BEES.",
+          "confidence": 43,
+          "bbox": {
+            "x0": 748,
+            "y0": 1610,
+            "x1": 983,
+            "y1": 1612
+          }
+        },
+        {
+          "text": "ow",
+          "confidence": 7,
+          "bbox": {
+            "x0": 1239,
+            "y0": 1611,
+            "x1": 1343,
+            "y1": 1614
+          }
+        }
+      ]
+    },
+    {
+      "text": "Amount in Words:                                                                      PPE ACTON SRA eA ES",
+      "confidence": 49,
+      "bbox": {
+        "x0": 85,
+        "y0": 1631,
+        "x1": 1888,
+        "y1": 1656
+      },
+      "words": [
+        {
+          "text": "Amount",
+          "confidence": 95,
+          "bbox": {
+            "x0": 85,
+            "y0": 1632,
+            "x1": 192,
+            "y1": 1655
+          }
+        },
+        {
+          "text": "in",
+          "confidence": 95,
+          "bbox": {
+            "x0": 202,
+            "y0": 1631,
+            "x1": 224,
+            "y1": 1655
+          }
+        },
+        {
+          "text": "Words:",
+          "confidence": 96,
+          "bbox": {
+            "x0": 234,
+            "y0": 1631,
+            "x1": 328,
+            "y1": 1656
+          }
+        },
+        {
+          "text": "PPE",
+          "confidence": 26,
+          "bbox": {
+            "x0": 1554,
+            "y0": 1636,
+            "x1": 1571,
+            "y1": 1637
+          }
+        },
+        {
+          "text": "ACTON",
+          "confidence": 15,
+          "bbox": {
+            "x0": 1590,
+            "y0": 1636,
+            "x1": 1650,
+            "y1": 1638
+          }
+        },
+        {
+          "text": "SRA",
+          "confidence": 8,
+          "bbox": {
+            "x0": 1686,
+            "y0": 1631,
+            "x1": 1744,
+            "y1": 1669
+          }
+        },
+        {
+          "text": "eA",
+          "confidence": 32,
+          "bbox": {
+            "x0": 1755,
+            "y0": 1631,
+            "x1": 1839,
+            "y1": 1669
+          }
+        },
+        {
+          "text": "ES",
+          "confidence": 25,
+          "bbox": {
+            "x0": 1869,
+            "y0": 1631,
+            "x1": 1892,
+            "y1": 1669
+          }
+        }
+      ]
+    },
+    {
+      "text": "Rupees Forty Six Thousand Eight Hundred Eighty Five and Eighty Paise Only                                                    For SRI BALAJI GENERAL STORES          SGENERS",
+      "confidence": 88,
+      "bbox": {
+        "x0": 87,
+        "y0": 1669,
+        "x1": 2320,
+        "y1": 1734
+      },
+      "words": [
+        {
+          "text": "Rupees",
+          "confidence": 96,
+          "bbox": {
+            "x0": 87,
+            "y0": 1669,
+            "x1": 179,
+            "y1": 1699
+          }
+        },
+        {
+          "text": "Forty",
+          "confidence": 94,
+          "bbox": {
+            "x0": 189,
+            "y0": 1670,
+            "x1": 252,
+            "y1": 1700
+          }
+        },
+        {
+          "text": "Six",
+          "confidence": 94,
+          "bbox": {
+            "x0": 261,
+            "y0": 1670,
+            "x1": 297,
+            "y1": 1694
+          }
+        },
+        {
+          "text": "Thousand",
+          "confidence": 96,
+          "bbox": {
+            "x0": 306,
+            "y0": 1670,
+            "x1": 430,
+            "y1": 1695
+          }
+        },
+        {
+          "text": "Eight",
+          "confidence": 96,
+          "bbox": {
+            "x0": 442,
+            "y0": 1670,
+            "x1": 504,
+            "y1": 1701
+          }
+        },
+        {
+          "text": "Hundred",
+          "confidence": 96,
+          "bbox": {
+            "x0": 514,
+            "y0": 1671,
+            "x1": 620,
+            "y1": 1695
+          }
+        },
+        {
+          "text": "Eighty",
+          "confidence": 96,
+          "bbox": {
+            "x0": 632,
+            "y0": 1671,
+            "x1": 708,
+            "y1": 1702
+          }
+        },
+        {
+          "text": "Five",
+          "confidence": 95,
+          "bbox": {
+            "x0": 718,
+            "y0": 1672,
+            "x1": 766,
+            "y1": 1696
+          }
+        },
+        {
+          "text": "and",
+          "confidence": 96,
+          "bbox": {
+            "x0": 776,
+            "y0": 1671,
+            "x1": 821,
+            "y1": 1696
+          }
+        },
+        {
+          "text": "Eighty",
+          "confidence": 93,
+          "bbox": {
+            "x0": 832,
+            "y0": 1672,
+            "x1": 909,
+            "y1": 1703
+          }
+        },
+        {
+          "text": "Paise",
+          "confidence": 92,
+          "bbox": {
+            "x0": 919,
+            "y0": 1672,
+            "x1": 985,
+            "y1": 1697
+          }
+        },
+        {
+          "text": "Only",
+          "confidence": 95,
+          "bbox": {
+            "x0": 994,
+            "y0": 1672,
+            "x1": 1050,
+            "y1": 1703
+          }
+        },
+        {
+          "text": "For",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1595,
+            "y0": 1685,
+            "x1": 1640,
+            "y1": 1709
+          }
+        },
+        {
+          "text": "SRI",
+          "confidence": 92,
+          "bbox": {
+            "x0": 1650,
+            "y0": 1685,
+            "x1": 1694,
+            "y1": 1710
+          }
+        },
+        {
+          "text": "BALAJI",
+          "confidence": 57,
+          "bbox": {
+            "x0": 1705,
+            "y0": 1686,
+            "x1": 1802,
+            "y1": 1710
+          }
+        },
+        {
+          "text": "GENERAL",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1814,
+            "y0": 1686,
+            "x1": 1943,
+            "y1": 1710
+          }
+        },
+        {
+          "text": "STORES",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1953,
+            "y0": 1686,
+            "x1": 2062,
+            "y1": 1711
+          }
+        },
+        {
+          "text": "SGENERS",
+          "confidence": 6,
+          "bbox": {
+            "x0": 2172,
+            "y0": 1680,
+            "x1": 2320,
+            "y1": 1734
+          }
+        }
+      ]
+    },
+    {
+      "text": "1.   Goods once sold will not be taken back or exchanged.                                                                                     A = pe\u201d                   \u00ab@ [oe",
+      "confidence": 79,
+      "bbox": {
+        "x0": 90,
+        "y0": 1704,
+        "x1": 2343,
+        "y1": 1876
+      },
+      "words": [
+        {
+          "text": "1.",
+          "confidence": 96,
+          "bbox": {
+            "x0": 90,
+            "y0": 1778,
+            "x1": 108,
+            "y1": 1799
+          }
+        },
+        {
+          "text": "Goods",
+          "confidence": 96,
+          "bbox": {
+            "x0": 138,
+            "y0": 1778,
+            "x1": 213,
+            "y1": 1815
+          }
+        },
+        {
+          "text": "once",
+          "confidence": 96,
+          "bbox": {
+            "x0": 222,
+            "y0": 1775,
+            "x1": 275,
+            "y1": 1820
+          }
+        },
+        {
+          "text": "sold",
+          "confidence": 96,
+          "bbox": {
+            "x0": 285,
+            "y0": 1779,
+            "x1": 337,
+            "y1": 1816
+          }
+        },
+        {
+          "text": "will",
+          "confidence": 93,
+          "bbox": {
+            "x0": 346,
+            "y0": 1780,
+            "x1": 384,
+            "y1": 1801
+          }
+        },
+        {
+          "text": "not",
+          "confidence": 95,
+          "bbox": {
+            "x0": 395,
+            "y0": 1783,
+            "x1": 433,
+            "y1": 1802
+          }
+        },
+        {
+          "text": "be",
+          "confidence": 96,
+          "bbox": {
+            "x0": 443,
+            "y0": 1780,
+            "x1": 471,
+            "y1": 1802
+          }
+        },
+        {
+          "text": "taken",
+          "confidence": 96,
+          "bbox": {
+            "x0": 480,
+            "y0": 1781,
+            "x1": 546,
+            "y1": 1803
+          }
+        },
+        {
+          "text": "back",
+          "confidence": 95,
+          "bbox": {
+            "x0": 556,
+            "y0": 1781,
+            "x1": 612,
+            "y1": 1803
+          }
+        },
+        {
+          "text": "or",
+          "confidence": 95,
+          "bbox": {
+            "x0": 622,
+            "y0": 1788,
+            "x1": 646,
+            "y1": 1804
+          }
+        },
+        {
+          "text": "exchanged.",
+          "confidence": 96,
+          "bbox": {
+            "x0": 655,
+            "y0": 1782,
+            "x1": 792,
+            "y1": 1811
+          }
+        },
+        {
+          "text": "A",
+          "confidence": 65,
+          "bbox": {
+            "x0": 1683,
+            "y0": 1758,
+            "x1": 1747,
+            "y1": 1852
+          }
+        },
+        {
+          "text": "=",
+          "confidence": 80,
+          "bbox": {
+            "x0": 1761,
+            "y0": 1789,
+            "x1": 1771,
+            "y1": 1794
+          }
+        },
+        {
+          "text": "pe\u201d",
+          "confidence": 43,
+          "bbox": {
+            "x0": 1780,
+            "y0": 1729,
+            "x1": 1929,
+            "y1": 1818
+          }
+        },
+        {
+          "text": "\u00ab@",
+          "confidence": 0,
+          "bbox": {
+            "x0": 2132,
+            "y0": 1779,
+            "x1": 2155,
+            "y1": 1815
+          }
+        },
+        {
+          "text": "[oe",
+          "confidence": 41,
+          "bbox": {
+            "x0": 2156,
+            "y0": 1704,
+            "x1": 2343,
+            "y1": 1876
+          }
+        }
+      ]
+    },
+    {
+      "text": "Terms & Conditions:                                                                                                                                                                                 57              a)",
+      "confidence": 76,
+      "bbox": {
+        "x0": 85,
+        "y0": 1705,
+        "x1": 2352,
+        "y1": 1786
+      },
+      "words": [
+        {
+          "text": "Terms",
+          "confidence": 93,
+          "bbox": {
+            "x0": 85,
+            "y0": 1730,
+            "x1": 171,
+            "y1": 1753
+          }
+        },
+        {
+          "text": "&",
+          "confidence": 93,
+          "bbox": {
+            "x0": 180,
+            "y0": 1730,
+            "x1": 199,
+            "y1": 1754
+          }
+        },
+        {
+          "text": "Conditions:",
+          "confidence": 96,
+          "bbox": {
+            "x0": 209,
+            "y0": 1730,
+            "x1": 361,
+            "y1": 1755
+          }
+        },
+        {
+          "text": "57",
+          "confidence": 59,
+          "bbox": {
+            "x0": 2134,
+            "y0": 1705,
+            "x1": 2184,
+            "y1": 1786
+          }
+        },
+        {
+          "text": "a)",
+          "confidence": 38,
+          "bbox": {
+            "x0": 2318,
+            "y0": 1732,
+            "x1": 2352,
+            "y1": 1782
+          }
+        }
+      ]
+    },
+    {
+      "text": "2. Subject to Vijayawada jurisdiction only. >        &                                                                             ji                    Q           4)",
+      "confidence": 73,
+      "bbox": {
+        "x0": 89,
+        "y0": 1778,
+        "x1": 2349,
+        "y1": 1871
+      },
+      "words": [
+        {
+          "text": "2.",
+          "confidence": 92,
+          "bbox": {
+            "x0": 89,
+            "y0": 1811,
+            "x1": 108,
+            "y1": 1832
+          }
+        },
+        {
+          "text": "Subject",
+          "confidence": 92,
+          "bbox": {
+            "x0": 138,
+            "y0": 1811,
+            "x1": 226,
+            "y1": 1839
+          }
+        },
+        {
+          "text": "to",
+          "confidence": 95,
+          "bbox": {
+            "x0": 234,
+            "y0": 1814,
+            "x1": 257,
+            "y1": 1834
+          }
+        },
+        {
+          "text": "Vijayawada",
+          "confidence": 96,
+          "bbox": {
+            "x0": 266,
+            "y0": 1813,
+            "x1": 396,
+            "y1": 1852
+          }
+        },
+        {
+          "text": "jurisdiction",
+          "confidence": 95,
+          "bbox": {
+            "x0": 408,
+            "y0": 1815,
+            "x1": 541,
+            "y1": 1842
+          }
+        },
+        {
+          "text": "only.",
+          "confidence": 96,
+          "bbox": {
+            "x0": 552,
+            "y0": 1812,
+            "x1": 607,
+            "y1": 1848
+          }
+        },
+        {
+          "text": ">",
+          "confidence": 32,
+          "bbox": {
+            "x0": 619,
+            "y0": 1851,
+            "x1": 623,
+            "y1": 1855
+          }
+        },
+        {
+          "text": "&",
+          "confidence": 72,
+          "bbox": {
+            "x0": 722,
+            "y0": 1853,
+            "x1": 747,
+            "y1": 1856
+          }
+        },
+        {
+          "text": "ji",
+          "confidence": 46,
+          "bbox": {
+            "x0": 1705,
+            "y0": 1778,
+            "x1": 1887,
+            "y1": 1871
+          }
+        },
+        {
+          "text": "Q",
+          "confidence": 57,
+          "bbox": {
+            "x0": 2136,
+            "y0": 1812,
+            "x1": 2172,
+            "y1": 1859
+          }
+        },
+        {
+          "text": "4)",
+          "confidence": 25,
+          "bbox": {
+            "x0": 2313,
+            "y0": 1815,
+            "x1": 2349,
+            "y1": 1862
+          }
+        }
+      ]
+    },
+    {
+      "text": "35   Hs @ 24% p.a. will be charged on bills remaining unpaid after 30 days.                                                        Authorised Signatory                            *",
+      "confidence": 88,
+      "bbox": {
+        "x0": 85,
+        "y0": 1839,
+        "x1": 2250,
+        "y1": 1904
+      },
+      "words": [
+        {
+          "text": "35",
+          "confidence": 47,
+          "bbox": {
+            "x0": 85,
+            "y0": 1839,
+            "x1": 108,
+            "y1": 1904
+          }
+        },
+        {
+          "text": "Hs",
+          "confidence": 9,
+          "bbox": {
+            "x0": 139,
+            "y0": 1846,
+            "x1": 228,
+            "y1": 1902
+          }
+        },
+        {
+          "text": "@",
+          "confidence": 93,
+          "bbox": {
+            "x0": 237,
+            "y0": 1848,
+            "x1": 258,
+            "y1": 1871
+          }
+        },
+        {
+          "text": "24%",
+          "confidence": 93,
+          "bbox": {
+            "x0": 268,
+            "y0": 1848,
+            "x1": 315,
+            "y1": 1869
+          }
+        },
+        {
+          "text": "p.a.",
+          "confidence": 92,
+          "bbox": {
+            "x0": 324,
+            "y0": 1853,
+            "x1": 364,
+            "y1": 1875
+          }
+        },
+        {
+          "text": "will",
+          "confidence": 96,
+          "bbox": {
+            "x0": 375,
+            "y0": 1849,
+            "x1": 412,
+            "y1": 1870
+          }
+        },
+        {
+          "text": "be",
+          "confidence": 96,
+          "bbox": {
+            "x0": 422,
+            "y0": 1849,
+            "x1": 449,
+            "y1": 1871
+          }
+        },
+        {
+          "text": "charged",
+          "confidence": 96,
+          "bbox": {
+            "x0": 459,
+            "y0": 1850,
+            "x1": 555,
+            "y1": 1877
+          }
+        },
+        {
+          "text": "on",
+          "confidence": 96,
+          "bbox": {
+            "x0": 565,
+            "y0": 1856,
+            "x1": 593,
+            "y1": 1872
+          }
+        },
+        {
+          "text": "bills",
+          "confidence": 96,
+          "bbox": {
+            "x0": 604,
+            "y0": 1851,
+            "x1": 649,
+            "y1": 1874
+          }
+        },
+        {
+          "text": "remaining",
+          "confidence": 95,
+          "bbox": {
+            "x0": 659,
+            "y0": 1857,
+            "x1": 777,
+            "y1": 1881
+          }
+        },
+        {
+          "text": "unpaid",
+          "confidence": 96,
+          "bbox": {
+            "x0": 788,
+            "y0": 1854,
+            "x1": 868,
+            "y1": 1881
+          }
+        },
+        {
+          "text": "after",
+          "confidence": 96,
+          "bbox": {
+            "x0": 879,
+            "y0": 1854,
+            "x1": 934,
+            "y1": 1877
+          }
+        },
+        {
+          "text": "30",
+          "confidence": 96,
+          "bbox": {
+            "x0": 944,
+            "y0": 1855,
+            "x1": 972,
+            "y1": 1877
+          }
+        },
+        {
+          "text": "days.",
+          "confidence": 96,
+          "bbox": {
+            "x0": 982,
+            "y0": 1855,
+            "x1": 1043,
+            "y1": 1883
+          }
+        },
+        {
+          "text": "Authorised",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1653,
+            "y0": 1864,
+            "x1": 1793,
+            "y1": 1888
+          }
+        },
+        {
+          "text": "Signatory",
+          "confidence": 96,
+          "bbox": {
+            "x0": 1804,
+            "y0": 1864,
+            "x1": 1926,
+            "y1": 1895
+          }
+        },
+        {
+          "text": "*",
+          "confidence": 91,
+          "bbox": {
+            "x0": 2232,
+            "y0": 1880,
+            "x1": 2250,
+            "y1": 1900
+          }
+        }
+      ]
+    }
+  ],
+  "words": [
+    {
+      "text": "SRI",
+      "confidence": 93,
+      "bbox": {
+        "x0": 92,
+        "y0": 33,
+        "x1": 201,
+        "y1": 80
+      }
+    },
+    {
+      "text": "BALAJI",
+      "confidence": 87,
+      "bbox": {
+        "x0": 225,
+        "y0": 34,
+        "x1": 453,
+        "y1": 80
+      }
+    },
+    {
+      "text": "GENERAL",
+      "confidence": 96,
+      "bbox": {
+        "x0": 474,
+        "y0": 34,
+        "x1": 730,
+        "y1": 81
+      }
+    },
+    {
+      "text": "STORES",
+      "confidence": 96,
+      "bbox": {
+        "x0": 746,
+        "y0": 35,
+        "x1": 960,
+        "y1": 83
+      }
+    },
+    {
+      "text": "Ee",
+      "confidence": 0,
+      "bbox": {
+        "x0": 1662,
+        "y0": 73,
+        "x1": 1749,
+        "y1": 74
+      }
+    },
+    {
+      "text": "CC",
+      "confidence": 0,
+      "bbox": {
+        "x0": 1874,
+        "y0": 38,
+        "x1": 1908,
+        "y1": 103
+      }
+    },
+    {
+      "text": "\u2014",
+      "confidence": 0,
+      "bbox": {
+        "x0": 1892,
+        "y0": 70,
+        "x1": 2141,
+        "y1": 73
+      }
+    },
+    {
+      "text": "Wholesale",
+      "confidence": 93,
+      "bbox": {
+        "x0": 94,
+        "y0": 101,
+        "x1": 277,
+        "y1": 131
+      }
+    },
+    {
+      "text": "&",
+      "confidence": 93,
+      "bbox": {
+        "x0": 291,
+        "y0": 102,
+        "x1": 316,
+        "y1": 131
+      }
+    },
+    {
+      "text": "Retail",
+      "confidence": 96,
+      "bbox": {
+        "x0": 330,
+        "y0": 101,
+        "x1": 425,
+        "y1": 132
+      }
+    },
+    {
+      "text": "Groceries",
+      "confidence": 96,
+      "bbox": {
+        "x0": 439,
+        "y0": 102,
+        "x1": 605,
+        "y1": 133
+      }
+    },
+    {
+      "text": "Invoice",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1665,
+        "y0": 96,
+        "x1": 1771,
+        "y1": 122
+      }
+    },
+    {
+      "text": "No.",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1783,
+        "y0": 97,
+        "x1": 1831,
+        "y1": 121
+      }
+    },
+    {
+      "text": ":",
+      "confidence": 51,
+      "bbox": {
+        "x0": 1931,
+        "y0": 102,
+        "x1": 1936,
+        "y1": 121
+      }
+    },
+    {
+      "text": "SBGS/2026/0912",
+      "confidence": 54,
+      "bbox": {
+        "x0": 1970,
+        "y0": 95,
+        "x1": 2224,
+        "y1": 124
+      }
+    },
+    {
+      "text": "#110.",
+      "confidence": 66,
+      "bbox": {
+        "x0": 96,
+        "y0": 152,
+        "x1": 166,
+        "y1": 174
+      }
+    },
+    {
+      "text": "5-33,",
+      "confidence": 65,
+      "bbox": {
+        "x0": 178,
+        "y0": 152,
+        "x1": 247,
+        "y1": 178
+      }
+    },
+    {
+      "text": "Market",
+      "confidence": 95,
+      "bbox": {
+        "x0": 260,
+        "y0": 151,
+        "x1": 353,
+        "y1": 175
+      }
+    },
+    {
+      "text": "Road,",
+      "confidence": 93,
+      "bbox": {
+        "x0": 365,
+        "y0": 152,
+        "x1": 440,
+        "y1": 179
+      }
+    },
+    {
+      "text": "Labbipet,",
+      "confidence": 89,
+      "bbox": {
+        "x0": 453,
+        "y0": 152,
+        "x1": 578,
+        "y1": 181
+      }
+    },
+    {
+      "text": "22",
+      "confidence": 59,
+      "bbox": {
+        "x0": 1635,
+        "y0": 73,
+        "x1": 1754,
+        "y1": 288
+      }
+    },
+    {
+      "text": "Date",
+      "confidence": 88,
+      "bbox": {
+        "x0": 1783,
+        "y0": 146,
+        "x1": 1851,
+        "y1": 171
+      }
+    },
+    {
+      "text": "~~",
+      "confidence": 25,
+      "bbox": {
+        "x0": 1883,
+        "y0": 141,
+        "x1": 1904,
+        "y1": 191
+      }
+    },
+    {
+      "text": ":",
+      "confidence": 62,
+      "bbox": {
+        "x0": 1932,
+        "y0": 152,
+        "x1": 1937,
+        "y1": 170
+      }
+    },
+    {
+      "text": "15-09-2026",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1973,
+        "y0": 145,
+        "x1": 2143,
+        "y1": 171
+      }
+    },
+    {
+      "text": "Vijayawada",
+      "confidence": 93,
+      "bbox": {
+        "x0": 95,
+        "y0": 188,
+        "x1": 252,
+        "y1": 217
+      }
+    },
+    {
+      "text": "-",
+      "confidence": 92,
+      "bbox": {
+        "x0": 264,
+        "y0": 200,
+        "x1": 273,
+        "y1": 204
+      }
+    },
+    {
+      "text": "520010,",
+      "confidence": 96,
+      "bbox": {
+        "x0": 285,
+        "y0": 189,
+        "x1": 394,
+        "y1": 215
+      }
+    },
+    {
+      "text": "Andhra",
+      "confidence": 96,
+      "bbox": {
+        "x0": 405,
+        "y0": 188,
+        "x1": 504,
+        "y1": 212
+      }
+    },
+    {
+      "text": "Pradesh",
+      "confidence": 96,
+      "bbox": {
+        "x0": 517,
+        "y0": 188,
+        "x1": 628,
+        "y1": 212
+      }
+    },
+    {
+      "text": "Place",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1667,
+        "y0": 192,
+        "x1": 1745,
+        "y1": 218
+      }
+    },
+    {
+      "text": "of",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1756,
+        "y0": 192,
+        "x1": 1785,
+        "y1": 218
+      }
+    },
+    {
+      "text": "Supply",
+      "confidence": 83,
+      "bbox": {
+        "x0": 1796,
+        "y0": 192,
+        "x1": 1895,
+        "y1": 225
+      }
+    },
+    {
+      "text": ":",
+      "confidence": 83,
+      "bbox": {
+        "x0": 1934,
+        "y0": 199,
+        "x1": 1938,
+        "y1": 217
+      }
+    },
+    {
+      "text": "Andhra",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1971,
+        "y0": 192,
+        "x1": 2075,
+        "y1": 218
+      }
+    },
+    {
+      "text": "Pradesh",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2088,
+        "y0": 192,
+        "x1": 2204,
+        "y1": 218
+      }
+    },
+    {
+      "text": "(37)",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2217,
+        "y0": 192,
+        "x1": 2271,
+        "y1": 224
+      }
+    },
+    {
+      "text": "GSTIN:",
+      "confidence": 92,
+      "bbox": {
+        "x0": 95,
+        "y0": 225,
+        "x1": 189,
+        "y1": 248
+      }
+    },
+    {
+      "text": "37ABCDE1234F125",
+      "confidence": 77,
+      "bbox": {
+        "x0": 202,
+        "y0": 225,
+        "x1": 470,
+        "y1": 248
+      }
+    },
+    {
+      "text": "Reverse",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1668,
+        "y0": 240,
+        "x1": 1785,
+        "y1": 265
+      }
+    },
+    {
+      "text": "Charge",
+      "confidence": 90,
+      "bbox": {
+        "x0": 1796,
+        "y0": 238,
+        "x1": 1901,
+        "y1": 271
+      }
+    },
+    {
+      "text": ":",
+      "confidence": 82,
+      "bbox": {
+        "x0": 1934,
+        "y0": 246,
+        "x1": 1939,
+        "y1": 264
+      }
+    },
+    {
+      "text": "No",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1974,
+        "y0": 240,
+        "x1": 2012,
+        "y1": 264
+      }
+    },
+    {
+      "text": "Phone:",
+      "confidence": 93,
+      "bbox": {
+        "x0": 96,
+        "y0": 261,
+        "x1": 189,
+        "y1": 285
+      }
+    },
+    {
+      "text": "0866-2476789",
+      "confidence": 92,
+      "bbox": {
+        "x0": 202,
+        "y0": 262,
+        "x1": 404,
+        "y1": 285
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 96,
+      "bbox": {
+        "x0": 424,
+        "y0": 262,
+        "x1": 427,
+        "y1": 289
+      }
+    },
+    {
+      "text": "Email:",
+      "confidence": 93,
+      "bbox": {
+        "x0": 448,
+        "y0": 262,
+        "x1": 529,
+        "y1": 286
+      }
+    },
+    {
+      "text": "sribalaji.stores@gmail.com",
+      "confidence": 89,
+      "bbox": {
+        "x0": 541,
+        "y0": 262,
+        "x1": 913,
+        "y1": 294
+      }
+    },
+    {
+      "text": "EC",
+      "confidence": 31,
+      "bbox": {
+        "x0": 1669,
+        "y0": 287,
+        "x1": 1737,
+        "y1": 288
+      }
+    },
+    {
+      "text": "oh",
+      "confidence": 33,
+      "bbox": {
+        "x0": 1845,
+        "y0": 261,
+        "x1": 1869,
+        "y1": 301
+      }
+    },
+    {
+      "text": "A",
+      "confidence": 5,
+      "bbox": {
+        "x0": 1878,
+        "y0": 261,
+        "x1": 1909,
+        "y1": 301
+      }
+    },
+    {
+      "text": "SPS",
+      "confidence": 14,
+      "bbox": {
+        "x0": 1920,
+        "y0": 286,
+        "x1": 2037,
+        "y1": 288
+      }
+    },
+    {
+      "text": "Pe",
+      "confidence": 24,
+      "bbox": {
+        "x0": 2097,
+        "y0": 287,
+        "x1": 2121,
+        "y1": 288
+      }
+    },
+    {
+      "text": "BILL",
+      "confidence": 93,
+      "bbox": {
+        "x0": 100,
+        "y0": 327,
+        "x1": 168,
+        "y1": 353
+      }
+    },
+    {
+      "text": "TO",
+      "confidence": 93,
+      "bbox": {
+        "x0": 178,
+        "y0": 327,
+        "x1": 221,
+        "y1": 353
+      }
+    },
+    {
+      "text": "SHIP",
+      "confidence": 91,
+      "bbox": {
+        "x0": 1260,
+        "y0": 331,
+        "x1": 1335,
+        "y1": 357
+      }
+    },
+    {
+      "text": "TO",
+      "confidence": 91,
+      "bbox": {
+        "x0": 1345,
+        "y0": 331,
+        "x1": 1388,
+        "y1": 356
+      }
+    },
+    {
+      "text": "WAGHADE",
+      "confidence": 92,
+      "bbox": {
+        "x0": 97,
+        "y0": 381,
+        "x1": 278,
+        "y1": 410
+      }
+    },
+    {
+      "text": "KIRANA",
+      "confidence": 92,
+      "bbox": {
+        "x0": 292,
+        "y0": 382,
+        "x1": 422,
+        "y1": 410
+      }
+    },
+    {
+      "text": "SHOP",
+      "confidence": 96,
+      "bbox": {
+        "x0": 434,
+        "y0": 382,
+        "x1": 531,
+        "y1": 411
+      }
+    },
+    {
+      "text": "WAGHADE",
+      "confidence": 93,
+      "bbox": {
+        "x0": 1259,
+        "y0": 384,
+        "x1": 1438,
+        "y1": 413
+      }
+    },
+    {
+      "text": "KIRANA",
+      "confidence": 91,
+      "bbox": {
+        "x0": 1451,
+        "y0": 384,
+        "x1": 1581,
+        "y1": 412
+      }
+    },
+    {
+      "text": "SHOP",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1592,
+        "y0": 384,
+        "x1": 1687,
+        "y1": 412
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 91,
+      "bbox": {
+        "x0": 76,
+        "y0": 433,
+        "x1": 77,
+        "y1": 461
+      }
+    },
+    {
+      "text": "D.No.",
+      "confidence": 91,
+      "bbox": {
+        "x0": 99,
+        "y0": 430,
+        "x1": 172,
+        "y1": 454
+      }
+    },
+    {
+      "text": "5-12-88,",
+      "confidence": 96,
+      "bbox": {
+        "x0": 185,
+        "y0": 430,
+        "x1": 300,
+        "y1": 458
+      }
+    },
+    {
+      "text": "Main",
+      "confidence": 96,
+      "bbox": {
+        "x0": 313,
+        "y0": 430,
+        "x1": 377,
+        "y1": 454
+      }
+    },
+    {
+      "text": "Road,",
+      "confidence": 96,
+      "bbox": {
+        "x0": 390,
+        "y0": 431,
+        "x1": 466,
+        "y1": 458
+      }
+    },
+    {
+      "text": "D.No.",
+      "confidence": 92,
+      "bbox": {
+        "x0": 1261,
+        "y0": 433,
+        "x1": 1333,
+        "y1": 457
+      }
+    },
+    {
+      "text": "5-12-88,",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1346,
+        "y0": 433,
+        "x1": 1460,
+        "y1": 460
+      }
+    },
+    {
+      "text": "Main",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1473,
+        "y0": 432,
+        "x1": 1536,
+        "y1": 456
+      }
+    },
+    {
+      "text": "Road,",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1549,
+        "y0": 432,
+        "x1": 1624,
+        "y1": 460
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 96,
+      "bbox": {
+        "x0": 76,
+        "y0": 468,
+        "x1": 77,
+        "y1": 502
+      }
+    },
+    {
+      "text": "Vijayawada",
+      "confidence": 92,
+      "bbox": {
+        "x0": 97,
+        "y0": 468,
+        "x1": 255,
+        "y1": 499
+      }
+    },
+    {
+      "text": "-",
+      "confidence": 91,
+      "bbox": {
+        "x0": 266,
+        "y0": 481,
+        "x1": 276,
+        "y1": 484
+      }
+    },
+    {
+      "text": "520012,",
+      "confidence": 95,
+      "bbox": {
+        "x0": 288,
+        "y0": 469,
+        "x1": 398,
+        "y1": 496
+      }
+    },
+    {
+      "text": "Andhra",
+      "confidence": 96,
+      "bbox": {
+        "x0": 408,
+        "y0": 468,
+        "x1": 509,
+        "y1": 493
+      }
+    },
+    {
+      "text": "Pradesh",
+      "confidence": 96,
+      "bbox": {
+        "x0": 521,
+        "y0": 469,
+        "x1": 633,
+        "y1": 494
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1235,
+        "y0": 491,
+        "x1": 1237,
+        "y1": 509
+      }
+    },
+    {
+      "text": "Vijayawada",
+      "confidence": 93,
+      "bbox": {
+        "x0": 1259,
+        "y0": 471,
+        "x1": 1416,
+        "y1": 502
+      }
+    },
+    {
+      "text": "-",
+      "confidence": 92,
+      "bbox": {
+        "x0": 1428,
+        "y0": 484,
+        "x1": 1437,
+        "y1": 487
+      }
+    },
+    {
+      "text": "520012,",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1449,
+        "y0": 471,
+        "x1": 1558,
+        "y1": 499
+      }
+    },
+    {
+      "text": "Andhra",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1569,
+        "y0": 470,
+        "x1": 1668,
+        "y1": 495
+      }
+    },
+    {
+      "text": "Pradesh",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1680,
+        "y0": 470,
+        "x1": 1791,
+        "y1": 495
+      }
+    },
+    {
+      "text": "=\"",
+      "confidence": 12,
+      "bbox": {
+        "x0": 98,
+        "y0": 507,
+        "x1": 191,
+        "y1": 573
+      }
+    },
+    {
+      "text": "8806925060",
+      "confidence": 90,
+      "bbox": {
+        "x0": 208,
+        "y0": 519,
+        "x1": 380,
+        "y1": 573
+      }
+    },
+    {
+      "text": "[RRICg=de=06",
+      "confidence": 0,
+      "bbox": {
+        "x0": 1235,
+        "y0": 534,
+        "x1": 1431,
+        "y1": 565
+      }
+    },
+    {
+      "text": "225050",
+      "confidence": 35,
+      "bbox": {
+        "x0": 1444,
+        "y0": 534,
+        "x1": 1538,
+        "y1": 558
+      }
+    },
+    {
+      "text": "1",
+      "confidence": 96,
+      "bbox": {
+        "x0": 133,
+        "y0": 704,
+        "x1": 141,
+        "y1": 727
+      }
+    },
+    {
+      "text": "CHANA",
+      "confidence": 92,
+      "bbox": {
+        "x0": 228,
+        "y0": 704,
+        "x1": 318,
+        "y1": 728
+      }
+    },
+    {
+      "text": "50",
+      "confidence": 96,
+      "bbox": {
+        "x0": 328,
+        "y0": 704,
+        "x1": 357,
+        "y1": 728
+      }
+    },
+    {
+      "text": "KG",
+      "confidence": 96,
+      "bbox": {
+        "x0": 368,
+        "y0": 704,
+        "x1": 400,
+        "y1": 729
+      }
+    },
+    {
+      "text": "0713",
+      "confidence": 22,
+      "bbox": {
+        "x0": 690,
+        "y0": 692,
+        "x1": 780,
+        "y1": 730
+      }
+    },
+    {
+      "text": "1.0",
+      "confidence": 96,
+      "bbox": {
+        "x0": 898,
+        "y0": 707,
+        "x1": 934,
+        "y1": 731
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 64,
+      "bbox": {
+        "x0": 959,
+        "y0": 708,
+        "x1": 962,
+        "y1": 750
+      }
+    },
+    {
+      "text": "BOR",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1009,
+        "y0": 708,
+        "x1": 1061,
+        "y1": 732
+      }
+    },
+    {
+      "text": "2,760.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1192,
+        "y0": 708,
+        "x1": 1304,
+        "y1": 736
+      }
+    },
+    {
+      "text": "2,950.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1405,
+        "y0": 708,
+        "x1": 1518,
+        "y1": 736
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 70,
+      "bbox": {
+        "x0": 1543,
+        "y0": 747,
+        "x1": 1546,
+        "y1": 750
+      }
+    },
+    {
+      "text": "3,200.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1590,
+        "y0": 708,
+        "x1": 1702,
+        "y1": 736
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 54,
+      "bbox": {
+        "x0": 1727,
+        "y0": 747,
+        "x1": 1729,
+        "y1": 750
+      }
+    },
+    {
+      "text": "0.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1853,
+        "y0": 708,
+        "x1": 1907,
+        "y1": 732
+      }
+    },
+    {
+      "text": "0.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2039,
+        "y0": 708,
+        "x1": 2094,
+        "y1": 732
+      }
+    },
+    {
+      "text": "2,760.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2220,
+        "y0": 707,
+        "x1": 2340,
+        "y1": 736
+      }
+    },
+    {
+      "text": "|E2",
+      "confidence": 0,
+      "bbox": {
+        "x0": 76,
+        "y0": 758,
+        "x1": 145,
+        "y1": 783
+      }
+    },
+    {
+      "text": "FORTUNE",
+      "confidence": 93,
+      "bbox": {
+        "x0": 230,
+        "y0": 758,
+        "x1": 350,
+        "y1": 782
+      }
+    },
+    {
+      "text": "BESAN",
+      "confidence": 92,
+      "bbox": {
+        "x0": 361,
+        "y0": 759,
+        "x1": 444,
+        "y1": 782
+      }
+    },
+    {
+      "text": "500",
+      "confidence": 96,
+      "bbox": {
+        "x0": 456,
+        "y0": 759,
+        "x1": 500,
+        "y1": 783
+      }
+    },
+    {
+      "text": "GM",
+      "confidence": 96,
+      "bbox": {
+        "x0": 510,
+        "y0": 759,
+        "x1": 548,
+        "y1": 783
+      }
+    },
+    {
+      "text": "1106",
+      "confidence": 96,
+      "bbox": {
+        "x0": 721,
+        "y0": 761,
+        "x1": 780,
+        "y1": 785
+      }
+    },
+    {
+      "text": "10.0",
+      "confidence": 96,
+      "bbox": {
+        "x0": 883,
+        "y0": 761,
+        "x1": 934,
+        "y1": 785
+      }
+    },
+    {
+      "text": "PCS",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1011,
+        "y0": 762,
+        "x1": 1059,
+        "y1": 786
+      }
+    },
+    {
+      "text": "70.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1233,
+        "y0": 762,
+        "x1": 1304,
+        "y1": 786
+      }
+    },
+    {
+      "text": "78.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1446,
+        "y0": 762,
+        "x1": 1517,
+        "y1": 787
+      }
+    },
+    {
+      "text": "90.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1632,
+        "y0": 762,
+        "x1": 1702,
+        "y1": 786
+      }
+    },
+    {
+      "text": "0.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1853,
+        "y0": 762,
+        "x1": 1907,
+        "y1": 787
+      }
+    },
+    {
+      "text": "0.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2039,
+        "y0": 762,
+        "x1": 2094,
+        "y1": 787
+      }
+    },
+    {
+      "text": "700.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2246,
+        "y0": 762,
+        "x1": 2341,
+        "y1": 787
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2367,
+        "y0": 777,
+        "x1": 2369,
+        "y1": 799
+      }
+    },
+    {
+      "text": "3",
+      "confidence": 96,
+      "bbox": {
+        "x0": 132,
+        "y0": 812,
+        "x1": 145,
+        "y1": 836
+      }
+    },
+    {
+      "text": "FORTUNE",
+      "confidence": 96,
+      "bbox": {
+        "x0": 229,
+        "y0": 812,
+        "x1": 350,
+        "y1": 837
+      }
+    },
+    {
+      "text": "OIL",
+      "confidence": 95,
+      "bbox": {
+        "x0": 360,
+        "y0": 813,
+        "x1": 419,
+        "y1": 837
+      }
+    },
+    {
+      "text": "1",
+      "confidence": 95,
+      "bbox": {
+        "x0": 408,
+        "y0": 808,
+        "x1": 425,
+        "y1": 846
+      }
+    },
+    {
+      "text": "KG",
+      "confidence": 96,
+      "bbox": {
+        "x0": 434,
+        "y0": 813,
+        "x1": 467,
+        "y1": 837
+      }
+    },
+    {
+      "text": "1515",
+      "confidence": 96,
+      "bbox": {
+        "x0": 720,
+        "y0": 815,
+        "x1": 780,
+        "y1": 838
+      }
+    },
+    {
+      "text": "3.0",
+      "confidence": 96,
+      "bbox": {
+        "x0": 897,
+        "y0": 815,
+        "x1": 934,
+        "y1": 839
+      }
+    },
+    {
+      "text": "PET",
+      "confidence": 95,
+      "bbox": {
+        "x0": 1012,
+        "y0": 802,
+        "x1": 1059,
+        "y1": 840
+      }
+    },
+    {
+      "text": "1,378.62",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1194,
+        "y0": 817,
+        "x1": 1304,
+        "y1": 844
+      }
+    },
+    {
+      "text": "1,520.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1406,
+        "y0": 817,
+        "x1": 1517,
+        "y1": 844
+      }
+    },
+    {
+      "text": "1,680.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1592,
+        "y0": 817,
+        "x1": 1702,
+        "y1": 845
+      }
+    },
+    {
+      "text": "124.08",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1820,
+        "y0": 817,
+        "x1": 1907,
+        "y1": 841
+      }
+    },
+    {
+      "text": "4.01",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2039,
+        "y0": 817,
+        "x1": 2090,
+        "y1": 841
+      }
+    },
+    {
+      "text": "4,015.80",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2220,
+        "y0": 816,
+        "x1": 2341,
+        "y1": 845
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 44,
+      "bbox": {
+        "x0": 76,
+        "y0": 851,
+        "x1": 79,
+        "y1": 860
+      }
+    },
+    {
+      "text": "4",
+      "confidence": 44,
+      "bbox": {
+        "x0": 131,
+        "y0": 867,
+        "x1": 145,
+        "y1": 890
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 60,
+      "bbox": {
+        "x0": 181,
+        "y0": 847,
+        "x1": 210,
+        "y1": 904
+      }
+    },
+    {
+      "text": "HELLO",
+      "confidence": 92,
+      "bbox": {
+        "x0": 229,
+        "y0": 867,
+        "x1": 310,
+        "y1": 891
+      }
+    },
+    {
+      "text": "ORGANIC",
+      "confidence": 90,
+      "bbox": {
+        "x0": 321,
+        "y0": 867,
+        "x1": 435,
+        "y1": 892
+      }
+    },
+    {
+      "text": "CHANADAL",
+      "confidence": 90,
+      "bbox": {
+        "x0": 445,
+        "y0": 868,
+        "x1": 612,
+        "y1": 892
+      }
+    },
+    {
+      "text": "KG",
+      "confidence": 57,
+      "bbox": {
+        "x0": 627,
+        "y0": 868,
+        "x1": 659,
+        "y1": 892
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 96,
+      "bbox": {
+        "x0": 675,
+        "y0": 847,
+        "x1": 695,
+        "y1": 904
+      }
+    },
+    {
+      "text": "0713",
+      "confidence": 96,
+      "bbox": {
+        "x0": 719,
+        "y0": 869,
+        "x1": 780,
+        "y1": 893
+      }
+    },
+    {
+      "text": "50",
+      "confidence": 94,
+      "bbox": {
+        "x0": 898,
+        "y0": 855,
+        "x1": 934,
+        "y1": 894
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 68,
+      "bbox": {
+        "x0": 959,
+        "y0": 854,
+        "x1": 963,
+        "y1": 858
+      }
+    },
+    {
+      "text": "PCS",
+      "confidence": 68,
+      "bbox": {
+        "x0": 1010,
+        "y0": 855,
+        "x1": 1059,
+        "y1": 894
+      }
+    },
+    {
+      "text": "129.46",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1217,
+        "y0": 870,
+        "x1": 1304,
+        "y1": 895
+      }
+    },
+    {
+      "text": "140.00",
+      "confidence": 94,
+      "bbox": {
+        "x0": 1430,
+        "y0": 871,
+        "x1": 1517,
+        "y1": 895
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 92,
+      "bbox": {
+        "x0": 1543,
+        "y0": 855,
+        "x1": 1547,
+        "y1": 908
+      }
+    },
+    {
+      "text": "160.00",
+      "confidence": 57,
+      "bbox": {
+        "x0": 1616,
+        "y0": 871,
+        "x1": 1702,
+        "y1": 895
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1726,
+        "y0": 856,
+        "x1": 1730,
+        "y1": 859
+      }
+    },
+    {
+      "text": "0.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1853,
+        "y0": 871,
+        "x1": 1907,
+        "y1": 895
+      }
+    },
+    {
+      "text": "77.68",
+      "confidence": 94,
+      "bbox": {
+        "x0": 2023,
+        "y0": 871,
+        "x1": 2095,
+        "y1": 895
+      }
+    },
+    {
+      "text": "725.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2246,
+        "y0": 871,
+        "x1": 2341,
+        "y1": 895
+      }
+    },
+    {
+      "text": "5",
+      "confidence": 96,
+      "bbox": {
+        "x0": 132,
+        "y0": 921,
+        "x1": 145,
+        "y1": 945
+      }
+    },
+    {
+      "text": "MASOOR",
+      "confidence": 54,
+      "bbox": {
+        "x0": 229,
+        "y0": 921,
+        "x1": 340,
+        "y1": 945
+      }
+    },
+    {
+      "text": "DAL",
+      "confidence": 95,
+      "bbox": {
+        "x0": 351,
+        "y0": 922,
+        "x1": 396,
+        "y1": 945
+      }
+    },
+    {
+      "text": "50",
+      "confidence": 95,
+      "bbox": {
+        "x0": 408,
+        "y0": 922,
+        "x1": 438,
+        "y1": 963
+      }
+    },
+    {
+      "text": "KG",
+      "confidence": 95,
+      "bbox": {
+        "x0": 449,
+        "y0": 922,
+        "x1": 482,
+        "y1": 946
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 94,
+      "bbox": {
+        "x0": 684,
+        "y0": 853,
+        "x1": 688,
+        "y1": 959
+      }
+    },
+    {
+      "text": "0713",
+      "confidence": 96,
+      "bbox": {
+        "x0": 719,
+        "y0": 923,
+        "x1": 779,
+        "y1": 947
+      }
+    },
+    {
+      "text": "1.0",
+      "confidence": 96,
+      "bbox": {
+        "x0": 898,
+        "y0": 924,
+        "x1": 934,
+        "y1": 948
+      }
+    },
+    {
+      "text": "BOR",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1009,
+        "y0": 924,
+        "x1": 1061,
+        "y1": 965
+      }
+    },
+    {
+      "text": "4,825.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1192,
+        "y0": 925,
+        "x1": 1304,
+        "y1": 952
+      }
+    },
+    {
+      "text": "5,200.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1405,
+        "y0": 925,
+        "x1": 1517,
+        "y1": 952
+      }
+    },
+    {
+      "text": "5,600.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1591,
+        "y0": 925,
+        "x1": 1702,
+        "y1": 953
+      }
+    },
+    {
+      "text": "0.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1854,
+        "y0": 925,
+        "x1": 1908,
+        "y1": 950
+      }
+    },
+    {
+      "text": "0.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2040,
+        "y0": 925,
+        "x1": 2095,
+        "y1": 967
+      }
+    },
+    {
+      "text": "]",
+      "confidence": 0,
+      "bbox": {
+        "x0": 2147,
+        "y0": 966,
+        "x1": 2152,
+        "y1": 967
+      }
+    },
+    {
+      "text": "4,825.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2220,
+        "y0": 926,
+        "x1": 2341,
+        "y1": 967
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 81,
+      "bbox": {
+        "x0": 2367,
+        "y0": 952,
+        "x1": 2370,
+        "y1": 968
+      }
+    },
+    {
+      "text": "6",
+      "confidence": 96,
+      "bbox": {
+        "x0": 132,
+        "y0": 976,
+        "x1": 145,
+        "y1": 999
+      }
+    },
+    {
+      "text": "OIL",
+      "confidence": 93,
+      "bbox": {
+        "x0": 229,
+        "y0": 976,
+        "x1": 269,
+        "y1": 1000
+      }
+    },
+    {
+      "text": "CAN",
+      "confidence": 90,
+      "bbox": {
+        "x0": 278,
+        "y0": 976,
+        "x1": 329,
+        "y1": 1000
+      }
+    },
+    {
+      "text": "10",
+      "confidence": 90,
+      "bbox": {
+        "x0": 342,
+        "y0": 976,
+        "x1": 370,
+        "y1": 1000
+      }
+    },
+    {
+      "text": "Sl",
+      "confidence": 10,
+      "bbox": {
+        "x0": 425,
+        "y0": 1016,
+        "x1": 488,
+        "y1": 1017
+      }
+    },
+    {
+      "text": "re",
+      "confidence": 13,
+      "bbox": {
+        "x0": 508,
+        "y0": 1016,
+        "x1": 566,
+        "y1": 1017
+      }
+    },
+    {
+      "text": "3923",
+      "confidence": 96,
+      "bbox": {
+        "x0": 719,
+        "y0": 977,
+        "x1": 780,
+        "y1": 1001
+      }
+    },
+    {
+      "text": "10.0",
+      "confidence": 96,
+      "bbox": {
+        "x0": 882,
+        "y0": 978,
+        "x1": 934,
+        "y1": 1002
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 86,
+      "bbox": {
+        "x0": 959,
+        "y0": 1016,
+        "x1": 963,
+        "y1": 1020
+      }
+    },
+    {
+      "text": "PCS",
+      "confidence": 42,
+      "bbox": {
+        "x0": 988,
+        "y0": 975,
+        "x1": 1076,
+        "y1": 1023
+      }
+    },
+    {
+      "text": "af",
+      "confidence": 41,
+      "bbox": {
+        "x0": 1092,
+        "y0": 1018,
+        "x1": 1144,
+        "y1": 1019
+      }
+    },
+    {
+      "text": "1,975.00",
+      "confidence": 13,
+      "bbox": {
+        "x0": 1163,
+        "y0": 975,
+        "x1": 1304,
+        "y1": 1023
+      }
+    },
+    {
+      "text": "2,150.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1405,
+        "y0": 979,
+        "x1": 1517,
+        "y1": 1007
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 70,
+      "bbox": {
+        "x0": 1544,
+        "y0": 996,
+        "x1": 1547,
+        "y1": 1022
+      }
+    },
+    {
+      "text": "2,400.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1591,
+        "y0": 979,
+        "x1": 1703,
+        "y1": 1007
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 63,
+      "bbox": {
+        "x0": 1727,
+        "y0": 1018,
+        "x1": 1730,
+        "y1": 1021
+      }
+    },
+    {
+      "text": "0.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1854,
+        "y0": 980,
+        "x1": 1908,
+        "y1": 1004
+      }
+    },
+    {
+      "text": "0.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2041,
+        "y0": 980,
+        "x1": 2095,
+        "y1": 1004
+      }
+    },
+    {
+      "text": "19,750.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2205,
+        "y0": 980,
+        "x1": 2342,
+        "y1": 1009
+      }
+    },
+    {
+      "text": "7",
+      "confidence": 96,
+      "bbox": {
+        "x0": 132,
+        "y0": 1030,
+        "x1": 145,
+        "y1": 1054
+      }
+    },
+    {
+      "text": "SUGAR",
+      "confidence": 96,
+      "bbox": {
+        "x0": 228,
+        "y0": 1030,
+        "x1": 316,
+        "y1": 1054
+      }
+    },
+    {
+      "text": "1701",
+      "confidence": 96,
+      "bbox": {
+        "x0": 720,
+        "y0": 1032,
+        "x1": 776,
+        "y1": 1056
+      }
+    },
+    {
+      "text": "2.0",
+      "confidence": 94,
+      "bbox": {
+        "x0": 897,
+        "y0": 1032,
+        "x1": 934,
+        "y1": 1056
+      }
+    },
+    {
+      "text": "PCS",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1012,
+        "y0": 1033,
+        "x1": 1059,
+        "y1": 1057
+      }
+    },
+    {
+      "text": "1,925.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1194,
+        "y0": 1033,
+        "x1": 1304,
+        "y1": 1061
+      }
+    },
+    {
+      "text": "2,050.00",
+      "confidence": 94,
+      "bbox": {
+        "x0": 1405,
+        "y0": 1034,
+        "x1": 1517,
+        "y1": 1061
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 92,
+      "bbox": {
+        "x0": 1545,
+        "y0": 1054,
+        "x1": 1546,
+        "y1": 1066
+      }
+    },
+    {
+      "text": "2,300.00",
+      "confidence": 91,
+      "bbox": {
+        "x0": 1591,
+        "y0": 1034,
+        "x1": 1703,
+        "y1": 1062
+      }
+    },
+    {
+      "text": "0.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1854,
+        "y0": 1034,
+        "x1": 1908,
+        "y1": 1059
+      }
+    },
+    {
+      "text": "0.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2041,
+        "y0": 1034,
+        "x1": 2095,
+        "y1": 1059
+      }
+    },
+    {
+      "text": "3,850.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2224,
+        "y0": 1034,
+        "x1": 2343,
+        "y1": 1064
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 53,
+      "bbox": {
+        "x0": 75,
+        "y0": 1069,
+        "x1": 78,
+        "y1": 1097
+      }
+    },
+    {
+      "text": "8",
+      "confidence": 53,
+      "bbox": {
+        "x0": 131,
+        "y0": 1084,
+        "x1": 145,
+        "y1": 1108
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 81,
+      "bbox": {
+        "x0": 179,
+        "y0": 1065,
+        "x1": 211,
+        "y1": 1127
+      }
+    },
+    {
+      "text": "SOYABEAN",
+      "confidence": 85,
+      "bbox": {
+        "x0": 228,
+        "y0": 1084,
+        "x1": 366,
+        "y1": 1108
+      }
+    },
+    {
+      "text": "CHUNKS",
+      "confidence": 95,
+      "bbox": {
+        "x0": 377,
+        "y0": 1084,
+        "x1": 483,
+        "y1": 1109
+      }
+    },
+    {
+      "text": "15",
+      "confidence": 95,
+      "bbox": {
+        "x0": 493,
+        "y0": 1085,
+        "x1": 522,
+        "y1": 1109
+      }
+    },
+    {
+      "text": "KG",
+      "confidence": 95,
+      "bbox": {
+        "x0": 533,
+        "y0": 1085,
+        "x1": 565,
+        "y1": 1109
+      }
+    },
+    {
+      "text": "2106",
+      "confidence": 96,
+      "bbox": {
+        "x0": 719,
+        "y0": 1086,
+        "x1": 780,
+        "y1": 1109
+      }
+    },
+    {
+      "text": "20",
+      "confidence": 90,
+      "bbox": {
+        "x0": 897,
+        "y0": 1086,
+        "x1": 934,
+        "y1": 1110
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 82,
+      "bbox": {
+        "x0": 959,
+        "y0": 1071,
+        "x1": 962,
+        "y1": 1082
+      }
+    },
+    {
+      "text": "BOR",
+      "confidence": 82,
+      "bbox": {
+        "x0": 1010,
+        "y0": 1086,
+        "x1": 1061,
+        "y1": 1110
+      }
+    },
+    {
+      "text": "1,230.00",
+      "confidence": 95,
+      "bbox": {
+        "x0": 1194,
+        "y0": 1087,
+        "x1": 1305,
+        "y1": 1115
+      }
+    },
+    {
+      "text": "1,350.00",
+      "confidence": 84,
+      "bbox": {
+        "x0": 1406,
+        "y0": 1088,
+        "x1": 1517,
+        "y1": 1115
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 85,
+      "bbox": {
+        "x0": 1544,
+        "y0": 1072,
+        "x1": 1547,
+        "y1": 1094
+      }
+    },
+    {
+      "text": "1,500.00",
+      "confidence": 79,
+      "bbox": {
+        "x0": 1593,
+        "y0": 1088,
+        "x1": 1703,
+        "y1": 1116
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1727,
+        "y0": 1072,
+        "x1": 1730,
+        "y1": 1126
+      }
+    },
+    {
+      "text": "0.00",
+      "confidence": 92,
+      "bbox": {
+        "x0": 1854,
+        "y0": 1074,
+        "x1": 1908,
+        "y1": 1113
+      }
+    },
+    {
+      "text": "0.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2041,
+        "y0": 1089,
+        "x1": 2095,
+        "y1": 1113
+      }
+    },
+    {
+      "text": "2,460.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2223,
+        "y0": 1089,
+        "x1": 2342,
+        "y1": 1118
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 94,
+      "bbox": {
+        "x0": 2367,
+        "y0": 1025,
+        "x1": 2371,
+        "y1": 1175
+      }
+    },
+    {
+      "text": "9",
+      "confidence": 96,
+      "bbox": {
+        "x0": 132,
+        "y0": 1139,
+        "x1": 145,
+        "y1": 1163
+      }
+    },
+    {
+      "text": "SONAL",
+      "confidence": 92,
+      "bbox": {
+        "x0": 228,
+        "y0": 1139,
+        "x1": 311,
+        "y1": 1162
+      }
+    },
+    {
+      "text": "SABUDANA",
+      "confidence": 92,
+      "bbox": {
+        "x0": 320,
+        "y0": 1139,
+        "x1": 457,
+        "y1": 1162
+      }
+    },
+    {
+      "text": "KHICHDI",
+      "confidence": 88,
+      "bbox": {
+        "x0": 466,
+        "y0": 1139,
+        "x1": 563,
+        "y1": 1163
+      }
+    },
+    {
+      "text": "500GM",
+      "confidence": 88,
+      "bbox": {
+        "x0": 574,
+        "y0": 1140,
+        "x1": 662,
+        "y1": 1163
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 85,
+      "bbox": {
+        "x0": 676,
+        "y0": 1135,
+        "x1": 696,
+        "y1": 1173
+      }
+    },
+    {
+      "text": "1108",
+      "confidence": 85,
+      "bbox": {
+        "x0": 720,
+        "y0": 1141,
+        "x1": 780,
+        "y1": 1165
+      }
+    },
+    {
+      "text": "25.0",
+      "confidence": 96,
+      "bbox": {
+        "x0": 881,
+        "y0": 1141,
+        "x1": 934,
+        "y1": 1166
+      }
+    },
+    {
+      "text": "KGS",
+      "confidence": 95,
+      "bbox": {
+        "x0": 1011,
+        "y0": 1142,
+        "x1": 1060,
+        "y1": 1166
+      }
+    },
+    {
+      "text": "40.18",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1233,
+        "y0": 1143,
+        "x1": 1305,
+        "y1": 1167
+      }
+    },
+    {
+      "text": "45.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1445,
+        "y0": 1143,
+        "x1": 1517,
+        "y1": 1167
+      }
+    },
+    {
+      "text": "50.00",
+      "confidence": 95,
+      "bbox": {
+        "x0": 1633,
+        "y0": 1128,
+        "x1": 1703,
+        "y1": 1168
+      }
+    },
+    {
+      "text": "0.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1855,
+        "y0": 1144,
+        "x1": 1908,
+        "y1": 1168
+      }
+    },
+    {
+      "text": "120.54",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2007,
+        "y0": 1144,
+        "x1": 2095,
+        "y1": 1169
+      }
+    },
+    {
+      "text": "1,125.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2223,
+        "y0": 1145,
+        "x1": 2342,
+        "y1": 1173
+      }
+    },
+    {
+      "text": "10",
+      "confidence": 96,
+      "bbox": {
+        "x0": 125,
+        "y0": 1197,
+        "x1": 153,
+        "y1": 1221
+      }
+    },
+    {
+      "text": "SABUDANA",
+      "confidence": 92,
+      "bbox": {
+        "x0": 228,
+        "y0": 1197,
+        "x1": 371,
+        "y1": 1222
+      }
+    },
+    {
+      "text": "30",
+      "confidence": 96,
+      "bbox": {
+        "x0": 381,
+        "y0": 1198,
+        "x1": 410,
+        "y1": 1222
+      }
+    },
+    {
+      "text": "KG",
+      "confidence": 96,
+      "bbox": {
+        "x0": 421,
+        "y0": 1198,
+        "x1": 453,
+        "y1": 1222
+      }
+    },
+    {
+      "text": "1108",
+      "confidence": 96,
+      "bbox": {
+        "x0": 720,
+        "y0": 1199,
+        "x1": 780,
+        "y1": 1223
+      }
+    },
+    {
+      "text": "1.0",
+      "confidence": 96,
+      "bbox": {
+        "x0": 898,
+        "y0": 1200,
+        "x1": 934,
+        "y1": 1224
+      }
+    },
+    {
+      "text": "KGS",
+      "confidence": 95,
+      "bbox": {
+        "x0": 1011,
+        "y0": 1200,
+        "x1": 1060,
+        "y1": 1224
+      }
+    },
+    {
+      "text": "1,336.66",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1194,
+        "y0": 1200,
+        "x1": 1305,
+        "y1": 1228
+      }
+    },
+    {
+      "text": "1,450.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1406,
+        "y0": 1201,
+        "x1": 1517,
+        "y1": 1229
+      }
+    },
+    {
+      "text": "1,600.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1593,
+        "y0": 1201,
+        "x1": 1703,
+        "y1": 1229
+      }
+    },
+    {
+      "text": "0.00",
+      "confidence": 97,
+      "bbox": {
+        "x0": 1855,
+        "y0": 1201,
+        "x1": 1908,
+        "y1": 1226
+      }
+    },
+    {
+      "text": "3.34",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2041,
+        "y0": 1202,
+        "x1": 2095,
+        "y1": 1227
+      }
+    },
+    {
+      "text": "1,340.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2223,
+        "y0": 1202,
+        "x1": 2341,
+        "y1": 1231
+      }
+    },
+    {
+      "text": "1",
+      "confidence": 74,
+      "bbox": {
+        "x0": 125,
+        "y0": 1253,
+        "x1": 149,
+        "y1": 1276
+      }
+    },
+    {
+      "text": "UDAD",
+      "confidence": 92,
+      "bbox": {
+        "x0": 229,
+        "y0": 1253,
+        "x1": 301,
+        "y1": 1277
+      }
+    },
+    {
+      "text": "DAL",
+      "confidence": 96,
+      "bbox": {
+        "x0": 311,
+        "y0": 1254,
+        "x1": 379,
+        "y1": 1278
+      }
+    },
+    {
+      "text": "1",
+      "confidence": 95,
+      "bbox": {
+        "x0": 367,
+        "y0": 1249,
+        "x1": 381,
+        "y1": 1287
+      }
+    },
+    {
+      "text": "KG",
+      "confidence": 95,
+      "bbox": {
+        "x0": 394,
+        "y0": 1254,
+        "x1": 426,
+        "y1": 1278
+      }
+    },
+    {
+      "text": "0713",
+      "confidence": 96,
+      "bbox": {
+        "x0": 719,
+        "y0": 1254,
+        "x1": 779,
+        "y1": 1278
+      }
+    },
+    {
+      "text": "20.0",
+      "confidence": 96,
+      "bbox": {
+        "x0": 881,
+        "y0": 1255,
+        "x1": 934,
+        "y1": 1279
+      }
+    },
+    {
+      "text": "KGS",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1011,
+        "y0": 1255,
+        "x1": 1060,
+        "y1": 1280
+      }
+    },
+    {
+      "text": "47.95",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1233,
+        "y0": 1256,
+        "x1": 1305,
+        "y1": 1280
+      }
+    },
+    {
+      "text": "52.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1446,
+        "y0": 1257,
+        "x1": 1517,
+        "y1": 1281
+      }
+    },
+    {
+      "text": "60.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1633,
+        "y0": 1257,
+        "x1": 1703,
+        "y1": 1281
+      }
+    },
+    {
+      "text": "0.00",
+      "confidence": 97,
+      "bbox": {
+        "x0": 1855,
+        "y0": 1257,
+        "x1": 1908,
+        "y1": 1282
+      }
+    },
+    {
+      "text": "0.96",
+      "confidence": 97,
+      "bbox": {
+        "x0": 2041,
+        "y0": 1258,
+        "x1": 2095,
+        "y1": 1282
+      }
+    },
+    {
+      "text": "960.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2247,
+        "y0": 1258,
+        "x1": 2341,
+        "y1": 1283
+      }
+    },
+    {
+      "text": "12",
+      "confidence": 96,
+      "bbox": {
+        "x0": 125,
+        "y0": 1309,
+        "x1": 153,
+        "y1": 1333
+      }
+    },
+    {
+      "text": "RAJAMM",
+      "confidence": 92,
+      "bbox": {
+        "x0": 229,
+        "y0": 1310,
+        "x1": 341,
+        "y1": 1334
+      }
+    },
+    {
+      "text": "0713",
+      "confidence": 96,
+      "bbox": {
+        "x0": 719,
+        "y0": 1311,
+        "x1": 779,
+        "y1": 1335
+      }
+    },
+    {
+      "text": "25.0",
+      "confidence": 94,
+      "bbox": {
+        "x0": 881,
+        "y0": 1296,
+        "x1": 935,
+        "y1": 1336
+      }
+    },
+    {
+      "text": "KGS",
+      "confidence": 95,
+      "bbox": {
+        "x0": 1011,
+        "y0": 1312,
+        "x1": 1060,
+        "y1": 1336
+      }
+    },
+    {
+      "text": "44.96",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1233,
+        "y0": 1313,
+        "x1": 1305,
+        "y1": 1337
+      }
+    },
+    {
+      "text": "50.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1446,
+        "y0": 1313,
+        "x1": 1517,
+        "y1": 1337
+      }
+    },
+    {
+      "text": "58.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1634,
+        "y0": 1313,
+        "x1": 1704,
+        "y1": 1338
+      }
+    },
+    {
+      "text": "0.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1855,
+        "y0": 1314,
+        "x1": 1909,
+        "y1": 1338
+      }
+    },
+    {
+      "text": "1.12",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2042,
+        "y0": 1314,
+        "x1": 2095,
+        "y1": 1339
+      }
+    },
+    {
+      "text": "1,125.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2223,
+        "y0": 1315,
+        "x1": 2341,
+        "y1": 1343
+      }
+    },
+    {
+      "text": "[15",
+      "confidence": 22,
+      "bbox": {
+        "x0": 76,
+        "y0": 1350,
+        "x1": 153,
+        "y1": 1394
+      }
+    },
+    {
+      "text": "NFPARIEG",
+      "confidence": 0,
+      "bbox": {
+        "x0": 230,
+        "y0": 1367,
+        "x1": 339,
+        "y1": 1391
+      }
+    },
+    {
+      "text": "1905",
+      "confidence": 96,
+      "bbox": {
+        "x0": 720,
+        "y0": 1368,
+        "x1": 780,
+        "y1": 1392
+      }
+    },
+    {
+      "text": "50",
+      "confidence": 94,
+      "bbox": {
+        "x0": 898,
+        "y0": 1369,
+        "x1": 934,
+        "y1": 1393
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 73,
+      "bbox": {
+        "x0": 960,
+        "y0": 1354,
+        "x1": 962,
+        "y1": 1357
+      }
+    },
+    {
+      "text": "PET",
+      "confidence": 74,
+      "bbox": {
+        "x0": 1012,
+        "y0": 1369,
+        "x1": 1059,
+        "y1": 1393
+      }
+    },
+    {
+      "text": "648.38",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1217,
+        "y0": 1370,
+        "x1": 1305,
+        "y1": 1394
+      }
+    },
+    {
+      "text": "700.00",
+      "confidence": 90,
+      "bbox": {
+        "x0": 1428,
+        "y0": 1370,
+        "x1": 1517,
+        "y1": 1395
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 83,
+      "bbox": {
+        "x0": 1545,
+        "y0": 1355,
+        "x1": 1548,
+        "y1": 1359
+      }
+    },
+    {
+      "text": "800.00",
+      "confidence": 39,
+      "bbox": {
+        "x0": 1617,
+        "y0": 1370,
+        "x1": 1704,
+        "y1": 1395
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1728,
+        "y0": 1356,
+        "x1": 1731,
+        "y1": 1359
+      }
+    },
+    {
+      "text": "0.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1856,
+        "y0": 1371,
+        "x1": 1909,
+        "y1": 1396
+      }
+    },
+    {
+      "text": "8.10",
+      "confidence": 95,
+      "bbox": {
+        "x0": 2041,
+        "y0": 1372,
+        "x1": 2096,
+        "y1": 1396
+      }
+    },
+    {
+      "text": "3,250.00",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2222,
+        "y0": 1372,
+        "x1": 2341,
+        "y1": 1401
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2367,
+        "y0": 1357,
+        "x1": 2369,
+        "y1": 1367
+      }
+    },
+    {
+      "text": "Total",
+      "confidence": 85,
+      "bbox": {
+        "x0": 587,
+        "y0": 1433,
+        "x1": 656,
+        "y1": 1458
+      }
+    },
+    {
+      "text": "Quantity",
+      "confidence": 85,
+      "bbox": {
+        "x0": 666,
+        "y0": 1434,
+        "x1": 779,
+        "y1": 1465
+      }
+    },
+    {
+      "text": "|",
+      "confidence": 84,
+      "bbox": {
+        "x0": 807,
+        "y0": 1413,
+        "x1": 821,
+        "y1": 1469
+      }
+    },
+    {
+      "text": "110.0",
+      "confidence": 84,
+      "bbox": {
+        "x0": 862,
+        "y0": 1435,
+        "x1": 935,
+        "y1": 1460
+      }
+    },
+    {
+      "text": "Total",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1572,
+        "y0": 1436,
+        "x1": 1641,
+        "y1": 1461
+      }
+    },
+    {
+      "text": "Amount",
+      "confidence": 83,
+      "bbox": {
+        "x0": 1650,
+        "y0": 1437,
+        "x1": 1757,
+        "y1": 1461
+      }
+    },
+    {
+      "text": "(7)",
+      "confidence": 51,
+      "bbox": {
+        "x0": 1766,
+        "y0": 1435,
+        "x1": 1799,
+        "y1": 1467
+      }
+    },
+    {
+      "text": "46,885.80",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2206,
+        "y0": 1438,
+        "x1": 2344,
+        "y1": 1467
+      }
+    },
+    {
+      "text": "Sr.",
+      "confidence": 19,
+      "bbox": {
+        "x0": 301,
+        "y0": 1469,
+        "x1": 474,
+        "y1": 1471
+      }
+    },
+    {
+      "text": "124.08",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2253,
+        "y0": 1490,
+        "x1": 2345,
+        "y1": 1515
+      }
+    },
+    {
+      "text": "Total",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1573,
+        "y0": 1536,
+        "x1": 1641,
+        "y1": 1561
+      }
+    },
+    {
+      "text": "Tax",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1650,
+        "y0": 1538,
+        "x1": 1698,
+        "y1": 1561
+      }
+    },
+    {
+      "text": "(3)",
+      "confidence": 51,
+      "bbox": {
+        "x0": 1708,
+        "y0": 1535,
+        "x1": 1741,
+        "y1": 1567
+      }
+    },
+    {
+      "text": "215.76",
+      "confidence": 96,
+      "bbox": {
+        "x0": 2252,
+        "y0": 1540,
+        "x1": 2345,
+        "y1": 1565
+      }
+    },
+    {
+      "text": "RL",
+      "confidence": 14,
+      "bbox": {
+        "x0": 85,
+        "y0": 1607,
+        "x1": 130,
+        "y1": 1608
+      }
+    },
+    {
+      "text": "BEES.",
+      "confidence": 43,
+      "bbox": {
+        "x0": 748,
+        "y0": 1610,
+        "x1": 983,
+        "y1": 1612
+      }
+    },
+    {
+      "text": "ow",
+      "confidence": 7,
+      "bbox": {
+        "x0": 1239,
+        "y0": 1611,
+        "x1": 1343,
+        "y1": 1614
+      }
+    },
+    {
+      "text": "Amount",
+      "confidence": 95,
+      "bbox": {
+        "x0": 85,
+        "y0": 1632,
+        "x1": 192,
+        "y1": 1655
+      }
+    },
+    {
+      "text": "in",
+      "confidence": 95,
+      "bbox": {
+        "x0": 202,
+        "y0": 1631,
+        "x1": 224,
+        "y1": 1655
+      }
+    },
+    {
+      "text": "Words:",
+      "confidence": 96,
+      "bbox": {
+        "x0": 234,
+        "y0": 1631,
+        "x1": 328,
+        "y1": 1656
+      }
+    },
+    {
+      "text": "PPE",
+      "confidence": 26,
+      "bbox": {
+        "x0": 1554,
+        "y0": 1636,
+        "x1": 1571,
+        "y1": 1637
+      }
+    },
+    {
+      "text": "ACTON",
+      "confidence": 15,
+      "bbox": {
+        "x0": 1590,
+        "y0": 1636,
+        "x1": 1650,
+        "y1": 1638
+      }
+    },
+    {
+      "text": "SRA",
+      "confidence": 8,
+      "bbox": {
+        "x0": 1686,
+        "y0": 1631,
+        "x1": 1744,
+        "y1": 1669
+      }
+    },
+    {
+      "text": "eA",
+      "confidence": 32,
+      "bbox": {
+        "x0": 1755,
+        "y0": 1631,
+        "x1": 1839,
+        "y1": 1669
+      }
+    },
+    {
+      "text": "ES",
+      "confidence": 25,
+      "bbox": {
+        "x0": 1869,
+        "y0": 1631,
+        "x1": 1892,
+        "y1": 1669
+      }
+    },
+    {
+      "text": "Rupees",
+      "confidence": 96,
+      "bbox": {
+        "x0": 87,
+        "y0": 1669,
+        "x1": 179,
+        "y1": 1699
+      }
+    },
+    {
+      "text": "Forty",
+      "confidence": 94,
+      "bbox": {
+        "x0": 189,
+        "y0": 1670,
+        "x1": 252,
+        "y1": 1700
+      }
+    },
+    {
+      "text": "Six",
+      "confidence": 94,
+      "bbox": {
+        "x0": 261,
+        "y0": 1670,
+        "x1": 297,
+        "y1": 1694
+      }
+    },
+    {
+      "text": "Thousand",
+      "confidence": 96,
+      "bbox": {
+        "x0": 306,
+        "y0": 1670,
+        "x1": 430,
+        "y1": 1695
+      }
+    },
+    {
+      "text": "Eight",
+      "confidence": 96,
+      "bbox": {
+        "x0": 442,
+        "y0": 1670,
+        "x1": 504,
+        "y1": 1701
+      }
+    },
+    {
+      "text": "Hundred",
+      "confidence": 96,
+      "bbox": {
+        "x0": 514,
+        "y0": 1671,
+        "x1": 620,
+        "y1": 1695
+      }
+    },
+    {
+      "text": "Eighty",
+      "confidence": 96,
+      "bbox": {
+        "x0": 632,
+        "y0": 1671,
+        "x1": 708,
+        "y1": 1702
+      }
+    },
+    {
+      "text": "Five",
+      "confidence": 95,
+      "bbox": {
+        "x0": 718,
+        "y0": 1672,
+        "x1": 766,
+        "y1": 1696
+      }
+    },
+    {
+      "text": "and",
+      "confidence": 96,
+      "bbox": {
+        "x0": 776,
+        "y0": 1671,
+        "x1": 821,
+        "y1": 1696
+      }
+    },
+    {
+      "text": "Eighty",
+      "confidence": 93,
+      "bbox": {
+        "x0": 832,
+        "y0": 1672,
+        "x1": 909,
+        "y1": 1703
+      }
+    },
+    {
+      "text": "Paise",
+      "confidence": 92,
+      "bbox": {
+        "x0": 919,
+        "y0": 1672,
+        "x1": 985,
+        "y1": 1697
+      }
+    },
+    {
+      "text": "Only",
+      "confidence": 95,
+      "bbox": {
+        "x0": 994,
+        "y0": 1672,
+        "x1": 1050,
+        "y1": 1703
+      }
+    },
+    {
+      "text": "For",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1595,
+        "y0": 1685,
+        "x1": 1640,
+        "y1": 1709
+      }
+    },
+    {
+      "text": "SRI",
+      "confidence": 92,
+      "bbox": {
+        "x0": 1650,
+        "y0": 1685,
+        "x1": 1694,
+        "y1": 1710
+      }
+    },
+    {
+      "text": "BALAJI",
+      "confidence": 57,
+      "bbox": {
+        "x0": 1705,
+        "y0": 1686,
+        "x1": 1802,
+        "y1": 1710
+      }
+    },
+    {
+      "text": "GENERAL",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1814,
+        "y0": 1686,
+        "x1": 1943,
+        "y1": 1710
+      }
+    },
+    {
+      "text": "STORES",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1953,
+        "y0": 1686,
+        "x1": 2062,
+        "y1": 1711
+      }
+    },
+    {
+      "text": "SGENERS",
+      "confidence": 6,
+      "bbox": {
+        "x0": 2172,
+        "y0": 1680,
+        "x1": 2320,
+        "y1": 1734
+      }
+    },
+    {
+      "text": "Terms",
+      "confidence": 93,
+      "bbox": {
+        "x0": 85,
+        "y0": 1730,
+        "x1": 171,
+        "y1": 1753
+      }
+    },
+    {
+      "text": "&",
+      "confidence": 93,
+      "bbox": {
+        "x0": 180,
+        "y0": 1730,
+        "x1": 199,
+        "y1": 1754
+      }
+    },
+    {
+      "text": "Conditions:",
+      "confidence": 96,
+      "bbox": {
+        "x0": 209,
+        "y0": 1730,
+        "x1": 361,
+        "y1": 1755
+      }
+    },
+    {
+      "text": "57",
+      "confidence": 59,
+      "bbox": {
+        "x0": 2134,
+        "y0": 1705,
+        "x1": 2184,
+        "y1": 1786
+      }
+    },
+    {
+      "text": "a)",
+      "confidence": 38,
+      "bbox": {
+        "x0": 2318,
+        "y0": 1732,
+        "x1": 2352,
+        "y1": 1782
+      }
+    },
+    {
+      "text": "1.",
+      "confidence": 96,
+      "bbox": {
+        "x0": 90,
+        "y0": 1778,
+        "x1": 108,
+        "y1": 1799
+      }
+    },
+    {
+      "text": "Goods",
+      "confidence": 96,
+      "bbox": {
+        "x0": 138,
+        "y0": 1778,
+        "x1": 213,
+        "y1": 1815
+      }
+    },
+    {
+      "text": "once",
+      "confidence": 96,
+      "bbox": {
+        "x0": 222,
+        "y0": 1775,
+        "x1": 275,
+        "y1": 1820
+      }
+    },
+    {
+      "text": "sold",
+      "confidence": 96,
+      "bbox": {
+        "x0": 285,
+        "y0": 1779,
+        "x1": 337,
+        "y1": 1816
+      }
+    },
+    {
+      "text": "will",
+      "confidence": 93,
+      "bbox": {
+        "x0": 346,
+        "y0": 1780,
+        "x1": 384,
+        "y1": 1801
+      }
+    },
+    {
+      "text": "not",
+      "confidence": 95,
+      "bbox": {
+        "x0": 395,
+        "y0": 1783,
+        "x1": 433,
+        "y1": 1802
+      }
+    },
+    {
+      "text": "be",
+      "confidence": 96,
+      "bbox": {
+        "x0": 443,
+        "y0": 1780,
+        "x1": 471,
+        "y1": 1802
+      }
+    },
+    {
+      "text": "taken",
+      "confidence": 96,
+      "bbox": {
+        "x0": 480,
+        "y0": 1781,
+        "x1": 546,
+        "y1": 1803
+      }
+    },
+    {
+      "text": "back",
+      "confidence": 95,
+      "bbox": {
+        "x0": 556,
+        "y0": 1781,
+        "x1": 612,
+        "y1": 1803
+      }
+    },
+    {
+      "text": "or",
+      "confidence": 95,
+      "bbox": {
+        "x0": 622,
+        "y0": 1788,
+        "x1": 646,
+        "y1": 1804
+      }
+    },
+    {
+      "text": "exchanged.",
+      "confidence": 96,
+      "bbox": {
+        "x0": 655,
+        "y0": 1782,
+        "x1": 792,
+        "y1": 1811
+      }
+    },
+    {
+      "text": "A",
+      "confidence": 65,
+      "bbox": {
+        "x0": 1683,
+        "y0": 1758,
+        "x1": 1747,
+        "y1": 1852
+      }
+    },
+    {
+      "text": "=",
+      "confidence": 80,
+      "bbox": {
+        "x0": 1761,
+        "y0": 1789,
+        "x1": 1771,
+        "y1": 1794
+      }
+    },
+    {
+      "text": "pe\u201d",
+      "confidence": 43,
+      "bbox": {
+        "x0": 1780,
+        "y0": 1729,
+        "x1": 1929,
+        "y1": 1818
+      }
+    },
+    {
+      "text": "\u00ab@",
+      "confidence": 0,
+      "bbox": {
+        "x0": 2132,
+        "y0": 1779,
+        "x1": 2155,
+        "y1": 1815
+      }
+    },
+    {
+      "text": "[oe",
+      "confidence": 41,
+      "bbox": {
+        "x0": 2156,
+        "y0": 1704,
+        "x1": 2343,
+        "y1": 1876
+      }
+    },
+    {
+      "text": "2.",
+      "confidence": 92,
+      "bbox": {
+        "x0": 89,
+        "y0": 1811,
+        "x1": 108,
+        "y1": 1832
+      }
+    },
+    {
+      "text": "Subject",
+      "confidence": 92,
+      "bbox": {
+        "x0": 138,
+        "y0": 1811,
+        "x1": 226,
+        "y1": 1839
+      }
+    },
+    {
+      "text": "to",
+      "confidence": 95,
+      "bbox": {
+        "x0": 234,
+        "y0": 1814,
+        "x1": 257,
+        "y1": 1834
+      }
+    },
+    {
+      "text": "Vijayawada",
+      "confidence": 96,
+      "bbox": {
+        "x0": 266,
+        "y0": 1813,
+        "x1": 396,
+        "y1": 1852
+      }
+    },
+    {
+      "text": "jurisdiction",
+      "confidence": 95,
+      "bbox": {
+        "x0": 408,
+        "y0": 1815,
+        "x1": 541,
+        "y1": 1842
+      }
+    },
+    {
+      "text": "only.",
+      "confidence": 96,
+      "bbox": {
+        "x0": 552,
+        "y0": 1812,
+        "x1": 607,
+        "y1": 1848
+      }
+    },
+    {
+      "text": ">",
+      "confidence": 32,
+      "bbox": {
+        "x0": 619,
+        "y0": 1851,
+        "x1": 623,
+        "y1": 1855
+      }
+    },
+    {
+      "text": "&",
+      "confidence": 72,
+      "bbox": {
+        "x0": 722,
+        "y0": 1853,
+        "x1": 747,
+        "y1": 1856
+      }
+    },
+    {
+      "text": "ji",
+      "confidence": 46,
+      "bbox": {
+        "x0": 1705,
+        "y0": 1778,
+        "x1": 1887,
+        "y1": 1871
+      }
+    },
+    {
+      "text": "Q",
+      "confidence": 57,
+      "bbox": {
+        "x0": 2136,
+        "y0": 1812,
+        "x1": 2172,
+        "y1": 1859
+      }
+    },
+    {
+      "text": "4)",
+      "confidence": 25,
+      "bbox": {
+        "x0": 2313,
+        "y0": 1815,
+        "x1": 2349,
+        "y1": 1862
+      }
+    },
+    {
+      "text": "35",
+      "confidence": 47,
+      "bbox": {
+        "x0": 85,
+        "y0": 1839,
+        "x1": 108,
+        "y1": 1904
+      }
+    },
+    {
+      "text": "Hs",
+      "confidence": 9,
+      "bbox": {
+        "x0": 139,
+        "y0": 1846,
+        "x1": 228,
+        "y1": 1902
+      }
+    },
+    {
+      "text": "@",
+      "confidence": 93,
+      "bbox": {
+        "x0": 237,
+        "y0": 1848,
+        "x1": 258,
+        "y1": 1871
+      }
+    },
+    {
+      "text": "24%",
+      "confidence": 93,
+      "bbox": {
+        "x0": 268,
+        "y0": 1848,
+        "x1": 315,
+        "y1": 1869
+      }
+    },
+    {
+      "text": "p.a.",
+      "confidence": 92,
+      "bbox": {
+        "x0": 324,
+        "y0": 1853,
+        "x1": 364,
+        "y1": 1875
+      }
+    },
+    {
+      "text": "will",
+      "confidence": 96,
+      "bbox": {
+        "x0": 375,
+        "y0": 1849,
+        "x1": 412,
+        "y1": 1870
+      }
+    },
+    {
+      "text": "be",
+      "confidence": 96,
+      "bbox": {
+        "x0": 422,
+        "y0": 1849,
+        "x1": 449,
+        "y1": 1871
+      }
+    },
+    {
+      "text": "charged",
+      "confidence": 96,
+      "bbox": {
+        "x0": 459,
+        "y0": 1850,
+        "x1": 555,
+        "y1": 1877
+      }
+    },
+    {
+      "text": "on",
+      "confidence": 96,
+      "bbox": {
+        "x0": 565,
+        "y0": 1856,
+        "x1": 593,
+        "y1": 1872
+      }
+    },
+    {
+      "text": "bills",
+      "confidence": 96,
+      "bbox": {
+        "x0": 604,
+        "y0": 1851,
+        "x1": 649,
+        "y1": 1874
+      }
+    },
+    {
+      "text": "remaining",
+      "confidence": 95,
+      "bbox": {
+        "x0": 659,
+        "y0": 1857,
+        "x1": 777,
+        "y1": 1881
+      }
+    },
+    {
+      "text": "unpaid",
+      "confidence": 96,
+      "bbox": {
+        "x0": 788,
+        "y0": 1854,
+        "x1": 868,
+        "y1": 1881
+      }
+    },
+    {
+      "text": "after",
+      "confidence": 96,
+      "bbox": {
+        "x0": 879,
+        "y0": 1854,
+        "x1": 934,
+        "y1": 1877
+      }
+    },
+    {
+      "text": "30",
+      "confidence": 96,
+      "bbox": {
+        "x0": 944,
+        "y0": 1855,
+        "x1": 972,
+        "y1": 1877
+      }
+    },
+    {
+      "text": "days.",
+      "confidence": 96,
+      "bbox": {
+        "x0": 982,
+        "y0": 1855,
+        "x1": 1043,
+        "y1": 1883
+      }
+    },
+    {
+      "text": "Authorised",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1653,
+        "y0": 1864,
+        "x1": 1793,
+        "y1": 1888
+      }
+    },
+    {
+      "text": "Signatory",
+      "confidence": 96,
+      "bbox": {
+        "x0": 1804,
+        "y0": 1864,
+        "x1": 1926,
+        "y1": 1895
+      }
+    },
+    {
+      "text": "*",
+      "confidence": 91,
+      "bbox": {
+        "x0": 2232,
+        "y0": 1880,
+        "x1": 2250,
+        "y1": 1900
+      }
+    }
+  ],
+  "psm": "default",
+  "language_data": "C:\\Users\\Sasi Kiran\\OneDrive\\Desktop\\SHOP PULSE"
+}

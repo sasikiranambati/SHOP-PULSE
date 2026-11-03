@@ -231,12 +231,21 @@ export async function getDashboardSalesStats(): Promise<DashboardSalesStats> {
       };
     });
 
+    const top = (data.top_products || []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      category: p.category || 'General',
+      soldCount: p.total_sold,
+      price: `₹${p.selling_price ?? 0}`,
+    }));
+
     return {
       todayRevenue: data.today_sales || 0,
       itemsSoldToday: data.items_sold_today || 0,
       totalTransactionsToday: recent.length,
       averageBillValue: recent.length > 0 ? Math.round(data.today_sales / recent.length) : 0,
       recentSales: recent,
+      topProducts: top,
     };
   } catch (err) {
     console.warn('Failed to load dashboard stats from API:', err);
@@ -246,6 +255,7 @@ export async function getDashboardSalesStats(): Promise<DashboardSalesStats> {
       totalTransactionsToday: 0,
       averageBillValue: 0,
       recentSales: [],
+      topProducts: [],
     };
   }
 }

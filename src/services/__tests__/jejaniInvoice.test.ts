@@ -5,10 +5,13 @@ import { isCandidateHeaderLine, detectColumnsFromHeaderWords, mapWordsToColumns 
 import type { OCRLine, OCRWord } from '../ocrService';
 
 function loadOcr3xData(): { lines: OCRLine[]; words: OCRWord[]; rawText: string } {
-  if (!fs.existsSync('scratch/ocr_output_3x.json')) {
+  const fixturePath = fs.existsSync('tests/fixtures/ocr/ocr_output_3x.json')
+    ? 'tests/fixtures/ocr/ocr_output_3x.json'
+    : 'scratch/ocr_output_3x.json';
+  if (!fs.existsSync(fixturePath)) {
     return { lines: [], words: [], rawText: '' };
   }
-  const data = JSON.parse(fs.readFileSync('scratch/ocr_output_3x.json', 'utf8'));
+  const data = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
   const rawWords: OCRWord[] = [];
   const rawLines: OCRLine[] = [];
 

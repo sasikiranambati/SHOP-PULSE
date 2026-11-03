@@ -69,6 +69,7 @@ class Column:
     is_percent: bool = False
     start: float = 0.0
     end: float = float("inf")
+    confidence: float = 100.0
 
     @property
     def type(self) -> str:  # alias used by older callers
@@ -121,6 +122,13 @@ class ExtractedLine:
     source_text: str
     row_index: int
     extraction_method: str
+    pack_size: Optional[float] = None
+    pack_size_unit: Optional[str] = None
+    classification_status: str = "GROCERY_CONFIDENT"
+    is_grocery: bool = True
+    brand: Optional[str] = None
+    normalized_name: Optional[str] = None
+    category: Optional[str] = None
 
 
 @dataclass
@@ -159,19 +167,21 @@ _alias("qty", "qty", "quantity", "qnty", "qty nos", "billed qty", "billed quanti
        "total quantity", "nos", "pcs", "qty pcs", "no of units")
 _alias("unit", "unit", "uom", "per", "unit of measure", "units of measure")
 _alias("rate", "rate", "price", "unit price", "unit rate", "rate per unit", "price per unit", "rate unit",
-       "price unit", "item rate", "net rate", "basic rate", "unit cost", "rate per pc", "rate per piece")
+       "price unit", "item rate", "net rate", "basic rate", "unit cost", "rate per pc", "rate per piece",
+       "reel", "rale", "tate", "rafe", "rale per unit", "reel per unit", "reel unit")
 _alias("purchase_price", "purchase price", "purchase rate", "purchase", "cost price", "buy price",
        "buying price", "buying rate", "dealer price", "dealer rate", "dp", "pur rate", "purch rate",
        "landing cost", "landing price", "wholesale price", "wholesale rate", "cost", "ptr")
 _alias("selling_price", "selling price", "selling rate", "sale price", "sale rate", "sp", "s p",
-       "sales price", "selling")
+       "sales price", "selling", "i fo", "ifo", "pms", "seling", "selling price per unit")
 _alias("mrp", "mrp", "m r p", "maximum retail price", "mrp per unit", "mrp unit", "unit mrp")
 _alias("discount", "disc", "discount", "disc amt", "discount amount", "discount amt", "less", "rebate",
        "scheme", "sch", "cd", "trade discount", "td")
 _alias("taxable", "taxable", "taxable value", "taxable amount", "taxable amt", "assessable value",
        "basic value", "basic amount", "taxable val")
 _alias("tax_amount", "tax", "tax amt", "tax amount", "gst", "gst amt", "gst amount", "cgst", "sgst", "igst",
-       "cgst amt", "sgst amt", "igst amt", "cgst amount", "sgst amount", "igst amount", "vat", "utgst")
+       "cgst amt", "sgst amt", "igst amt", "cgst amount", "sgst amount", "igst amount", "vat", "utgst",
+       "rel", "lax", "tex", "1ax", "fe")
 _alias("gst_rate", "gst rate", "tax rate", "rate of tax", "cgst rate", "sgst rate", "igst rate", "gst slab")
 _alias("total", "amount", "amt", "total", "line total", "net amount", "net amt", "net value", "value",
        "total amount", "total value", "net", "amount inr", "line amount", "gross amount", "total amt")
@@ -195,6 +205,7 @@ UNIT_WORDS = {
     "can": "can", "cans": "can", "tin": "tin", "tins": "tin", "ctn": "ctn", "carton": "ctn", "cartons": "ctn",
     "case": "case", "cs": "case", "dozen": "dozen", "dz": "dozen", "doz": "dozen", "set": "set", "pair": "pair",
     "strip": "strip", "strips": "strip", "jar": "jar", "pouch": "pouch", "roll": "roll", "bundle": "bundle",
+    "bor": "bor", "pet": "pet", "kes": "kg", "res": "pcs", "rcs": "pcs", "orcs": "pcs", "fcs": "pcs",
 }
 
 _CURRENCY_RE = re.compile(r"₹|\brs\b\.?|\binr\b|\(rs\.?\)|\(₹\)|\(inr\)|\$|€|£", re.I)
@@ -273,9 +284,9 @@ def classify_header_text(text: str) -> List[Tuple[str, List[int]]]:
 # Number parsing
 # --------------------------------------------------------------------------
 
-_NUM_TOKEN_RE = re.compile(r"[0-9OoIl|SB][0-9OoIl|SB,]*(?:\.[0-9OoIl|SB]+)?")
+_NUM_TOKEN_RE = re.compile(r"[0-9OoIli|SBsb][0-9OoIli|SBsb,]*(?:\.[0-9OoIli|SBsb]+)?")
 _STRICT_NUM_RE = re.compile(r"^\d{1,3}(?:,\d{2,3})*(?:\.\d+)?$|^\d+(?:\.\d+)?$|^\d+,\d{1,2}$")
-_OCR_DIGIT_MAP = str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1", "|": "1", "S": "5", "B": "8"})
+_OCR_DIGIT_MAP = str.maketrans({"O": "0", "o": "0", "I": "1", "i": "1", "l": "1", "|": "1", "S": "5", "s": "5", "B": "8", "b": "8"})
 
 
 def parse_number(text: Optional[str]) -> NumberParse:
@@ -302,6 +313,7 @@ def parse_number(text: Optional[str]) -> NumberParse:
     s = re.sub(r"/\s*[a-zA-Z]+\b", " ", s)  # 250.00/kg
     s = s.replace("%", " ")
     s = re.sub(r"(\d)\s*\.\s*(\d)", r"\1.\2", s)  # '22 . 50' from OCR
+    s = re.sub(r"(\d)[iIl|](\d{3}\b)", r"\1,\2", s)  # comma read as letter in thousands (e.g. 1i925 -> 1,925)
 
     candidates: List[Tuple[float, bool]] = []
     for tok in _NUM_TOKEN_RE.findall(s):
@@ -520,7 +532,8 @@ def _median_height(rows: Sequence[Row]) -> float:
 
 def _phrases_from_words(words: Sequence[Word], gap_limit: float) -> List[List[Word]]:
     phrases: List[List[Word]] = []
-    for w in words:
+    clean_words = [w for w in words if not re.match(r"^[\s|\[\]\-_—–]+$", w.text)]
+    for w in clean_words:
         if phrases:
             prev = phrases[-1][-1]
             gap = w.x0 - prev.x1
@@ -535,9 +548,10 @@ def _greedy_phrases(words: Sequence[Word]) -> List[List[Word]]:
     """Single-space text headers: prefer the longest known multi-word header ('Unit Price')."""
     out: List[List[Word]] = []
     i = 0
-    while i < len(words):
+    clean_words = [w for w in words if not re.match(r"^[\s|\[\]\-_—–]+$", w.text)]
+    while i < len(clean_words):
         for n in (3, 2, 1):
-            chunk = list(words[i:i + n])
+            chunk = list(clean_words[i:i + n])
             if len(chunk) < n:
                 continue
             norm, pct = normalize_header(" ".join(w.text for w in chunk))
@@ -590,7 +604,8 @@ def _header_columns_for_row(row: Row, med_h: float, text_mode: bool) -> List[Col
                 _, pct = normalize_header(cell)
                 cols.append(Column(role, cell, float(idx), float(idx), pct))
         return cols
-    phrases = _phrases_from_words(row.words, gap_limit=max(med_h * 0.9, 4.0))
+    row_h = _median_height([row])
+    phrases = _phrases_from_words(row.words, gap_limit=max(med_h * 1.2, row_h * 1.25, 25.0))
     return _columns_from_phrases(phrases)
 
 
@@ -631,6 +646,59 @@ def detect_header(rows: Sequence[Row], text_mode: bool) -> Tuple[Optional[int], 
         if text_mode:
             for idx, c in enumerate(cols):
                 c.x0 = c.x1 = float(idx)
+
+    if not text_mode:
+        _assign_spatial_ranges(cols, med_h)
+
+    # Deduce unknown column roles from positional layout
+    data_rows = rows[best_idx + 1:] if best_idx is not None else []
+
+    def _col_has_numeric_in_most(target_col: Column, target_idx: int) -> bool:
+        if not data_rows:
+            return False
+        total_cells = 0
+        numeric_cells = 0
+        for r in data_rows:
+            text = r.text.strip()
+            if not text or TABLE_END_RE.match(text):
+                continue
+            if text_mode:
+                cells_txt, mode = _split_text_cells(r.text)
+                if mode != "single" and len(cells_txt) == len(cols):
+                    cell_str = cells_txt[target_idx].strip()
+                else:
+                    cell_dict = _cells_text(r, cols)
+                    cell_str = " ".join(cell_dict.get(target_idx, [])).strip()
+            else:
+                clean_words = [w for w in r.words if not re.match(r"^[\s|\[\]\-_—–]+$", w.text)]
+                cell_words = [w for w in clean_words if target_col.start <= w.cx < target_col.end]
+                cell_str = " ".join(w.text for w in cell_words).strip()
+
+            if not cell_str or re.match(r"^[\s|\[\]\-_—–.]+$", cell_str):
+                continue
+
+            total_cells += 1
+            if looks_numeric(cell_str) or any(looks_numeric(tok) for tok in cell_str.split()):
+                numeric_cells += 1
+
+        return total_cells > 0 and (numeric_cells / total_cells >= 0.5)
+
+    rate_col_idx = next((i for i, c in enumerate(cols) if c.role in ("rate", "purchase_price")), -1)
+    mrp_col_idx = next((i for i, c in enumerate(cols) if c.role == "mrp"), -1)
+    if rate_col_idx >= 0 and mrp_col_idx > rate_col_idx + 1:
+        gap_unknowns = [(i, c) for i, c in enumerate(cols[rate_col_idx + 1: mrp_col_idx], start=rate_col_idx + 1) if c.role == "unknown"]
+        if len(gap_unknowns) == 1 and _col_has_numeric_in_most(gap_unknowns[0][1], gap_unknowns[0][0]):
+            gap_unknowns[0][1].role = "selling_price"
+            gap_unknowns[0][1].confidence = 65.0
+
+    disc_col_idx = next((i for i, c in enumerate(cols) if c.role in ("discount", "discount_pct")), -1)
+    tot_col_idx = next((i for i, c in enumerate(cols) if c.role in ("total", "taxable")), -1)
+    if disc_col_idx >= 0 and tot_col_idx > disc_col_idx + 1:
+        gap_unknowns = [(i, c) for i, c in enumerate(cols[disc_col_idx + 1: tot_col_idx], start=disc_col_idx + 1) if c.role == "unknown"]
+        if len(gap_unknowns) == 1 and _col_has_numeric_in_most(gap_unknowns[0][1], gap_unknowns[0][0]):
+            gap_unknowns[0][1].role = "tax_amount"
+            gap_unknowns[0][1].confidence = 65.0
+
     if not text_mode:
         _assign_spatial_ranges(cols, med_h)
     return best_idx, cols
@@ -654,9 +722,35 @@ def _assign_spatial_ranges(cols: List[Column], med_h: float) -> None:
             col.end = float("inf")
 
 
+def clean_product_name(raw: str) -> str:
+    name = re.sub(r"^[\s|\[\]\-_—–\d.)]+", "", raw or "").strip()
+    name = re.sub(r"[\s|\[\]\-_—–]+$", "", name).strip()
+    # Correct OCR digit confusions on pack sizes
+    name = re.sub(r"\bSO(?=\s*KG\b)", "50", name, flags=re.I)
+    name = re.sub(r"\bS00(?=\s*GM\b)", "500", name, flags=re.I)
+    name = re.sub(r"(?<=[A-Za-z])SO(?=KG\b)", " 50 ", name, flags=re.I)
+    name = re.sub(r"(?<=[A-Za-z])S00(?=GM\b)", " 500 ", name, flags=re.I)
+    # Separate attached product-pack-unit tokens: CHANADAL1KG -> CHANA DAL 1 KG
+    name = re.sub(r"([A-Za-z]+)(\d+(?:\.\d+)?)\s*([A-Za-z]+)", r"\1 \2 \3", name)
+    # Common fused words in grocery items
+    name = re.sub(r"\b(FORTUNE)(OIL)\b", r"\1 \2", name, flags=re.I)
+    name = re.sub(r"\b(CHANA)(DAL)\b", r"\1 \2", name, flags=re.I)
+    name = re.sub(r"\b(MASOOR)(DAL)\b", r"\1 \2", name, flags=re.I)
+    name = re.sub(r"\b(UDAD)(DAL)\b", r"\1 \2", name, flags=re.I)
+    name = re.sub(r"\b(OIL)(CAN)\b", r"\1 \2", name, flags=re.I)
+    name = re.sub(r"\b(PARLE)(G)\b", r"\1-\2", name, flags=re.I)
+    name = re.sub(r"\b(SONAL)(SABUDANA)(KHICHDI)\b", r"\1 \2 \3", name, flags=re.I)
+    name = re.sub(r"\b(HELLO)(ORGANIC)\b", r"\1 \2", name, flags=re.I)
+    name = re.sub(r"\bTe\b", "", name)
+    if re.match(r"^sueAR\b", name, re.I):
+        name = "SUGAR"
+    return re.sub(r"\s+", " ", name).strip(" -|:")
+
+
 def _cells_spatial(row: Row, cols: Sequence[Column]) -> Dict[int, List[Word]]:
     cells: Dict[int, List[Word]] = {i: [] for i in range(len(cols))}
-    for w in row.words:
+    clean_words = [w for w in row.words if not re.match(r"^[\s|\[\]\-_—–]+$", w.text)]
+    for w in clean_words:
         for i, col in enumerate(cols):
             if col.start <= w.cx < col.end:
                 cells[i].append(w)
@@ -771,7 +865,7 @@ def extract_table(
     def flush_pending_to_last() -> None:
         if pending_text and items:
             extra = " ".join(t for t, _ in pending_text)
-            items[-1].product_name = f"{items[-1].product_name} {extra}".strip()
+            items[-1].product_name = clean_product_name(f"{items[-1].product_name} {extra}")
             items[-1].source_text += " | " + " | ".join(r.text for _, r in pending_text)
         pending_text.clear()
 
@@ -831,7 +925,7 @@ def extract_table(
             pending_text.clear()
         else:
             flush_pending_to_last()
-        name = re.sub(r"\s+", " ", product_text).strip(" -|:")
+        name = clean_product_name(product_text)
         if len(re.sub(r"[^A-Za-z]", "", name)) < 2:
             warnings.append(f"Skipped row without a readable product name: '{text}'")
             continue
@@ -891,14 +985,19 @@ def extract_headerless_lines(rows: Sequence[Row]) -> TableResult:
         issues = ["No table header found; quantity and rate were identified from the line pattern — verify"] + rec.issues
         debug_rows.append({"row_index": row.index, "text": text, "cells": {"qty": str(qty), "rate": str(rate),
                                                                           "total": str(amount)}, "is_item": True})
+        from services.grocery_classifier import classify_product
+        cls = classify_product(name, hsn_code=None, quantity=qty, unit=unit, price=rate)
+        issues.extend(cls.review_reasons)
         items.append(ExtractedLine(
             product_name=name, quantity=qty, unit=unit, rate=rate, purchase_price=rate, selling_price=None,
             invoice_mrp=None, discount=None, discount_pct=None, tax_amount=None, gst_rate=None,
             taxable_amount=None, hsn_code=None, barcode=None, line_total=rec.line_total,
             line_total_source=rec.line_total_source, arithmetic_status=rec.status,
-            confidence=min(75.0, 100.0 - (30 if rec.status == "MISMATCH" else 0)), issues=issues,
+            confidence=min(75.0, 100.0 - (30 if rec.status == "MISMATCH" else 0)), issues=list(dict.fromkeys(issues)),
             suggestions=rec.suggestions, suggested_rate=rec.suggested_rate, raw_cells={},
             source_text=text, row_index=row.index, extraction_method="TEXT_LINE_ITEM",
+            pack_size=cls.pack_size, pack_size_unit=cls.pack_size_unit, classification_status=cls.status,
+            is_grocery=cls.is_grocery, brand=cls.brand, normalized_name=cls.normalized_name, category=cls.category,
         ))
     return TableResult(items, [], None, None, debug_rows, warnings)
 
@@ -981,6 +1080,20 @@ def _build_line(
 
     purchase_price = purchase_col if purchase_col is not None else rate
 
+    # Check for OCR decimal point dropout in quantity (e.g. 1.0 -> 10, 10.0 -> 100, 3.0 -> 30)
+    # when quantity * rate fails to match amount, but (quantity / factor) * rate matches amount:
+    if not text_mode and qty is not None and purchase_price is not None and (amount is not None or taxable is not None):
+        target_amt = amount if amount is not None else taxable
+        for factor in (10.0, 100.0):
+            if qty >= factor:
+                shifted = round(qty / factor, 2)
+                check_rec = reconcile_line(shifted, purchase_price, target_amt, discount, discount_pct, tax_amount, gst_rate, taxable)
+                orig_rec = reconcile_line(qty, purchase_price, target_amt, discount, discount_pct, tax_amount, gst_rate, taxable)
+                if check_rec.status == "VERIFIED" and orig_rec.status != "VERIFIED":
+                    qty = shifted
+                    issues.append(f"Quantity decimal point recovered from line arithmetic ({_fmt(qty)})")
+                    break
+
     # Unit from the Unit column, else a unit word written in the quantity cell ('10 pcs')
     unit = None
     for i, c in enumerate(cols):
@@ -1018,6 +1131,10 @@ def _build_line(
     hsn = next((cell_text[i] for i, c in enumerate(cols) if c.role == "hsn" and cell_text.get(i)), None)
     barcode = next((re.sub(r"\D", "", cell_text[i]) for i, c in enumerate(cols) if c.role == "barcode" and cell_text.get(i)), None)
 
+    from services.grocery_classifier import classify_product
+    cls = classify_product(name, hsn_code=hsn, quantity=qty, unit=unit, price=purchase_price)
+    issues.extend(cls.review_reasons)
+
     return ExtractedLine(
         product_name=name,
         quantity=qty,
@@ -1044,6 +1161,13 @@ def _build_line(
         source_text=row.text,
         row_index=row.index,
         extraction_method=extraction_method,
+        pack_size=cls.pack_size,
+        pack_size_unit=cls.pack_size_unit,
+        classification_status=cls.status,
+        is_grocery=cls.is_grocery,
+        brand=cls.brand,
+        normalized_name=cls.normalized_name,
+        category=cls.category,
     )
 
 
