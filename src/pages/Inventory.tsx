@@ -6,17 +6,24 @@ import {
   AlertTriangle, 
   RefreshCw,
   Pencil,
-  Trash2
+  Trash2,
+  Clock,
+  Sparkles,
+  AlertCircle,
+  X
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/Button';
 import { StatusBadge } from '../components/StatusBadge';
+import { StockoutRiskBadge } from '../components/StockoutRiskBadge';
 import { AddProductModal } from '../components/AddProductModal';
 import { EditProductModal } from '../components/EditProductModal';
 import { DeleteConfirmModal } from '../components/DeleteConfirmModal';
 import type { Product } from '../types';
+import type { ProductForecast } from '../types/forecast';
 import { PRODUCT_CATEGORIES } from '../data/mockData';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useForecast } from '../hooks/useForecast';
 import { 
   increaseStock, 
   updateProduct as serviceUpdateProduct, 
@@ -47,6 +54,22 @@ export const Inventory: React.FC<InventoryProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [localProducts, setLocalProducts] = useState<Product[]>(products);
 
+  // Restock confirmation modal state
+  const [restockingProduct, setRestockingProduct] = useState<{
+    product: Product;
+    forecast?: ProductForecast;
+  } | null>(null);
+  const [restockQuantity, setRestockQuantity] = useState<number>(10);
+  const [isRestocking, setIsRestocking] = useState(false);
+
+  // Statistical AI Demand Forecast Hook
+  const {
+    loading: forecastLoading,
+    error: forecastError,
+    refresh: refreshForecast,
+    forecastForProduct,
+  } = useForecast(selectedCategory);
+
   // Synchronize local products with live products stream
   useEffect(() => {
     setLocalProducts(products);
@@ -75,20 +98,46 @@ export const Inventory: React.FC<InventoryProps> = ({
 
   const lowStockItems = localProducts.filter(p => p.status === 'Low Stock' || p.status === 'Out of Stock' || (p.stock <= (p.reorderLevel ?? p.minStock ?? 0)));
 
-  const restockItem = async (id: string) => {
+  // Open restock dialog with pre-filled recommendation if available
+  const handleOpenRestock = (prod: Product) => {
+    const forecast = forecastForProduct(prod.id);
+    const prefillQty =
+      forecast?.recommended_reorder_quantity && forecast.recommended_reorder_quantity > 0
+        ? forecast.recommended_reorder_quantity
+        : prod.reorderLevel && prod.reorderLevel > 0
+        ? prod.reorderLevel
+        : 10;
+
+    setRestockingProduct({ product: prod, forecast });
+    setRestockQuantity(prefillQty);
+  };
+
+  // Explicit user confirmation for restocking
+  const handleConfirmRestock = async () => {
+    if (!restockingProduct) return;
+    const prodId = restockingProduct.product.id;
+    const quantity = restockQuantity;
+    setIsRestocking(true);
+
     // Optimistic update
-    setLocalProducts(prev => prev.map(p => 
-      p.id === id ? { ...p, stock: p.stock + 10, status: 'In Stock' } : p
-    ));
+    setLocalProducts((prev) =>
+      prev.map((p) =>
+        p.id === prodId ? { ...p, stock: p.stock + quantity, status: 'In Stock' } : p
+      )
+    );
 
     try {
       if (onRestock) {
-        await onRestock(id, 10);
+        await onRestock(prodId, quantity);
       } else {
-        await increaseStock(id, 10);
+        await increaseStock(prodId, quantity);
       }
+      setRestockingProduct(null);
     } catch (err) {
       console.error('Failed to restock item:', err);
+      setLocalProducts(products); // Revert on failure
+    } finally {
+      setIsRestocking(false);
     }
   };
 
@@ -159,20 +208,34 @@ export const Inventory: React.FC<InventoryProps> = ({
           </div>
 
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {lowStockItems.slice(0, 5).map(item => (
-              <div key={item.id} className="bg-white rounded-xl p-2.5 border border-amber-200 shrink-0 flex items-center gap-3 shadow-2xs">
-                <div>
-                  <p className="font-extrabold text-slate-900 text-xs">{item.name}</p>
-                  <p className="text-[11px] text-amber-800 font-bold">{item.stock} {item.unit} {t('dashboard.left')}</p>
+            {lowStockItems.slice(0, 5).map(item => {
+              const forecast = forecastForProduct(item.id);
+              return (
+                <div key={item.id} className="bg-white rounded-xl p-2.5 border border-amber-200 shrink-0 flex items-center gap-3 shadow-2xs">
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <p className="font-extrabold text-slate-900 text-xs">{item.name}</p>
+                      <StockoutRiskBadge
+                        risk={forecast?.stockout_risk}
+                        confidenceStatus={forecast?.confidence_status}
+                        validHistoryDays={forecast?.valid_history_days}
+                        size="sm"
+                      />
+                    </div>
+                    <p className="text-[11px] text-amber-800 font-bold mt-0.5">
+                      {item.stock} {item.unit} {t('dashboard.left')}
+                      {forecast?.days_until_stockout !== null && forecast?.days_until_stockout !== undefined ? ` • ~${forecast.days_until_stockout.toFixed(1)}d left` : ''}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleOpenRestock(item)}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] rounded-lg active:scale-95 transition-transform shrink-0 cursor-pointer"
+                  >
+                    {forecast?.recommended_reorder_quantity ? `+${forecast.recommended_reorder_quantity}` : t('dashboard.restock')}
+                  </button>
                 </div>
-                <button
-                  onClick={() => restockItem(item.id)}
-                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] rounded-lg active:scale-95 transition-transform shrink-0 cursor-pointer"
-                >
-                  {t('dashboard.restock')}
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -191,21 +254,45 @@ export const Inventory: React.FC<InventoryProps> = ({
         </div>
 
         {/* Category filter pills */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-          {PRODUCT_CATEGORIES.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                selectedCategory === cat
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
+        <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 scrollbar-none">
+          <div className="flex items-center gap-2">
+            {PRODUCT_CATEGORIES.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  selectedCategory === cat
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          {forecastLoading && (
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium shrink-0 pr-1">
+              <RefreshCw className="w-3.5 h-3.5 text-emerald-600 animate-spin" />
+              <span className="hidden sm:inline">Evaluating AI Demand...</span>
+            </div>
+          )}
         </div>
+
+        {forecastError && (
+          <div className="flex items-center justify-between text-xs text-amber-800 bg-amber-50 px-3 py-2 rounded-xl border border-amber-200">
+            <div className="flex items-center gap-1.5 font-medium">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <span>AI Forecasting: Offline ({forecastError})</span>
+            </div>
+            <button
+              onClick={() => refreshForecast()}
+              className="text-xs font-black text-amber-900 hover:underline cursor-pointer"
+            >
+              Retry
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Inventory Container */}
@@ -221,134 +308,234 @@ export const Inventory: React.FC<InventoryProps> = ({
                 <th className="py-3.5 px-4">{t('inventory.tableStock')}</th>
                 <th className="py-3.5 px-4">{t('inventory.tablePrice')}</th>
                 <th className="py-3.5 px-4">{t('inventory.tableStatus')}</th>
+                <th className="py-3.5 px-4">AI Demand Risk</th>
                 <th className="py-3.5 px-6 text-right">{t('inventory.tableActions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm font-medium text-slate-800">
-              {filteredProducts.map((prod) => (
-                <tr key={prod.id} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="py-4 px-6 font-bold text-slate-900">
-                    <div className="flex items-center gap-2.5">
-                      {prod.imageUrl ? (
-                        <img 
-                          src={prod.imageUrl} 
-                          alt={prod.name} 
-                          className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0" 
-                        />
-                      ) : (
-                        <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-black text-xs border border-emerald-200 shrink-0">
-                          {prod.name.charAt(0)}
-                        </div>
-                      )}
-                      <div>
-                        <span>{prod.name}</span>
-                        {prod.barcode && (
-                          <span className="block text-[10px] text-slate-400 font-normal">
-                            UPC: {prod.barcode}
-                          </span>
+              {filteredProducts.map((prod) => {
+                const forecast = forecastForProduct(prod.id);
+                const isStage0 =
+                  forecast?.confidence_status === 'INSUFFICIENT_DATA' ||
+                  forecast?.forecast_method === 'INSUFFICIENT_HISTORY';
+
+                return (
+                  <tr key={prod.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="py-4 px-6 font-bold text-slate-900">
+                      <div className="flex items-center gap-2.5">
+                        {prod.imageUrl ? (
+                          <img 
+                            src={prod.imageUrl} 
+                            alt={prod.name} 
+                            className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0" 
+                          />
+                        ) : (
+                          <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-black text-xs border border-emerald-200 shrink-0">
+                            {prod.name.charAt(0)}
+                          </div>
                         )}
+                        <div>
+                          <span>{prod.name}</span>
+                          {prod.barcode && (
+                            <span className="block text-[10px] text-slate-400 font-normal">
+                              UPC: {prod.barcode}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="py-4 px-4 font-semibold text-slate-600">{prod.category}</td>
-                  <td className="py-4 px-4 font-bold text-slate-900">
-                    {prod.stock} {prod.unit}
-                  </td>
-                  <td className="py-4 px-4 font-black text-slate-900">
-                    ₹{prod.price}
-                  </td>
-                  <td className="py-4 px-4">
-                    <StatusBadge status={prod.status} />
-                  </td>
-                  <td className="py-4 px-6 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button 
-                        onClick={() => restockItem(prod.id)}
-                        title="Restock +10"
-                        className="text-xs font-black text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-lg border border-emerald-200 transition-all inline-flex items-center gap-1 cursor-pointer active:scale-95"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        <span className="hidden xl:inline">{t('inventory.restockTen')}</span>
-                        <span className="xl:hidden">+10</span>
-                      </button>
-                      <button 
-                        onClick={() => setEditingProduct(prod)}
-                        title="Edit Product"
-                        className="text-xs font-black text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-all inline-flex items-center gap-1 cursor-pointer active:scale-95"
-                      >
-                        <Pencil className="w-3.5 h-3.5 text-slate-600" />
-                        <span>Edit</span>
-                      </button>
-                      <button 
-                        onClick={() => setDeletingProduct(prod)}
-                        title="Delete Product"
-                        className="p-1.5 text-xs font-black text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200 transition-all inline-flex items-center cursor-pointer active:scale-95"
-                      >
-                        <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="py-4 px-4 font-semibold text-slate-600">{prod.category}</td>
+                    <td className="py-4 px-4 font-bold text-slate-900">
+                      {prod.stock} {prod.unit}
+                    </td>
+                    <td className="py-4 px-4 font-black text-slate-900">
+                      ₹{prod.price}
+                    </td>
+                    <td className="py-4 px-4">
+                      <StatusBadge status={prod.status} />
+                    </td>
+
+                    {/* AI Demand Risk Column */}
+                    <td className="py-4 px-4">
+                      {forecast ? (
+                        <div>
+                          <StockoutRiskBadge
+                            risk={forecast.stockout_risk}
+                            confidenceStatus={forecast.confidence_status}
+                            validHistoryDays={forecast.valid_history_days}
+                            size="sm"
+                          />
+                          {isStage0 ? (
+                            <p className="text-[10px] text-slate-400 font-semibold mt-1">
+                              Ref Min: {forecast.reorder_level ?? prod.reorderLevel ?? 10} {prod.unit}
+                            </p>
+                          ) : (
+                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                              {forecast.days_until_stockout !== null && (
+                                <span className="text-[10px] font-extrabold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                  ~{forecast.days_until_stockout < 1 ? '<1' : forecast.days_until_stockout.toFixed(1)}d left
+                                </span>
+                              )}
+                              <span className="text-[9px] font-black uppercase px-1 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                                {forecast.forecast_method === 'MOVING_AVERAGE_7' ? 'MA-7' : 'Weekday'}
+                              </span>
+                              {forecast.recommended_reorder_quantity !== null && forecast.recommended_reorder_quantity > 0 && (
+                                <span className="text-[10px] font-black text-emerald-700 hidden lg:inline">
+                                  Rec: +{forecast.recommended_reorder_quantity}
+                                </span>
+                              )}
+                              {forecast.has_stockout_censoring && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-800 bg-amber-50 px-1 py-0.5 rounded border border-amber-200"
+                                  title="Zero-sales days during stockouts were censored from demand estimates"
+                                >
+                                  <AlertCircle className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                                  Censored
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 font-medium">—</span>
+                      )}
+                    </td>
+
+                    <td className="py-4 px-6 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button 
+                          onClick={() => handleOpenRestock(prod)}
+                          title={forecast?.recommended_reorder_quantity ? `Restock recommended ${forecast.recommended_reorder_quantity} ${prod.unit}` : "Restock"}
+                          className="text-xs font-black text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-lg border border-emerald-200 transition-all inline-flex items-center gap-1 cursor-pointer active:scale-95"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span className="hidden xl:inline">
+                            {forecast?.recommended_reorder_quantity
+                              ? `+${forecast.recommended_reorder_quantity}`
+                              : t('inventory.restockTen')}
+                          </span>
+                          <span className="xl:hidden">
+                            {forecast?.recommended_reorder_quantity
+                              ? `+${forecast.recommended_reorder_quantity}`
+                              : '+10'}
+                          </span>
+                        </button>
+                        <button 
+                          onClick={() => setEditingProduct(prod)}
+                          title="Edit Product"
+                          className="text-xs font-black text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-all inline-flex items-center gap-1 cursor-pointer active:scale-95"
+                        >
+                          <Pencil className="w-3.5 h-3.5 text-slate-600" />
+                          <span>Edit</span>
+                        </button>
+                        <button 
+                          onClick={() => setDeletingProduct(prod)}
+                          title="Delete Product"
+                          className="p-1.5 text-xs font-black text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200 transition-all inline-flex items-center cursor-pointer active:scale-95"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
 
         {/* Mobile Product Cards View (< 768px) */}
         <div className="md:hidden divide-y divide-slate-100">
-          {filteredProducts.map((prod) => (
-            <div key={prod.id} className="p-4 space-y-2.5 bg-white">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2.5">
-                  {prod.imageUrl ? (
-                    <img 
-                      src={prod.imageUrl} 
-                      alt={prod.name} 
-                      className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0" 
-                    />
-                  ) : null}
+          {filteredProducts.map((prod) => {
+            const forecast = forecastForProduct(prod.id);
+            const isStage0 =
+              forecast?.confidence_status === 'INSUFFICIENT_DATA' ||
+              forecast?.forecast_method === 'INSUFFICIENT_HISTORY';
+
+            return (
+              <div key={prod.id} className="p-4 space-y-2.5 bg-white">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    {prod.imageUrl ? (
+                      <img 
+                        src={prod.imageUrl} 
+                        alt={prod.name} 
+                        className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0" 
+                      />
+                    ) : null}
+                    <div>
+                      <h4 className="font-extrabold text-slate-900 text-base leading-tight">{prod.name}</h4>
+                      <p className="text-xs text-slate-500 font-semibold mt-0.5">{prod.category} • ₹{prod.price} per {prod.unit}</p>
+                      {prod.barcode && <p className="text-[10px] text-slate-400 font-medium">UPC: {prod.barcode}</p>}
+                    </div>
+                  </div>
                   <div>
-                    <h4 className="font-extrabold text-slate-900 text-base leading-tight">{prod.name}</h4>
-                    <p className="text-xs text-slate-500 font-semibold mt-0.5">{prod.category} • ₹{prod.price} per {prod.unit}</p>
-                    {prod.barcode && <p className="text-[10px] text-slate-400 font-medium">UPC: {prod.barcode}</p>}
+                    <StatusBadge status={prod.status} size="sm" />
                   </div>
                 </div>
-                <div>
-                  <StatusBadge status={prod.status} size="sm" />
-                </div>
-              </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-slate-100">
-                <span className="text-xs sm:text-sm font-black text-slate-900 shrink-0">
-                  {t('inventory.tableStock')}: {prod.stock} {prod.unit}
-                </span>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    onClick={() => restockItem(prod.id)}
-                    aria-label={`Restock 10 units of ${prod.name}`}
-                    className="text-xs font-black text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-xl border border-emerald-200 flex items-center gap-1 cursor-pointer active:scale-95 transition-all min-h-[38px]"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5 text-emerald-600" /> +10
-                  </button>
-                  <button
-                    onClick={() => setEditingProduct(prod)}
-                    aria-label={`Edit ${prod.name}`}
-                    className="text-xs font-black text-slate-700 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-200 flex items-center gap-1 cursor-pointer active:scale-95 transition-all min-h-[38px]"
-                  >
-                    <Pencil className="w-3.5 h-3.5 text-slate-600" /> Edit
-                  </button>
-                  <button
-                    onClick={() => setDeletingProduct(prod)}
-                    className="p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl border border-rose-200 flex items-center justify-center cursor-pointer active:scale-95 transition-all min-h-[38px] min-w-[38px]"
-                    title="Delete"
-                    aria-label={`Delete ${prod.name}`}
-                  >
-                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                  </button>
+                {/* Mobile AI Forecast Row */}
+                {forecast && (
+                  <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <StockoutRiskBadge
+                        risk={forecast.stockout_risk}
+                        confidenceStatus={forecast.confidence_status}
+                        validHistoryDays={forecast.valid_history_days}
+                        size="sm"
+                      />
+                      {!isStage0 && forecast.days_until_stockout !== null && (
+                        <span className="text-[10px] font-extrabold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                          ~{forecast.days_until_stockout < 1 ? '<1' : forecast.days_until_stockout.toFixed(1)}d left
+                        </span>
+                      )}
+                      {forecast.has_stockout_censoring && (
+                        <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-800 bg-amber-50 px-1 py-0.5 rounded border border-amber-200">
+                          <AlertCircle className="w-2.5 h-2.5 text-amber-600 shrink-0" /> Censored
+                        </span>
+                      )}
+                    </div>
+                    {forecast.recommended_reorder_quantity !== null && forecast.recommended_reorder_quantity > 0 && (
+                      <span className="text-[11px] font-black text-emerald-700">
+                        Rec: +{forecast.recommended_reorder_quantity}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-slate-100">
+                  <span className="text-xs sm:text-sm font-black text-slate-900 shrink-0">
+                    {t('inventory.tableStock')}: {prod.stock} {prod.unit}
+                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={() => handleOpenRestock(prod)}
+                      aria-label={`Restock ${prod.name}`}
+                      className="text-xs font-black text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-xl border border-emerald-200 flex items-center gap-1 cursor-pointer active:scale-95 transition-all min-h-[38px]"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>{forecast?.recommended_reorder_quantity ? `+${forecast.recommended_reorder_quantity}` : '+10'}</span>
+                    </button>
+                    <button
+                      onClick={() => setEditingProduct(prod)}
+                      aria-label={`Edit ${prod.name}`}
+                      className="text-xs font-black text-slate-700 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-200 flex items-center gap-1 cursor-pointer active:scale-95 transition-all min-h-[38px]"
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-slate-600" /> Edit
+                    </button>
+                    <button
+                      onClick={() => setDeletingProduct(prod)}
+                      className="p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl border border-rose-200 flex items-center justify-center cursor-pointer active:scale-95 transition-all min-h-[38px] min-w-[38px]"
+                      title="Delete"
+                      aria-label={`Delete ${prod.name}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {filteredProducts.length === 0 && (
@@ -360,6 +547,119 @@ export const Inventory: React.FC<InventoryProps> = ({
         )}
 
       </div>
+
+      {/* Restock Confirmation Modal with AI Guidance */}
+      {restockingProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div
+            className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5 text-emerald-700 font-extrabold text-lg">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0 border border-emerald-200">
+                  <RefreshCw className="w-5 h-5" />
+                </div>
+                <span>Restock Inventory</span>
+              </div>
+              <button
+                onClick={() => setRestockingProduct(null)}
+                disabled={isRestocking}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer disabled:opacity-50"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="py-4 space-y-3">
+              <div>
+                <h4 className="font-black text-slate-900 text-base">
+                  {restockingProduct.product.name}
+                </h4>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                  Current Stock: <span className="text-slate-900 font-extrabold">{restockingProduct.product.stock} {restockingProduct.product.unit}</span>
+                </p>
+              </div>
+
+              {/* Explainable AI Guidance or Stage 0 notice */}
+              {restockingProduct.forecast ? (
+                restockingProduct.forecast.confidence_status === 'INSUFFICIENT_DATA' ||
+                restockingProduct.forecast.forecast_method === 'INSUFFICIENT_HISTORY' ? (
+                  <div className="bg-blue-50/80 p-3 rounded-2xl border border-blue-200/80 text-xs text-blue-900 space-y-1">
+                    <div className="flex items-center gap-1.5 font-black text-blue-800">
+                      <Clock className="w-4 h-4 text-blue-600" />
+                      <span>Building Sales History ({restockingProduct.forecast.valid_history_days}/7 days)</span>
+                    </div>
+                    <p className="text-[11px] text-blue-700 font-medium">
+                      AI statistical forecasting requires at least 7 valid open selling days. Reference reorder level: {restockingProduct.product.reorderLevel} {restockingProduct.product.unit}.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-emerald-50/80 p-3 rounded-2xl border border-emerald-200/80 text-xs text-emerald-950 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-black flex items-center gap-1 text-emerald-800">
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                        AI Reorder Recommendation
+                      </span>
+                      <span className="text-[10px] font-black uppercase bg-white/80 px-2 py-0.5 rounded border border-emerald-200 text-emerald-700">
+                        {restockingProduct.forecast.forecast_method === 'MOVING_AVERAGE_7' ? 'MA-7' : 'Weekday'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-emerald-800 font-medium">
+                      {restockingProduct.forecast.recommended_reorder_quantity !== null && restockingProduct.forecast.recommended_reorder_quantity > 0
+                        ? `Recommended order: +${restockingProduct.forecast.recommended_reorder_quantity} ${restockingProduct.product.unit} to cover estimated weekly customer demand.`
+                        : 'Current stock is adequate based on recent customer velocity.'}
+                    </p>
+                    {restockingProduct.forecast.has_stockout_censoring && (
+                      <p className="text-[10px] text-amber-800 font-bold bg-amber-50 px-2 py-1 rounded border border-amber-200 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 text-amber-600 shrink-0" />
+                        Stockout period detected: true customer demand may be higher.
+                      </p>
+                    )}
+                  </div>
+                )
+              ) : null}
+
+              <div className="space-y-1.5 pt-1">
+                <label className="block text-xs font-black text-slate-700 uppercase tracking-wider">
+                  Restock Quantity ({restockingProduct.product.unit})
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={restockQuantity}
+                  onChange={(e) => setRestockQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base font-extrabold text-slate-900"
+                />
+                <p className="text-[11px] text-slate-400 font-medium">
+                  New total stock will be: <span className="font-extrabold text-slate-700">{restockingProduct.product.stock + restockQuantity} {restockingProduct.product.unit}</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setRestockingProduct(null)}
+                disabled={isRestocking}
+                className="rounded-xl"
+              >
+                Cancel
+              </Button>
+              <button
+                type="button"
+                onClick={handleConfirmRestock}
+                disabled={isRestocking}
+                className="px-4 py-2.5 rounded-xl text-sm font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-95 transition-all flex items-center gap-2 shadow-xs cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRestocking ? 'animate-spin' : ''}`} />
+                <span>{isRestocking ? 'Restocking...' : `Confirm Restock (+${restockQuantity})`}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <AddProductModal
         isOpen={isModalOpen}

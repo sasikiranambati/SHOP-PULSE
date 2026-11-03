@@ -25,5 +25,6 @@ export * from './alert';
 
 export * from './analytics';
 export * from './sync';
+export * from './forecast';
 
 

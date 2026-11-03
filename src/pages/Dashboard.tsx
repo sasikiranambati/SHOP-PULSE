@@ -15,6 +15,7 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { useSales } from '../hooks/useSales';
 import { useAlerts } from '../hooks/useAlerts';
 import { useAnalytics } from '../hooks/useAnalytics';
+import { useForecast } from '../hooks/useForecast';
 import { increaseStock, addProduct } from '../services/inventoryService';
 
 interface DashboardProps {
@@ -32,6 +33,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const { todaySummary, dashboardStats } = useSales();
   const { lowStockAlerts } = useAlerts(products);
   const { weeklyTrend } = useAnalytics();
+  const {
+    items: forecastItems,
+    loading: forecastLoading,
+    error: forecastError,
+    refresh: refreshForecast,
+  } = useForecast();
 
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
 
@@ -40,7 +47,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const itemsSoldToday = todaySummary ? todaySummary.itemsSoldToday : (dashboardStats?.itemsSoldToday ?? 0);
   const productsCount = products ? products.length : 0;
 
-  // Filter low stock items from live products list
+  // Filter low stock items from live products list for fallback
   const lowStockItems = products.filter(
     (p) =>
       p.status === 'Low Stock' ||
@@ -102,7 +109,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* 3. Two-column section: Left (Needs Attention) | Right (Quick Actions) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <AttentionCard
+          forecastItems={forecastItems}
           lowStockItems={hasAlerts ? lowStockItems : []}
+          loading={forecastLoading}
+          error={forecastError}
+          onRefresh={refreshForecast}
           onRestock={handleRestock}
           setActivePage={setActivePage}
         />
