@@ -18,6 +18,9 @@ from services.grocery_ocr.processors.pdf_processor import (
     IPDFProcessor,
     PDFProcessResult,
 )
+from services.grocery_ocr.processors.text_line_reconstructor import (
+    TextLineReconstructor,
+)
 
 __all__ = [
     "IFileValidator",
@@ -30,4 +33,5 @@ __all__ = [
     "AdaptiveImageProcessor",
     "BaseImageProcessor",
     "ImagePreprocessResult",
+    "TextLineReconstructor",
 ]

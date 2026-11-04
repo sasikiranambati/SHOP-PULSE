@@ -37,6 +37,7 @@ from services.grocery_ocr.logger import get_logger, stage_timer
 from services.grocery_ocr.processors.file_validator import BaseFileValidator, IFileValidator
 from services.grocery_ocr.processors.image_processor import BaseImageProcessor, IImageProcessor
 from services.grocery_ocr.processors.pdf_processor import BasePDFProcessor, IPDFProcessor
+from services.grocery_ocr.quality.ocr_quality_assessor import OCRQualityAssessor
 from services.grocery_ocr.ai.service import AIInterpretationService
 from services.grocery_ocr.schemas.invoice import ExtractedInvoice, InvoiceProcessingMetadata
 from services.grocery_ocr.schemas.invoice_item import ExtractedInvoiceItem
@@ -103,6 +104,7 @@ class InvoicePipeline:
         self.integrity_validator = integrity_validator or ExcelIntegrityValidator(self.config)
         self.invoice_validator = invoice_validator or BaseInvoiceValidator(self.config)
         self.ai_service = ai_service or AIInterpretationService(self.config)
+        self.quality_assessor = OCRQualityAssessor()
         self.cross_validator = cross_validator or UnifiedValidationService(self.config)
         self.column_wise_extractor = column_wise_extractor or ColumnWiseExtractor(
             config=self.config,
@@ -265,6 +267,10 @@ class InvoicePipeline:
                         processing_time_ms=t.get("duration_ms", 0.0),
                     )
                 metadata.ocr_evidence = ocr_doc
+                quality_rep = self.quality_assessor.assess_document(ocr_doc)
+                metadata.custom_properties["quality_report"] = quality_rep.to_dict()
+                if not quality_rep.is_readable:
+                    metadata.warnings.append(f"Document quality assessment: {quality_rep.quality_grade}. OCR legibility is low.")
                 metadata.pipeline_stages_completed.append("ocr_recognition")
             metadata.stage_timings_ms["ocr_recognition"] = t.get("duration_ms", 0.0)
 

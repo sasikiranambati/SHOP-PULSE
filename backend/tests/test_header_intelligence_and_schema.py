@@ -412,3 +412,4 @@ def test_base_column_detector_detect_schema_and_columns_consistency():
         assert dyn_col.role == det_col.role
         assert dyn_col.header_text == det_col.header_text
         assert dyn_col.x_start == det_col.x_start
+

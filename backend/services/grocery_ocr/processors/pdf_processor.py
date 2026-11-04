@@ -19,6 +19,7 @@ from services.grocery_ocr.schemas.ocr import (
     OCRPageResult,
     OCRWord,
 )
+from services.grocery_ocr.processors.text_line_reconstructor import TextLineReconstructor
 
 logger = get_logger("processors.pdf_processor")
 
@@ -233,45 +234,6 @@ class BasePDFProcessor(IPDFProcessor):
             return None
 
     def _group_words_into_lines(self, words: List[OCRWord]) -> List[OCRLine]:
-        """Groups words on a page into horizontal text lines based on vertical overlap."""
-        if not words:
-            return []
-
-        # Sort words primarily top-to-bottom, then left-to-right
-        sorted_words = sorted(words, key=lambda w: (w.bbox.y0, w.bbox.x0))
-        lines: List[List[OCRWord]] = []
-
-        for w in sorted_words:
-            placed = False
-            for line_words in lines:
-                rep = line_words[0]
-                overlap = min(w.bbox.y1, rep.bbox.y1) - max(w.bbox.y0, rep.bbox.y0)
-                min_h = min(w.bbox.height, rep.bbox.height)
-                if min_h > 0 and (overlap / min_h) >= 0.5:
-                    line_words.append(w)
-                    placed = True
-                    break
-            if not placed:
-                lines.append([w])
-
-        ocr_lines: List[OCRLine] = []
-        for line_idx, line_words in enumerate(lines):
-            line_words.sort(key=lambda w: w.bbox.x0)
-            line_text = " ".join(w.text for w in line_words).strip()
-            x0 = min(w.bbox.x0 for w in line_words)
-            y0 = min(w.bbox.y0 for w in line_words)
-            x1 = max(w.bbox.x1 for w in line_words)
-            y1 = max(w.bbox.y1 for w in line_words)
-            ocr_lines.append(
-                OCRLine(
-                    line_number=line_idx,
-                    text=line_text,
-                    words=line_words,
-                    bbox=BoundingBox(x0=x0, y0=y0, x1=x1, y1=y1),
-                    confidence=100.0,
-                )
-            )
-
-        # Sort lines top-to-bottom
-        ocr_lines.sort(key=lambda l: l.bbox.y0)
-        return ocr_lines
+        """Groups words on a page into horizontal text lines using spatial reconstruction."""
+        reconstructor = TextLineReconstructor()
+        return reconstructor.reconstruct_lines(words)

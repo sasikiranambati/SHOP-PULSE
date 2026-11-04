@@ -22,6 +22,7 @@ from services.grocery_ocr.schemas.ocr import (
     OCRPageResult,
     OCRWord,
 )
+from services.grocery_ocr.processors.text_line_reconstructor import TextLineReconstructor
 
 logger = get_logger("engines.ocr_engine")
 
@@ -226,39 +227,13 @@ class TesseractOCREngine(IOCREngine):
                     )
                 )
 
-            # Unpack or construct coherent text lines
-            raw_lines = ocr_dict.get("lines", [])
-            lines: List[OCRLine] = []
-
-            for line_idx, rl in enumerate(raw_lines):
-                line_text = str(rl.get("text", "")).strip()
-                if not line_text:
-                    continue
-                line_box = rl.get("bbox") or {}
-                lx0 = float(line_box.get("x0", 0.0))
-                ly0 = float(line_box.get("y0", 0.0))
-                lx1 = float(line_box.get("x1", 0.0))
-                ly1 = float(line_box.get("y1", 0.0))
-                line_conf = float(rl.get("confidence", 100.0) or 100.0)
-
-                # Line constituent words
-                line_words = [
-                    w for w in words
-                    if w.bbox.y0 >= (ly0 - 5.0) and w.bbox.y1 <= (ly1 + 5.0)
-                ]
-                line_words.sort(key=lambda w: w.bbox.x0)
-
-                lines.append(
-                    OCRLine(
-                        line_number=line_idx,
-                        text=line_text,
-                        words=line_words,
-                        bbox=BoundingBox(x0=lx0, y0=ly0, x1=lx1, y1=ly1),
-                        confidence=line_conf,
-                    )
-                )
+            # Reconstruct lines using spatial baseline clustering
+            reconstructor = TextLineReconstructor()
+            lines = reconstructor.reconstruct_lines(words, page_width=img_w, page_height=img_h)
 
             raw_text = ocr_dict.get("text", "")
+            if not raw_text and lines:
+                raw_text = "\n".join(l.text for l in lines)
             avg_conf = float(ocr_dict.get("confidence", 0.0))
             if not avg_conf and words:
                 avg_conf = sum(w.confidence for w in words) / len(words)

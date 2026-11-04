@@ -119,6 +119,11 @@ class AdaptiveImageProcessor(IImageProcessor):
                 cv2.imwrite(str(p), cv_img)
                 debug_paths["01_original"] = str(p)
 
+            # 1.5 Cardinal Rotation Correction (90 / 270 degrees)
+            cv_img, cardinal_rot = self.detect_and_correct_cardinal_rotation(cv_img)
+            if cardinal_rot != 0:
+                steps.append(f"cardinal_rotation_{cardinal_rot}deg")
+
             # 2. Deskewing: detect horizontal text alignment
             cv_img, skew_angle = self._deskew_cv2(cv_img)
             if abs(skew_angle) >= 0.5:
@@ -135,6 +140,16 @@ class AdaptiveImageProcessor(IImageProcessor):
 
             # Convert to single-channel Grayscale for contrast/noise processing
             gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
+
+            # 3.5 Illumination Normalization (Shadow removal for mobile camera photos)
+            gray, ill_normalized = self.normalize_illumination(gray)
+            if ill_normalized:
+                steps.append("illumination_normalization")
+
+            # 3.6 Table Grid Line Removal (Prevents characters fusing with borders in ruled tables)
+            gray, grid_removed = self.remove_table_grid_lines(gray)
+            if grid_removed:
+                steps.append("table_grid_line_removal")
 
             # 4. Contrast Analysis & Adaptive Enhancement (CLAHE)
             mean_val, std_val = cv2.meanStdDev(gray)
@@ -237,6 +252,91 @@ class AdaptiveImageProcessor(IImageProcessor):
                 gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 15, 8
             )
         return gray
+
+    def detect_and_correct_cardinal_rotation(self, img: np.ndarray) -> Tuple[np.ndarray, int]:
+        """
+        Detects if document is rotated 90 or 270 degrees based on dominant orientation of
+        text lines and edges. If vertical orientation significantly dominates horizontal
+        lines, rotates the image 90 degrees counter-clockwise to restore horizontal alignment.
+        """
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+        edges = cv2.Canny(gray, 50, 150)
+        lines = cv2.HoughLinesP(edges, 1, np.pi / 180, 60, minLineLength=50, maxLineGap=10)
+        if lines is None:
+            return img, 0
+
+        h_count, v_count = 0, 0
+        for l in lines:
+            pts = l.flatten()
+            deg = abs(np.degrees(np.arctan2(float(pts[3] - pts[1]), float(pts[2] - pts[0]))))
+            if deg <= 20 or deg >= 160:
+                h_count += 1
+            elif 70 <= deg <= 110:
+                v_count += 1
+
+        if v_count > max(10, h_count * 2):
+            rotated = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            return rotated, 90
+
+        return img, 0
+
+    def normalize_illumination(self, gray: np.ndarray) -> Tuple[np.ndarray, bool]:
+        """
+        Removes non-uniform lighting and shadows (common in smartphone camera photos of receipts).
+        Uses morphological background estimation via a large structuring element,
+        dividing the grayscale image by the estimated background to flatten illumination gradients.
+        Only applies when luminance gradient across quadrants indicates uneven illumination.
+        """
+        h, w = gray.shape[:2]
+        if min(h, w) < 200:
+            return gray, False
+
+        q1 = np.mean(gray[: h // 2, : w // 2])
+        q2 = np.mean(gray[: h // 2, w // 2 :])
+        q3 = np.mean(gray[h // 2 :, : w // 2])
+        q4 = np.mean(gray[h // 2 :, w // 2 :])
+        quad_spread = max(q1, q2, q3, q4) - min(q1, q2, q3, q4)
+
+        if quad_spread > 25.0:
+            kernel_size = max(25, int(min(h, w) * 0.05))
+            if kernel_size % 2 == 0:
+                kernel_size += 1
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, kernel_size))
+            bg = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
+            bg = np.maximum(bg, 1)
+            normalized = cv2.divide(gray, bg, scale=255.0)
+            return normalized.astype(np.uint8), True
+
+        return gray, False
+
+    def remove_table_grid_lines(self, gray: np.ndarray) -> Tuple[np.ndarray, bool]:
+        """
+        Detects and removes black/dark table borders and grid lines from invoice tables.
+        Prevents Tesseract from fusing characters with table cells or mistaking borders for glyphs.
+        Preserves decimal points, small punctuation, and characters by strictly targeting
+        long contiguous line segments (>= 35px in length).
+        """
+        h, w = gray.shape[:2]
+        if min(h, w) < 100:
+            return gray, False
+
+        _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
+        min_line_len = max(35, int(min(h, w) * 0.03))
+
+        h_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (min_line_len, 1))
+        h_lines = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, h_kernel)
+
+        v_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, min_line_len))
+        v_lines = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, v_kernel)
+
+        grid = cv2.add(h_lines, v_lines)
+        if cv2.countNonZero(grid) > 0:
+            grid_dilated = cv2.dilate(grid, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)), iterations=1)
+            cleaned = gray.copy()
+            cleaned[grid_dilated > 0] = 255
+            return cleaned, True
+
+        return gray, False
 
     def _deskew_cv2(self, img: np.ndarray) -> Tuple[np.ndarray, float]:
         """

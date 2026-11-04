@@ -23,6 +23,14 @@ from services.grocery_ocr.exceptions import (
     UnsupportedFileError,
 )
 from services.grocery_ocr.pipeline.invoice_pipeline import InvoicePipeline
+from services.grocery_ocr.processors.text_line_reconstructor import TextLineReconstructor
+from services.grocery_ocr.quality import (
+    OCREvaluationResult,
+    OCREvaluator,
+    OCRQualityAssessor,
+    OCRQualityReport,
+    QualityGrade,
+)
 from services.grocery_ocr.schemas import (
     BoundingBox,
     ClassificationStatusType,
@@ -48,6 +56,12 @@ __all__ = [
     "GroceryOCRConfig",
     "default_config",
     "InvoicePipeline",
+    "TextLineReconstructor",
+    "OCRQualityAssessor",
+    "OCRQualityReport",
+    "QualityGrade",
+    "OCREvaluator",
+    "OCREvaluationResult",
     # Schemas
     "BoundingBox",
     "OCRWord",

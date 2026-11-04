@@ -89,6 +89,7 @@ class OCRWord(BaseModel):
     confidence: float = Field(default=100.0, ge=0.0, le=100.0, description="OCR confidence (0-100)")
     word_index: int = Field(default=0, ge=0, description="0-indexed position within the line or page")
     reading_order: int = Field(default=0, ge=0, description="Sequential reading order across the page")
+    line_number: Optional[int] = Field(default=None, description="0-indexed line number on the page")
     page_number: int = Field(default=1, ge=1, description="1-indexed source page number")
 
     model_config = ConfigDict(frozen=True)
@@ -119,6 +120,22 @@ class OCRWord(BaseModel):
     def confidence_normalized(self) -> float:
         """Returns confidence in standard [0.0, 1.0] range."""
         return self.confidence / 100.0 if self.confidence > 1.0 else self.confidence
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Returns structured dictionary conforming to Phase 2 word-level schema."""
+        return {
+            "text": self.text,
+            "confidence": round(self.confidence_normalized, 4),
+            "bounding_box": {
+                "x_min": self.bbox.x0,
+                "y_min": self.bbox.y0,
+                "x_max": self.bbox.x1,
+                "y_max": self.bbox.y1,
+            },
+            "page_number": self.page_number,
+            "line_number": self.line_number if self.line_number is not None else 0,
+            "reading_order": self.reading_order,
+        }
 
 
 class OCRLine(BaseModel):
