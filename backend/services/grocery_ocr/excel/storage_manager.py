@@ -30,10 +30,13 @@ class WorkbookStorageManager:
         if base_dir:
             self.base_dir = Path(base_dir).resolve()
         else:
-            default_upload_dir = Path("backend/uploads/invoices").resolve()
-            if not default_upload_dir.parent.exists():
-                default_upload_dir = Path(tempfile.gettempdir()) / "shoppulse_invoices"
-            self.base_dir = default_upload_dir
+            # Check uploads/invoices relative to current working dir or project root
+            if Path("uploads/invoices").parent.exists():
+                self.base_dir = Path("uploads/invoices").resolve()
+            elif Path("backend/uploads/invoices").parent.exists():
+                self.base_dir = Path("backend/uploads/invoices").resolve()
+            else:
+                self.base_dir = (Path(tempfile.gettempdir()) / "shoppulse_invoices").resolve()
 
         self.base_dir.mkdir(parents=True, exist_ok=True)
         logger.debug("WorkbookStorageManager initialized with storage directory: %s", self.base_dir)
@@ -77,10 +80,13 @@ class WorkbookStorageManager:
 
         try:
             filename = self.generate_filename(invoice_id, original_filename)
-            target_path = (self.base_dir / filename).resolve()
+            resolved_base = self.base_dir.resolve()
+            target_path = (resolved_base / filename).resolve()
 
             # Path traversal safety check
-            if not str(target_path).startswith(str(self.base_dir)):
+            try:
+                target_path.relative_to(resolved_base)
+            except ValueError:
                 raise ExcelGenerationError(f"Security violation: path traversal detected for {filename}")
 
             with open(target_path, "wb") as f:

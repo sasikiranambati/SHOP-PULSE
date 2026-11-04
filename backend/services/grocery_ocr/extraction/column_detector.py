@@ -9,6 +9,11 @@ import statistics
 from typing import Any, Dict, List, Optional, Tuple
 from services.grocery_ocr.config import GroceryOCRConfig, default_config
 from services.grocery_ocr.exceptions import ColumnDetectionError
+from services.grocery_ocr.extraction.dynamic_schema_generator import (
+    DocumentTableSchema,
+    DynamicSchemaGenerator,
+)
+from services.grocery_ocr.extraction.header_intelligence import HeaderIntelligenceEngine
 from services.grocery_ocr.extraction.header_recognizer import HeaderCandidate, HeaderRecognizer
 from services.grocery_ocr.logger import get_logger
 from services.grocery_ocr.schemas.ocr import BoundingBox, OCRWord
@@ -34,6 +39,14 @@ class IColumnDetector:
         """Detects semantic columns from table headers and data rows."""
         raise NotImplementedError
 
+    def detect_schema(
+        self,
+        table: TableResult,
+        data_rows: Optional[List[TableRow]] = None,
+    ) -> DocumentTableSchema:
+        """Detects document-specific table schema from headers and data rows."""
+        raise NotImplementedError
+
 
 class BaseColumnDetector(IColumnDetector):
     """
@@ -51,9 +64,23 @@ class BaseColumnDetector(IColumnDetector):
         self,
         config: Optional[GroceryOCRConfig] = None,
         header_recognizer: Optional[HeaderRecognizer] = None,
+        header_intelligence: Optional[HeaderIntelligenceEngine] = None,
+        schema_generator: Optional[DynamicSchemaGenerator] = None,
     ):
         self.config = config or default_config
         self.header_recognizer = header_recognizer or HeaderRecognizer()
+        self.header_intelligence = header_intelligence or HeaderIntelligenceEngine()
+        self.schema_generator = schema_generator or DynamicSchemaGenerator(self.config, self.header_intelligence)
+
+    def detect_schema(
+        self,
+        table: TableResult,
+        data_rows: Optional[List[TableRow]] = None,
+    ) -> DocumentTableSchema:
+        """
+        Detects document-specific table schema from headers and data rows.
+        """
+        return self.schema_generator.generate_schema(table, data_rows)
 
     def detect_columns(
         self,
@@ -62,58 +89,11 @@ class BaseColumnDetector(IColumnDetector):
     ) -> List[DetectedColumn]:
         """
         Detects semantic columns and calculates optimal horizontal boundaries.
+        Leverages DynamicSchemaGenerator with full backward compatibility.
         """
-        logger.debug("Detecting columns for table with %d rows", len(table.rows))
         try:
-            if not table.rows:
-                return []
-
-            # Determine header row if not already set
-            header_row_idx = table.header_row_index
-            if header_row_idx is None:
-                header_row_idx = self._find_header_row_index(table.rows)
-
-            if header_row_idx is None:
-                # If no header row found, evaluate headerless column clustering from data
-                return self._detect_columns_headerless(table.rows)
-
-            header_row = table.rows[header_row_idx]
-            header_row.is_header = True
-            table.header_row_index = header_row_idx
-            table.header_text = header_row.raw_text
-
-            # Mark any rows prior to header as non-product header metadata
-            for r_i in range(header_row_idx):
-                table.rows[r_i].is_header = True
-
-            # Extract header words or cells
-            header_cells = header_row.cells
-            rows_to_check = data_rows if data_rows is not None else [
-                r for r in table.rows[header_row_idx + 1:] if not r.is_summary and not r.is_header
-            ]
-
-            # Calculate document-level median font height and character width
-            all_words = [w for r in table.rows for c in r.cells for w in c.words]
-            heights = [w.bbox.height for w in all_words if w.bbox.height > 2.0]
-            median_h = statistics.median(heights) if heights else 15.0
-
-            # Step 1: Build initial column anchors from header row
-            raw_columns = self._build_header_columns(header_row, median_h)
-
-            if not raw_columns:
-                return []
-
-            # Step 2: Calculate dynamic horizontal column boundaries using whitespace valleys
-            refined_columns = self._calculate_column_boundaries(raw_columns, rows_to_check, median_h)
-
-            # Step 3: Determine column alignment and verify geometric consistency
-            aligned_columns = self._determine_alignments(refined_columns, rows_to_check)
-
-            # Step 4: Apply conservative positional role inference with auditable evidence
-            final_columns = self._apply_conservative_role_inference(aligned_columns, rows_to_check)
-
-            return final_columns
-
+            schema = self.detect_schema(table, data_rows)
+            return schema.to_detected_columns()
         except Exception as exc:
             logger.error("Column detection failed: %s", exc)
             raise ColumnDetectionError(f"Column detection failed: {exc}", details={"error": str(exc)})

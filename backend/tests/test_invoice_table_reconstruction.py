@@ -578,15 +578,21 @@ def test_vmodel_accuracy_measurements():
         ("docs/scanner-test-cases/TC09-discount-and-gst.pdf", 3),
     ]
 
+    from pathlib import Path
     total_expected_rows = 0
     total_detected_rows = 0
     true_positive_rows = 0
 
     pipeline = InvoicePipeline()
 
-    for pdf_path, expected_count in test_cases:
-        with open(pdf_path, "rb") as f:
-            res = pipeline.process(f.read(), pdf_path)
+    for rel_path, expected_count in test_cases:
+        p = Path(rel_path)
+        if not p.exists():
+            p = Path(__file__).resolve().parents[2] / rel_path
+        if not p.exists():
+            continue
+        with open(p, "rb") as f:
+            res = pipeline.process(f.read(), str(p))
 
         detected_count = len(res.items)
         total_expected_rows += expected_count
