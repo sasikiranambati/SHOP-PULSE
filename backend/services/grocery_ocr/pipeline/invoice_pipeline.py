@@ -25,6 +25,7 @@ from services.grocery_ocr.exceptions import (
     UnsupportedFileError,
 )
 from services.grocery_ocr.extraction.column_detector import BaseColumnDetector, IColumnDetector
+from services.grocery_ocr.extraction.column_wise_extractor import ColumnWiseExtractor
 from services.grocery_ocr.extraction.price_extractor import BasePriceExtractor, IPriceExtractor
 from services.grocery_ocr.extraction.product_extractor import BaseProductExtractor, IProductExtractor
 from services.grocery_ocr.extraction.quantity_extractor import BaseQuantityExtractor, IQuantityExtractor
@@ -79,6 +80,7 @@ class InvoicePipeline:
         invoice_validator: Optional[IInvoiceValidator] = None,
         ai_service: Optional[AIInterpretationService] = None,
         cross_validator: Optional[UnifiedValidationService] = None,
+        column_wise_extractor: Optional[ColumnWiseExtractor] = None,
         config: Optional[GroceryOCRConfig] = None,
     ):
         self.config = config or default_config
@@ -102,6 +104,13 @@ class InvoicePipeline:
         self.invoice_validator = invoice_validator or BaseInvoiceValidator(self.config)
         self.ai_service = ai_service or AIInterpretationService(self.config)
         self.cross_validator = cross_validator or UnifiedValidationService(self.config)
+        self.column_wise_extractor = column_wise_extractor or ColumnWiseExtractor(
+            config=self.config,
+            product_extractor=self.product_extractor,
+            quantity_extractor=self.quantity_extractor,
+            price_extractor=self.price_extractor,
+            numeric_parser=getattr(self.price_extractor, "numeric_parser", None),
+        )
 
     def process(
         self,
@@ -292,90 +301,36 @@ class InvoicePipeline:
                         ):
                             continue
 
-                        raw_name, norm_name = self.product_extractor.extract_product_name(row, columns)
-                        pack_size = self.product_extractor.extract_pack_size(raw_name)
-
-                        # Guard: discard pack_size if its unit is a billing/wholesale container unit
-                        # (e.g. '1 PKT' in a product name is typically the billing quantity, not physical size)
-                        if pack_size is not None and pack_size.unit is not None:
-                            from services.grocery_ocr.intelligence.package_size_extractor import BILLING_UNIT_KEYWORDS
-                            if pack_size.unit.lower() in BILLING_UNIT_KEYWORDS:
-                                logger.debug(
-                                    'Discarding pack_size %s %s -- billing unit, not physical pack size',
-                                    pack_size.value, pack_size.unit,
-                                )
-                                pack_size = None
-
-                        # Detailed Quantity Extraction
-                        if hasattr(self.quantity_extractor, "extract_quantity_detailed"):
-                            qty_res = self.quantity_extractor.extract_quantity_detailed(row, columns)
-                            qty = qty_res.quantity
-                            raw_qty = qty_res.raw_quantity
-                            unit = qty_res.unit
-                            raw_unit = qty_res.raw_unit
-                        else:
-                            qty, unit = self.quantity_extractor.extract_quantity(row, columns)
-                            raw_qty = str(qty) if qty is not None else None
-                            raw_unit = unit
-
-                        # Detailed Financial Field Extraction
-                        if hasattr(self.price_extractor, "extract_financials_detailed"):
-                            fin_res = self.price_extractor.extract_financials_detailed(row, columns)
-                            p_price = fin_res.purchase_price
-                            s_price = fin_res.selling_price
-                            mrp_val = fin_res.mrp
-                            disc_val = fin_res.discount
-                            disc_pct_val = fin_res.discount_pct
-                            tax_amt = fin_res.tax_amount
-                            gst_rt = fin_res.gst_rate
-                            taxable_val = fin_res.taxable_amount
-                            prn_amt = fin_res.printed_amount
-                            fin_conf = fin_res.financial_role_confidence
-                        else:
-                            prices = self.price_extractor.extract_prices(row, columns)
-                            p_price = prices.get("purchase_price")
-                            s_price = prices.get("selling_price")
-                            mrp_val = prices.get("mrp")
-                            disc_val = prices.get("discount")
-                            disc_pct_val = prices.get("discount_pct")
-                            tax_amt = prices.get("tax_amount")
-                            gst_rt = prices.get("gst_rate")
-                            taxable_val = prices.get("taxable_amount")
-                            prn_amt = prices.get("printed_amount")
-                            fin_conf = {}
-
-                        # Require valid product name
-                        if not raw_name or len(raw_name.strip()) < 2:
-                            continue
-                        # Ignore footer / bank / legal metadata text
-                        lower_name = raw_name.lower()
-                        if any(lower_name.startswith(kw) for kw in [
-                            "bank details", "terms and conditions", "total in words",
-                            "account number", "for ", "subject to", "our goods", "round off"
-                        ]):
-                            continue
-                        # A product row must have at least one numeric signal (qty, price, or amount)
-                        if qty is None and p_price is None and prn_amt is None:
+                        schema = (
+                            self.column_detector.detect_schema(table)
+                            if hasattr(self.column_detector, "detect_schema")
+                            else None
+                        )
+                        rec = self.column_wise_extractor.extract_row(row, schema or columns)
+                        if rec is None:
                             continue
 
-                        # Reconcile faint OCR decimal point in quantities:
-                        # In dot-matrix / wholesale invoices, quantities like 1.0, 10.0, 3.0, 5.0 often lose the faint dot in OCR (becoming 10, 100, 30, 50).
-                        # If (qty / 10) * p_price matches prn_amt within tolerance (factoring in discount/tax), repair qty!
-                        if qty is not None and p_price is not None and prn_amt is not None and qty >= Decimal("10"):
-                            shifted_qty = (qty / Decimal("10")).quantize(Decimal("0.001"))
-                            gross_shifted = (shifted_qty * p_price).quantize(Decimal("0.01"))
-                            net_shifted = gross_shifted - (disc_val or Decimal("0.00")) + (tax_amt or Decimal("0.00"))
-                            gross_orig = (qty * p_price).quantize(Decimal("0.01"))
-                            net_orig = gross_orig - (disc_val or Decimal("0.00")) + (tax_amt or Decimal("0.00"))
-                            if abs(net_shifted - prn_amt) <= Decimal("1.50") and abs(net_orig - prn_amt) > Decimal("5.00"):
-                                qty = shifted_qty
-                                raw_qty = str(shifted_qty)
+                        raw_name = rec.raw_product_name
+                        norm_name = rec.normalized_product_name
+                        pack_size = rec.pack_size
+                        qty = rec.quantity
+                        raw_qty = rec.raw_quantity
+                        unit = rec.unit
+                        raw_unit = rec.raw_unit
+                        p_price = rec.purchase_price
+                        s_price = rec.selling_price
+                        mrp_val = rec.mrp
+                        disc_val = rec.discount
+                        disc_pct_val = rec.discount_pct
+                        tax_amt = rec.tax_amount
+                        gst_rt = rec.gst_rate
+                        taxable_val = rec.taxable_amount
+                        prn_amt = rec.printed_amount
+                        hsn_code = rec.hsn_code
+                        fin_conf = rec.financial_role_confidence
 
-                        # Extract HSN if column present
-                        hsn_code: Optional[str] = None
-                        hsn_col_idx = next((c.column_index for c in columns if c.role == "hsn"), None)
-                        if hsn_col_idx is not None and hsn_col_idx < len(row.cells):
-                            hsn_code = row.cells[hsn_col_idx].raw_text.strip() or None
+                        if rec.warnings:
+                            metadata.warnings.extend(rec.warnings)
 
                         # Classification with taxonomy and HSN
                         class_res = self.grocery_classifier.classify(norm_name or raw_name, hsn=hsn_code)

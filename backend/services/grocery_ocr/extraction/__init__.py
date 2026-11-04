@@ -40,6 +40,10 @@ from services.grocery_ocr.extraction.dynamic_schema_generator import (
     DynamicSchemaGenerator,
     ExpectedDataType,
 )
+from services.grocery_ocr.extraction.column_wise_extractor import (
+    ColumnWiseExtractor,
+    ExtractedRowRecord,
+)
 from services.grocery_ocr.extraction.header_recognizer import (
     HeaderCandidate,
     HeaderRecognizer,
@@ -63,6 +67,8 @@ __all__ = [
     "DocumentTableSchema",
     "DynamicColumnDefinition",
     "ExpectedDataType",
+    "ColumnWiseExtractor",
+    "ExtractedRowRecord",
     "TableDetector",
     "TableRegion",
     "ITableReconstructor",
