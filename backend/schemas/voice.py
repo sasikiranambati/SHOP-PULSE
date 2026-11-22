@@ -38,6 +38,9 @@ class MatchedVoiceItem(BaseModel):
     pricing_status: Optional[str] = Field(None, description="Product pricing verification status")
     mrp: Optional[float] = Field(None, description="Maximum Retail Price")
     catalog_line_total: Optional[float] = Field(None, description="Standard catalog line total for comparison if spoken price was agreed")
+    # True when the spoken price differs from the catalogue line: a customer request that only a Manager /
+    # Owner can approve at checkout (never applied silently)
+    needs_price_approval: bool = False
 
 class AmbiguousVoiceItem(BaseModel):
     queried_name: str

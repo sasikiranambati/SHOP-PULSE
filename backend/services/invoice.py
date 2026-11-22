@@ -922,7 +922,64 @@ def _merge_duplicate_lines(items):
     return merged
 
 
+def _existing_invoice(db: Session, shop_id: UUID, supplier_id, invoice_number: Optional[str]) -> Optional[Purchase]:
+    """The purchase with the same invoice identity: same shop, same supplier (or both without one) and the
+    same invoice number ignoring case and surrounding spaces (the rule of uq_purchases_invoice_identity)."""
+    if not invoice_number:
+        return None
+    return db.query(Purchase).filter(
+        Purchase.shop_id == shop_id,
+        func.lower(func.trim(Purchase.invoice_number)) == invoice_number.strip().lower(),
+        Purchase.supplier_id == supplier_id,  # IS NULL when there is no supplier
+    ).first()
+
+
+def _known_supplier_id(db: Session, shop_id: UUID, confirm_in: InvoiceConfirmRequest):
+    """Supplier the request refers to, without creating one (None when none is given or none exists yet)."""
+    if confirm_in.supplier_id:
+        return confirm_in.supplier_id
+    name = (confirm_in.supplier_name or "").strip()
+    if not name:
+        return None
+    found = db.query(Supplier).filter(
+        Supplier.shop_id == shop_id, func.lower(func.trim(Supplier.supplier_name)) == name.lower()).first()
+    return found.id if found else None
+
+
 def confirm_and_update_stock(
+    db: Session,
+    shop_id: UUID,
+    confirm_in: InvoiceConfirmRequest,
+    current_user_id: Optional[UUID] = None,
+) -> InvoiceConfirmResponse:
+    """Confirm an invoice into stock, once.
+
+    The duplicate check runs first, but two simultaneous confirmations can both pass it; the unique
+    indexes on the invoice identity and supplier name then stop the second writer (on SQLite and PostgreSQL
+    alike, at its INSERT or at commit). Its transaction is rolled back completely and it receives a
+    conflict (HTTP 409) when the same invoice is now saved. A conflict on something else (e.g. the same
+    new supplier created concurrently) is retried once against the committed data.
+    """
+    for attempt in range(2):
+        try:
+            return _confirm_once(db, shop_id, confirm_in, current_user_id)
+        except IntegrityError as exc:
+            db.rollback()
+            invoice_number = (confirm_in.invoice_number or "").strip() or None
+            if _existing_invoice(db, shop_id, _known_supplier_id(db, shop_id, confirm_in), invoice_number):
+                raise InvoiceConflictError(
+                    f"Invoice {invoice_number} from this supplier was already added to stock by a concurrent "
+                    "request. Stock was not changed again."
+                ) from exc
+            if attempt == 1:
+                raise InvoiceConflictError(
+                    "The invoice could not be saved because related records changed at the same time. "
+                    "Nothing was added to stock; please try again."
+                ) from exc
+    raise AssertionError("unreachable")
+
+
+def _confirm_once(
     db: Session,
     shop_id: UUID,
     confirm_in: InvoiceConfirmRequest,
@@ -939,7 +996,7 @@ def confirm_and_update_stock(
         elif confirm_in.supplier_name and confirm_in.supplier_name.strip():
             supplier = db.query(Supplier).filter(
                 Supplier.shop_id == shop_id,
-                Supplier.supplier_name.ilike(confirm_in.supplier_name.strip()),
+                func.lower(func.trim(Supplier.supplier_name)) == confirm_in.supplier_name.strip().lower(),
             ).first()
             if not supplier:
                 supplier = Supplier(shop_id=shop_id, supplier_name=confirm_in.supplier_name.strip())
@@ -952,11 +1009,7 @@ def confirm_and_update_stock(
         # invoice is saved without a duplicate check rather than matched on an invented value.
         # The match ignores letter case so the same invoice read as "INV-1" and "inv-1" is caught.
         if invoice_number:
-            dup = db.query(Purchase).filter(
-                Purchase.shop_id == shop_id,
-                func.lower(Purchase.invoice_number) == invoice_number.lower(),
-                Purchase.supplier_id == supplier_id,
-            ).first()
+            dup = _existing_invoice(db, shop_id, supplier_id, invoice_number)
             if dup:
                 when = dup.created_at.strftime("%d/%m/%Y") if dup.created_at else "earlier"
                 raise InvoiceConflictError(
@@ -1193,14 +1246,9 @@ def confirm_and_update_stock(
             ))
 
         db_purchase.total_amount = float(_keep_printed_precision(total_amount))
-        try:
-            db.commit()
-        except IntegrityError as exc:
-            db.rollback()
-            raise InvoiceConflictError(
-                f"Invoice {invoice_number} from this supplier was already added to stock by a concurrent transaction. "
-                "Stock was not changed."
-            ) from exc
+        # A unique-index conflict (here or at an earlier flush) propagates as IntegrityError after a full
+        # rollback; confirm_and_update_stock turns it into a 409 or retries once
+        db.commit()
         db.refresh(db_purchase)
 
         # Trigger System Notification for successful invoice stock update
@@ -1227,7 +1275,10 @@ def confirm_and_update_stock(
                     cooldown_hours=24
                 )
         except Exception:
-            pass
+            # The purchase is already committed; a failed notification (e.g. preferences created by a
+            # concurrent request) must not turn the confirmation into an error or leave the session unusable
+            logger.warning("Post-confirmation notification failed", exc_info=True)
+            db.rollback()
 
         return InvoiceConfirmResponse(
             purchase_id=db_purchase.id,

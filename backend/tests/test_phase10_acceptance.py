@@ -139,14 +139,18 @@ def test_end_to_end_10_stage_lifecycle():
     # Prepare confirmation payload: restock existing item + add a new item
     confirm_items = []
     for it in data["items"]:
+        mrp = it["mrp"] or 130.0
+        selling = it["selling_price"] or (it["purchase_price"] * 1.2 if it["purchase_price"] else 120.0)
+        # A shop cannot price above MRP (Stage 4C.1 universal MRP rule): the 20% margin is capped at MRP
+        selling = min(selling, mrp)
         confirm_items.append({
             "matched_product_id": it["matched_product_id"],
             "name": it["product_name"],
             "quantity": it["quantity"] or 5.0,
             "unit": it["unit"] or "PKT",
             "purchase_price": it["purchase_price"] or 100.0,
-            "selling_price": it["selling_price"] or (it["purchase_price"] * 1.2 if it["purchase_price"] else 120.0),
-            "mrp": it["mrp"] or 130.0,
+            "selling_price": selling,
+            "mrp": mrp,
             "mrp_source": it["mrp_source"] if it.get("mrp_source") in ("INVOICE", "API", "MANUAL", "STORE") else "MANUAL",
             "line_amount": it["line_total"] or 500.0,
             "category": it["category"] or "Groceries",

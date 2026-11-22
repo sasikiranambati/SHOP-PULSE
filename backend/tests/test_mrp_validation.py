@@ -67,9 +67,16 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def setup_db():
+    # Set per test (other modules install their own override at import; the last import would win)
+    previous = app.dependency_overrides.get(get_db)
+    app.dependency_overrides[get_db] = override_get_db
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+    if previous is None:
+        app.dependency_overrides.pop(get_db, None)
+    else:
+        app.dependency_overrides[get_db] = previous
 
 
 @pytest.fixture

@@ -9,6 +9,8 @@ import threading
 import uuid
 
 import pytest
+
+from tests.pricing_helpers import verify_product
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
@@ -97,6 +99,7 @@ def test_whole_stock_keeps_integer_json_and_update_validates_the_unit(api):
 def test_fractional_sale_and_compatible_unit_conversion(api):
     c, h = api
     p = _product(c, h, "Sugar Loose", "kg", 2.5, price=44.5)
+    verify_product(c, h, p["id"])  # valid retail product: verified by the owner before sale (Stage 4)
     r = c.post("/api/v1/sales", json={"items": [{"product_id": p["id"], "quantity": 0.5}]}, headers=h)
     assert r.status_code == 201 and r.json()["total_amount"] == 22.25 and r.json()["items"][0]["quantity"] == 0.5
     assert _stock(c, h, p["id"]) == 2.0
@@ -119,11 +122,12 @@ def test_purchase_250_g(api):
 @pytest.mark.parametrize("payload,needle", [
     ({"quantity": 2.5}, "whole"),                     # pcs product
     ({"quantity": 1, "unit": "kg"}, "cannot be converted"),
-    ({"quantity": 1, "unit": "zzz"}, "not a registered unit"),
+    ({"quantity": 1, "unit": "zzz"}, "Unknown unit 'zzz'"),  # pricing engine wording (Stage 4)
 ])
 def test_invalid_sale_quantities_change_nothing(api, payload, needle):
     c, h = api
     p = _product(c, h, "Soap", "pcs", 10)
+    verify_product(c, h, p["id"])  # so the refusal checked is the quantity / unit rule, not pricing review
     r = c.post("/api/v1/sales", json={"items": [{"product_id": p["id"], **payload}]}, headers=h)
     assert r.status_code in (400, 422) and needle in r.text
     assert _stock(c, h, p["id"]) == 10
@@ -141,6 +145,8 @@ def test_insufficient_stock_and_rollback(api):
     c, h = api
     a = _product(c, h, "Oil", "L", 1.5)
     b = _product(c, h, "Dal", "kg", 5)
+    verify_product(c, h, a["id"])
+    verify_product(c, h, b["id"])
     r = c.post("/api/v1/sales", json={"items": [{"product_id": b["id"], "quantity": 1}, {"product_id": a["id"], "quantity": 2}]}, headers=h)
     assert r.status_code == 400 and "Insufficient stock" in r.json()["detail"]
     assert _stock(c, h, a["id"]) == 1.5 and _stock(c, h, b["id"]) == 5  # nothing deducted
@@ -191,9 +197,13 @@ def _race(tmp_path, stock, sale_qty):
         shop = Shop(shop_name="K", owner_name="R", business_type="Grocery/Kirana", location="B", owner_id=u.id)
         s.add(shop)
         s.flush()
-        p = Product(name="Salt", selling_price=22.0, purchase_price=20.0, current_stock=stock, unit="kg", shop_id=shop.id)
+        p = Product(name="Salt", selling_price=22.0, purchase_price=20.0, current_stock=stock, unit="kg", shop_id=shop.id,
+                    price_basis_quantity=1.0, price_basis_unit="kg")  # as the API sets them (basis = stock unit)
         s.add(p)
         s.commit()
+        # A valid retail product: verified by the shop owner through the real service before the race
+        from services.product import verify_product as verify_pricing
+        verify_pricing(s, p, acting_user_id=u.id)
         pid, sid = p.id, shop.id
     barrier = threading.Barrier(2)
     results = []
@@ -284,6 +294,7 @@ def test_invoice_fractional_paid_and_free_quantities(api):
 def test_voice_half_kg_sale_completes(api):
     c, h = api
     p = _product(c, h, "Sugar", "kg", 3, price=44.0)
+    verify_product(c, h, p["id"])
     r = c.post("/api/v1/voice/process", json={"simulation_text": "half kg sugar"}, headers=h)
     m = r.json()["matched_items"][0]
     assert m["quantity"] == 0.5 and m["current_stock"] == 3 and m["total_price"] == 22.0
@@ -324,6 +335,7 @@ def test_ocr_lines_keep_fractions_and_missing_units_need_review(monkeypatch):
 def test_reports_keep_fractional_quantities(api):
     c, h = api
     p = _product(c, h, "Ghee", "L", 2, price=500.0)
+    verify_product(c, h, p["id"])
     c.post("/api/v1/sales", json={"items": [{"product_id": p["id"], "quantity": 0.25}]}, headers=h)
     c.post("/api/v1/sales", json={"items": [{"product_id": p["id"], "quantity": 0.5}]}, headers=h)
     dash = c.get("/api/v1/dashboard", headers=h).json()

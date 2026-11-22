@@ -33,6 +33,10 @@ export interface MatchedVoiceItem {
   price_source?: 'spoken' | 'catalogue' | 'edited';
   /** What was said when it differs from the stock quantity (e.g. "500 g" sold as 0.5 kg). */
   spoken_quantity?: string | null;
+  /** Catalogue price of the line (server-calculated). */
+  catalog_line_total?: number | null;
+  /** The spoken price differs from the catalogue: a customer request needing Manager / Owner approval. */
+  needs_price_approval?: boolean;
 }
 
 export interface AmbiguousVoiceItem {

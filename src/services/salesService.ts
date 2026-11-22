@@ -73,11 +73,12 @@ export async function createSale(
   _shopName?: string
 ): Promise<Sale> {
   const backendSale = await salesApi.createSale({
-    items: input.items.map((item) => ({
-      product_id: item.productId,
-      quantity: item.quantity,
-      unit_price: item.price ?? item.unitPrice,
-    })),
+    items: input.items.map((item) =>
+      typeof item.requestedLineTotal === 'number'
+        ? // A requested price: the server checks it against the catalogue and the user's role (never silent)
+          { product_id: item.productId, quantity: item.quantity, requested_line_total: item.requestedLineTotal }
+        : { product_id: item.productId, quantity: item.quantity, unit_price: item.price ?? item.unitPrice },
+    ),
     payment_method: (input.paymentMethod || 'cash').toLowerCase(),
   });
 

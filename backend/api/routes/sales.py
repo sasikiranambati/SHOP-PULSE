@@ -9,6 +9,7 @@ from schemas.sale import (
     SaleCreate,
     SaleResponse,
     PaginatedSaleResponse,
+    SaleQuoteResponse,
 )
 from services import shop as shop_service
 from services import sale as sale_service
@@ -37,9 +38,26 @@ def create_sale(
     """
     user_shop = get_user_shop_or_raise(db, current_user)
     try:
-        return sale_service.create_sale(db, sale_in=sale_in, shop_id=user_shop.id)
+        return sale_service.create_sale(db, sale_in=sale_in, shop_id=user_shop.id, acting_user_id=current_user.id)
+    except sale_service.SalePriceAuthorizationError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+@router.post("/quote", response_model=SaleQuoteResponse)
+def quote_sale(
+    *,
+    db: Session = Depends(deps.get_db),
+    sale_in: SaleCreate,
+    current_user: User = Depends(deps.get_current_user)
+) -> Any:
+    """
+    Price a cart exactly as checkout would (pricing engine, status, units, MRP, stock, price approval),
+    without recording a sale or changing stock. The sale itself is validated again when it is sent.
+    """
+    user_shop = get_user_shop_or_raise(db, current_user)
+    return sale_service.quote_sale(db, sale_in=sale_in, shop_id=user_shop.id, acting_user_id=current_user.id)
+
 
 @router.get("", response_model=PaginatedSaleResponse)
 @router.get("/", response_model=PaginatedSaleResponse, include_in_schema=False)
@@ -53,7 +71,8 @@ def get_sales(
     """
     Get paginated sales history for the authenticated user's shop.
     """
-    shop = shop_service.get_shop_by_owner(db, owner_id=current_user.id)
+    # Owner or staff member of the shop
+    shop = deps.get_user_accessible_shop(db, current_user)
     if not shop:
         return PaginatedSaleResponse(items=[], total=0, skip=skip, limit=limit)
     

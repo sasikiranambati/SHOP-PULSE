@@ -262,6 +262,13 @@ def make_matched_item(prod: VoiceProductCandidate, item: ExtractedItem) -> Match
         line = catalog_line_total
         source = "catalogue"
 
+    # A spoken price is a customer request. Within the checkout tolerance it is simply the catalogue price;
+    # otherwise it needs Manager / Owner approval at checkout (the sale endpoint enforces it and audits it)
+    matches_catalogue = abs(line - catalog_line_total) <= Decimal("0.01")
+    if source == "spoken" and matches_catalogue:
+        line = catalog_line_total  # what was said is the catalogue price: normal checkout
+    needs_price_approval = source == "spoken" and not matches_catalogue
+
     # 6. Statutory MRP Ceiling Enforcement for Spoken Prices (Legal Metrology Act)
     if source == "spoken" and pricing_result.line_mrp_total is not None:
         if line > pricing_result.line_mrp_total:
@@ -297,6 +304,7 @@ def make_matched_item(prod: VoiceProductCandidate, item: ExtractedItem) -> Match
         pricing_status=status,
         mrp=to_number(pricing_result.line_mrp_total) if pricing_result.line_mrp_total is not None else (float(prod.mrp) if prod.mrp is not None else None),
         catalog_line_total=to_number(catalog_line_total),
+        needs_price_approval=needs_price_approval,
     )
 
 

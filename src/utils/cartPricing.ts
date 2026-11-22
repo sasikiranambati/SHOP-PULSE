@@ -93,6 +93,24 @@ export function mergeIntoCart(cart: CartItem[], additions: CartItem[]): CartItem
   return next;
 }
 
+/** True when any line carries a requested price that still needs Manager / Owner approval. */
+export function cartNeedsApproval(items: CartItem[]): boolean {
+  return items.some((i) => i.needsApproval === true);
+}
+
+/** The bill at catalogue prices (requested prices replaced by their catalogue line), for comparison. */
+export function cartCatalogueTotal(items: CartItem[]): number {
+  return Number(items.reduce((sum, i) => sum + (i.needsApproval
+    ? (typeof i.catalogueLineTotal === 'number' ? lineTotalPaise(1, i.catalogueLineTotal) : lineTotalPaise(i.quantity, catalogPrice(i.product)))
+    : lineTotalPaise(i.quantity, cartUnitPrice(i))), 0n)) / 100;
+}
+
+/** Drop a requested price: the line is sold at the catalogue price (no approval needed). */
+export function withCataloguePrice(item: CartItem): CartItem {
+  const { unitPrice: _u, priceSource: _s, needsApproval: _n, catalogueLineTotal: _c, ...rest } = item;
+  return rest;
+}
+
 /** Quantities keep at most 3 decimals (2.5 kg + 0.25 kg = 2.75, never 2.7500000000000004). */
 export function round3(v: number): number {
   return Math.round(v * 1000) / 1000;

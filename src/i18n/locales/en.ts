@@ -241,7 +241,47 @@ export const en = {
     edit: 'Edit',
     back: 'Back',
     next: 'Next',
-  }
+  },
+  pricing: {
+    status: {
+      VERIFIED: 'Price verified',
+      NEEDS_REVIEW: 'Price needs review',
+      INCOMPLETE: 'Price incomplete',
+      WHOLESALE_ONLY: 'Wholesale only',
+    },
+    reason: {
+      NEEDS_REVIEW: 'Cannot be sold until a Manager or Owner verifies its price.',
+      INCOMPLETE: 'Cannot be sold: its price details are incomplete. A Manager or Owner must complete them.',
+      WHOLESALE_ONLY: 'Sold only in whole {unit}, not in loose or part quantities.',
+    },
+    askManager: 'Ask a Manager or Owner to verify this price.',
+    verify: 'Verify price',
+    verifying: 'Verifying…',
+    verified: 'Price verified for {name}.',
+    checking: 'Checking prices…',
+    notChecked: 'Prices could not be checked right now. They will be checked when you complete the sale.',
+    requested: 'Requested price · needs Manager / Owner approval',
+    catalogue: 'Catalogue {amount}',
+    useCatalogue: 'Use catalogue price',
+    notFinal: 'Not final: includes requested prices that need Manager / Owner approval. At catalogue prices this bill is {amount}.',
+    notFinalShort: 'not final · needs approval',
+    approverNote: 'You can approve these requested prices. Each approval is recorded in the pricing audit log.',
+    cashierNote: 'A cashier cannot apply requested prices. Ask a Manager or Owner, or use the catalogue price.',
+    approveAndComplete: 'Approve & complete sale ({total})',
+    resolveFirst: 'Fix the highlighted items before completing the sale.',
+    saleFailed: 'Sale not recorded. Your bill items are kept so you can try again.',
+    errors: {
+      pricing_status: 'Cannot be sold until its price is verified.',
+      mrp_exceeded: 'The price is above the MRP for this quantity.',
+      insufficient_stock: 'Not enough stock for this quantity.',
+      unit: 'This quantity or unit cannot be sold for this product.',
+      price_mismatch: 'The catalogue price has changed. Please check the bill again.',
+      approval_required: 'This requested price needs Manager / Owner approval.',
+      not_found: 'This product is no longer available.',
+      invalid: 'This item cannot be sold as entered.',
+      forbidden: 'You do not have permission for this action.',
+    },
+  },
 };
 
 export type Translations = Omit<typeof en, 'auth'> & {

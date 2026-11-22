@@ -7,7 +7,7 @@ from api import deps
 from db.models.user import User
 from db.models.shop_member import ShopRole
 from schemas.shop import ShopCreate, ShopUpdate, ShopResponse
-from schemas.shop_member import ShopMemberCreate, ShopMemberUpdate, ShopMemberResponse
+from schemas.shop_member import MyMembershipResponse, ShopMemberCreate, ShopMemberUpdate, ShopMemberResponse
 from services import shop as shop_service
 from services import shop_member as shop_member_service
 
@@ -50,6 +50,26 @@ def get_my_shop(
             detail="Shop profile not found for current user.",
         )
     return shop
+
+@router.get("/me/membership", response_model=MyMembershipResponse)
+def get_my_membership(
+    *,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+) -> Any:
+    """
+    The signed-in user's role in the shop they own or work in (OWNER, MANAGER or CASHIER). Read-only.
+    """
+    shop = deps.get_user_accessible_shop(db, current_user)
+    member = shop_member_service.get_shop_member(db, shop_id=shop.id, user_id=current_user.id) if shop else None
+    if not shop or not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No shop membership for the current user.")
+    elevated = member.role in (ShopRole.OWNER.value, ShopRole.MANAGER.value)
+    return MyMembershipResponse(
+        shop_id=shop.id, shop_name=shop.shop_name, role=member.role,
+        can_verify_pricing=elevated, can_approve_price_overrides=elevated, can_deactivate_products=elevated,
+    )
+
 
 @router.put("/{id}", response_model=ShopResponse)
 def update_shop(

@@ -35,7 +35,13 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { useSales } from '../hooks/useSales';
 import { getSaleById } from '../services/salesService';
 import { describeError } from '../utils/errorHandler';
-import { cartLineKey, cartLineTotal, cartTotal, cartUnitPrice, displayUnitPrice, mergeIntoCart, round3 } from '../utils/cartPricing';
+import { useShopRole } from '../hooks/useShopRole';
+import { useSaleQuote } from '../hooks/useSaleQuote';
+import { useUnitRegistry } from '../hooks/useUnitRegistry';
+import { productsApi } from '../api/products';
+import { mapBackendProductToFrontend } from '../services/inventoryService';
+import { formatRupees, isSellableStatus, rateText, statusBadgeKey, statusReasonKey } from '../utils/productPricing';
+import { cartCatalogueTotal, cartLineKey, cartLineTotal, cartNeedsApproval, cartTotal, cartUnitPrice, displayUnitPrice, mergeIntoCart, round3, withCataloguePrice } from '../utils/cartPricing';
 import { useDialog } from '../hooks/useDialog';
 import { usePrintRequest } from '../hooks/usePrint';
 import { PrintPortal } from '../components/PrintPortal';
@@ -118,6 +124,13 @@ export const Sales: React.FC<SalesProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const checkoutInFlight = useRef(false);
   const [saleError, setSaleError] = useState<string | null>(null);
+  // Stage 5: role-aware actions (the server still authorizes everything), server-checked cart prices
+  const { canApprove } = useShopRole();
+  const { index: unitIndex } = useUnitRegistry();
+  const [verifiedOverrides, setVerifiedOverrides] = useState<Record<string, Product>>({});
+  const [productNotice, setProductNotice] = useState<{ productId: string; text: string; tone: 'info' | 'error' } | null>(null);
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
+  const [quoteNonce, setQuoteNonce] = useState(0);
   const [showVoiceModal, setShowVoiceModal] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
@@ -188,6 +201,13 @@ export const Sales: React.FC<SalesProps> = ({
   // ---------------------------------------------------------------------------
   const addToCart = (product: Product) => {
     setSaleError(null);
+    // NEEDS_REVIEW / INCOMPLETE pricing cannot be sold (the server refuses it): explain instead of adding
+    if (!isSellableStatus(product.pricingStatus)) {
+      const reason = statusReasonKey(product.pricingStatus);
+      setProductNotice({ productId: product.id, text: reason ? t(reason) : t('pricing.errors.pricing_status'), tone: 'error' });
+      return;
+    }
+    setProductNotice(null);
     // Catalogue-priced line of this product (a spoken-price line of the same product is left as it is)
     setCart(mergeIntoCart(cart, [{ product, quantity: 1 }]));
   };
@@ -208,8 +228,49 @@ export const Sales: React.FC<SalesProps> = ({
     setCart(cart.filter(item => cartLineKey(item) !== lineKey));
   };
 
+  /** Manager / Owner action: verify a product's pricing (the server checks the role, basis, units and MRP). */
+  const handleVerify = async (product: Product) => {
+    if (verifyingId) return;
+    setVerifyingId(product.id);
+    setProductNotice(null);
+    try {
+      const updated = mapBackendProductToFrontend(await productsApi.verifyProduct(product.id, 'Verified at the POS'));
+      setVerifiedOverrides((prev) => ({ ...prev, [product.id]: updated }));
+      setProductNotice({ productId: product.id, text: t('pricing.verified', { name: product.name }), tone: 'info' });
+    } catch (err: any) {
+      const text = err?.status === 403 ? t('pricing.errors.forbidden') : describeError(err, t('pricing.errors.invalid'));
+      setProductNotice({ productId: product.id, text, tone: 'error' });
+    } finally {
+      setVerifyingId(null);
+    }
+  };
+
+  /** Typed quantity for loose goods (kg, g, L, ml allow 3 decimals; other units whole numbers). */
+  const setLineQuantity = (lineKey: string, raw: string) => {
+    const value = Number(raw);
+    if (!raw.trim() || !Number.isFinite(value) || value <= 0) return;
+    setSaleError(null);
+    setCart(prev => prev.map(item => (cartLineKey(item) === lineKey ? { ...item, quantity: round3(value) } : item)));
+  };
+
   // Exact sum of the rounded lines (each line at its own agreed or catalogue price): the total the sale saves
   const totalAmount = cartTotal(cart);
+  // Requested prices not yet approved: the total is shown as requested, never as a settled bill
+  const approvalPending = cartNeedsApproval(cart);
+  const catalogueTotal = cartCatalogueTotal(cart);
+  // Server price check of the cart (same evaluation as checkout; nothing is recorded)
+  const { quote, status: quoteStatus } = useSaleQuote(cart, quoteNonce);
+  const quoteReady = quoteStatus === 'ready' && quote !== null && quote.lines.length === cart.length;
+  const lineQuote = (index: number) => (quoteReady ? quote!.lines[index] : undefined);
+  const blockingLines = quoteReady ? quote!.lines.filter((l) => !l.ok) : [];
+  // The bill total: the server's once it has checked every line; until then the preview is marked as checking
+  const shownTotal = quoteReady && quote!.all_ok ? quote!.total : totalAmount;
+  const checkoutBlocked = cart.length === 0 || quoteStatus === 'checking' || blockingLines.length > 0
+    || (approvalPending && !canApprove);
+  const applyCataloguePrice = (lineKey: string) => {
+    setSaleError(null);
+    setCart(prev => mergeIntoCart([], prev.map(item => (cartLineKey(item) === lineKey ? withCataloguePrice(item) : item))));
+  };
 
   const totalItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -218,7 +279,7 @@ export const Sales: React.FC<SalesProps> = ({
   // ---------------------------------------------------------------------------
   const handleCompleteSale = async () => {
     // The ref blocks a second tap that arrives before React re-renders the disabled button.
-    if (cart.length === 0 || isProcessing || checkoutInFlight.current) return;
+    if (cart.length === 0 || isProcessing || checkoutInFlight.current || checkoutBlocked) return;
     checkoutInFlight.current = true;
     setIsProcessing(true);
     setSaleError(null);
@@ -229,8 +290,9 @@ export const Sales: React.FC<SalesProps> = ({
           productId: item.product.id,
           name: item.product.name,
           quantity: item.quantity,
-          // The line's agreed price (spoken / corrected) or the catalogue price: what the bill showed
-          price: cartUnitPrice(item),
+          // A requested (spoken / corrected) price is sent as such: the server applies it only with Manager /
+          // Owner approval (audited) and refuses it otherwise; other lines assert the catalogue price
+          ...(item.needsApproval ? { requestedLineTotal: cartLineTotal(item) } : { price: cartUnitPrice(item) }),
           unit: item.product.unit
         })),
         paymentMethod: paymentMethod as PaymentMethod,
@@ -246,7 +308,10 @@ export const Sales: React.FC<SalesProps> = ({
       onSaleComplete?.(sale);
     } catch (err: any) {
       // The cart is kept so the sale can be retried after fixing the problem.
-      setSaleError(describeError(err, 'Transaction failed. Please check stock and try again.'));
+      // The server's reason is shown as given (it names the product); 403 = a permission the user lacks
+      setSaleError(describeError(err, err?.status === 403 ? t('pricing.errors.forbidden') : t('pricing.errors.invalid')));
+      // Check the cart again: stock or prices may have changed, and each line shows its own reason
+      setQuoteNonce((n) => n + 1);
     } finally {
       setIsProcessing(false);
       checkoutInFlight.current = false;
@@ -256,9 +321,11 @@ export const Sales: React.FC<SalesProps> = ({
   // ---------------------------------------------------------------------------
   // POS Filtering
   // ---------------------------------------------------------------------------
-  const favoriteProducts = products.slice(0, 6);
+  // The catalogue as shown: server data, updated with products a Manager / Owner just verified here
+  const catalogue = useMemo(() => products.map((p) => verifiedOverrides[p.id] ?? p), [products, verifiedOverrides]);
+  const favoriteProducts = catalogue.slice(0, 6);
 
-  const filteredProducts = products.filter((prod) => {
+  const filteredProducts = catalogue.filter((prod) => {
     const matchesSearch = prod.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           prod.category.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'All' || prod.category === selectedCategory;
@@ -449,7 +516,7 @@ export const Sales: React.FC<SalesProps> = ({
                     {prod.name}
                   </p>
                   <div className="flex items-center justify-between mt-1 pt-1 border-t border-[#E3E5DE]">
-                    <span className="font-extrabold text-xs text-[#202923]">₹{prod.price}</span>
+                    <span className="font-extrabold text-xs text-[#202923] truncate">{rateText(prod)}</span>
                     <span className="text-[10px] font-bold bg-[#E5EEE6] text-[#234B3A] px-1.5 py-0.5 rounded">
                       {t('sales.add')}
                     </span>
@@ -528,14 +595,23 @@ export const Sales: React.FC<SalesProps> = ({
                   // All lines of this product (catalogue and spoken-price lines)
                   const inCartQty = round3(cart.filter(item => item.product.id === prod.id).reduce((n, item) => n + item.quantity, 0));
                   const inCart = inCartQty > 0 ? { quantity: inCartQty } : undefined;
+                  const sellable = isSellableStatus(prod.pricingStatus);
+                  const badgeKey = statusBadgeKey(prod.pricingStatus);
+                  const reasonKey = statusReasonKey(prod.pricingStatus);
+                  const notice = productNotice?.productId === prod.id ? productNotice : null;
                   return (
                     <div
                       key={prod.id}
+                      data-testid="pos-product"
+                      data-product-name={prod.name}
+                      data-pricing-status={prod.pricingStatus ?? ''}
                       onClick={() => addToCart(prod)}
-                      className={`bg-white rounded-xl border p-4 shadow-xs flex flex-col justify-between transition-all cursor-pointer select-none active:scale-95 min-h-[115px] ${
-                        inCart 
-                          ? 'border-[#234B3A] bg-[#E5EEE6]/30 ring-2 ring-[#234B3A]/20' 
-                          : 'border-[#E3E5DE] hover:border-[#52745D]/50'
+                      className={`bg-white rounded-xl border p-4 shadow-xs flex flex-col justify-between transition-all select-none min-h-[115px] ${
+                        sellable ? 'cursor-pointer active:scale-95' : 'cursor-not-allowed bg-[#FAF8F2]'
+                      } ${
+                        inCart
+                          ? 'border-[#234B3A] bg-[#E5EEE6]/30 ring-2 ring-[#234B3A]/20'
+                          : sellable ? 'border-[#E3E5DE] hover:border-[#52745D]/50' : 'border-[#E3E5DE]'
                       }`}
                     >
                       <div>
@@ -550,19 +626,60 @@ export const Sales: React.FC<SalesProps> = ({
                         <h3 className="font-bold text-[#202923] text-xs sm:text-sm leading-tight line-clamp-2">
                           {prod.name}
                         </h3>
+                        {badgeKey && (
+                          <span
+                            data-testid="pricing-status-badge"
+                            className={`mt-1.5 inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                              sellable ? 'bg-[#E5EEE6] text-[#234B3A]' : 'bg-[#FBF4E7] text-[#8A5A12] border border-[#D6AE62]/50'
+                            }`}
+                          >
+                            {t(badgeKey)}
+                          </span>
+                        )}
                       </div>
 
-                      <div className="mt-3 flex items-baseline justify-between pt-2 border-t border-[#E3E5DE]">
-                        <span className="text-sm sm:text-base font-extrabold text-[#202923]">
-                          ₹{prod.price}
+                      {(!sellable || prod.pricingStatus === 'WHOLESALE_ONLY' || notice) && (
+                        <div className="mt-2 space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                          {reasonKey && (
+                            <p data-testid="pricing-status-reason" className="text-[10px] leading-snug text-[#69736C] font-medium">
+                              {t(reasonKey, { unit: prod.unit })}
+                            </p>
+                          )}
+                          {!sellable && (canApprove ? (
+                            <button
+                              type="button"
+                              data-testid="verify-price"
+                              disabled={verifyingId === prod.id}
+                              onClick={() => handleVerify(prod)}
+                              className="w-full px-2 py-1.5 rounded-lg border border-[#234B3A]/40 bg-white text-[#234B3A] text-[11px] font-bold hover:bg-[#E5EEE6] transition-colors cursor-pointer disabled:opacity-60"
+                            >
+                              {verifyingId === prod.id ? t('pricing.verifying') : t('pricing.verify')}
+                            </button>
+                          ) : (
+                            <p className="text-[10px] font-semibold text-[#8A5A12]">{t('pricing.askManager')}</p>
+                          ))}
+                          {notice && (
+                            <p role="status" data-testid="product-notice"
+                               className={`text-[10px] font-bold ${notice.tone === 'error' ? 'text-[#B93838]' : 'text-[#234B3A]'}`}>
+                              {notice.text}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 pt-2 border-t border-[#E3E5DE]">
+                        <span data-testid="pos-rate" className="text-sm font-extrabold text-[#202923] leading-tight break-words min-w-0">
+                          {rateText(prod)}
                         </span>
                         <button
                           type="button"
+                          disabled={!sellable}
+                          aria-disabled={!sellable}
                           onClick={(e) => {
                             e.stopPropagation();
                             addToCart(prod);
                           }}
-                          className="px-2.5 py-1 bg-[#234B3A] text-white font-bold rounded-lg hover:bg-[#18382B] text-xs flex items-center gap-1 active:scale-90 transition-transform cursor-pointer"
+                          className="shrink-0 px-2.5 py-1 bg-[#234B3A] text-white font-bold rounded-lg hover:bg-[#18382B] text-xs flex items-center gap-1 active:scale-90 transition-transform cursor-pointer disabled:bg-[#C9CEC6] disabled:cursor-not-allowed disabled:active:scale-100"
                         >
                           <Plus className="w-3.5 h-3.5" /> {t('sales.add')}
                         </button>
@@ -609,21 +726,47 @@ export const Sales: React.FC<SalesProps> = ({
 
                 {/* Cart Items List */}
                 <div className="divide-y divide-[#E3E5DE] max-h-[280px] overflow-y-auto my-2 pr-1">
-                  {cart.map((item) => (
-                    <div key={cartLineKey(item)} data-testid="cart-line" className="py-2.5 flex items-center justify-between gap-2">
+                  {cart.map((item, lineIndex) => {
+                    const lq = lineQuote(lineIndex);
+                    const lineProblem = lq && !lq.ok && lq.code !== 'approval_required' ? lq : null;
+                    // The server's line total once it has checked the line; the preview until then
+                    const shownLineTotal = lq?.ok && typeof lq.line_total === 'number' ? lq.line_total : cartLineTotal(item);
+                    const rate = item.needsApproval ? `${formatRupees(displayUnitPrice(item))} / ${item.product.unit}` : rateText(item.product);
+                    return (
+                    <div key={cartLineKey(item)} data-testid="cart-line" data-line-state={lineProblem ? 'error' : lq ? 'checked' : 'pending'}
+                         className={`py-2.5 flex items-center justify-between gap-2 ${lineProblem ? 'bg-[#FDF2F2]/60 -mx-1 px-1 rounded-lg' : ''}`}>
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-[#202923] text-xs sm:text-sm truncate">
                           {item.product.name}
                         </p>
                         <p className="text-xs text-[#69736C] mt-0.5 font-medium">
-                          ₹{displayUnitPrice(item)} × {item.quantity} = <span data-testid="cart-line-total" className="text-[#202923] font-bold">₹{cartLineTotal(item).toFixed(2)}</span>
+                          <span data-testid="cart-line-rate">{item.quantity} {item.product.unit} × {rate}</span> ={' '}
+                          <span data-testid="cart-line-total" className={`font-bold ${lq ? 'text-[#202923]' : 'text-[#69736C]'}`}>{formatRupees(shownLineTotal)}</span>
                         </p>
-                        {(item.priceSource || item.spokenQuantity) && (
-                          <p className="text-[10px] text-[#2F6F4F] font-semibold mt-0.5">
-                            {item.priceSource === 'spoken' ? 'Spoken price kept' : item.priceSource === 'edited' ? 'Corrected price' : ''}
-                            {item.spokenQuantity ? `${item.priceSource ? ' · ' : ''}said ${item.spokenQuantity}` : ''}
-                          </p>
+                        {lineProblem && (
+                          <div role="alert" data-testid="cart-line-error" className="mt-1 text-[10px] font-semibold text-[#B93838]">
+                            <p>{t(`pricing.errors.${lineProblem.code ?? 'invalid'}`)}</p>
+                            {lineProblem.message && <p className="font-medium text-[#8F3A3A] break-words">{lineProblem.message}</p>}
+                          </div>
                         )}
+                        {item.needsApproval ? (
+                          <div data-testid="cart-line-approval" className="mt-1 text-[10px] font-semibold text-[#8A5A12] bg-[#FBF4E7] border border-[#D6AE62]/50 rounded-md px-1.5 py-1">
+                            <span>
+                              {t('pricing.requested')}
+                              {typeof item.catalogueLineTotal === 'number' ? ` · ${t('pricing.catalogue', { amount: formatRupees(item.catalogueLineTotal) })}` : ''}
+                              {item.spokenQuantity ? ` · ${item.spokenQuantity}` : ''}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => applyCataloguePrice(cartLineKey(item))}
+                              className="ml-1 underline font-bold text-[#234B3A] cursor-pointer"
+                            >
+                              {t('pricing.useCatalogue')}
+                            </button>
+                          </div>
+                        ) : item.spokenQuantity ? (
+                          <p className="text-[10px] text-[#2F6F4F] font-semibold mt-0.5">{item.spokenQuantity}</p>
+                        ) : null}
                       </div>
 
                       {/* Quantity Stepper [-] Qty [+] */}
@@ -636,9 +779,18 @@ export const Sales: React.FC<SalesProps> = ({
                         >
                           <Minus className="w-3.5 h-3.5" />
                         </button>
-                        <span className="font-bold text-sm text-[#202923] w-6 text-center">
-                          {item.quantity}
-                        </span>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min={unitIndex?.allowsFraction(item.product.unit) ? '0.001' : '1'}
+                          step={unitIndex?.allowsFraction(item.product.unit) ? '0.001' : '1'}
+                          key={`${cartLineKey(item)}-${item.quantity}`}
+                          defaultValue={item.quantity}
+                          onBlur={(e) => setLineQuantity(cartLineKey(item), e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                          aria-label={`Quantity of ${item.product.name} (${item.product.unit})`}
+                          className="font-bold text-sm text-[#202923] w-12 text-center bg-transparent border-b border-dashed border-[#C9CEC6] focus:outline-none focus:border-[#234B3A] [appearance:textfield]"
+                        />
                         <button
                           type="button"
                           onClick={() => updateQuantity(cartLineKey(item), 1)}
@@ -657,7 +809,8 @@ export const Sales: React.FC<SalesProps> = ({
                         </button>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
 
                   {cart.length === 0 && (
                     <div className="py-10 text-center text-[#69736C] space-y-1">
@@ -694,7 +847,10 @@ export const Sales: React.FC<SalesProps> = ({
                 {saleError && (
                   <div role="alert" className="p-2.5 bg-[#FDF2F2] border border-[#B93838]/30 text-[#B93838] text-xs font-bold rounded-lg mt-2 flex items-start gap-1.5">
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px text-[#B93838]" aria-hidden="true" />
-                    <span>Sale not recorded. {saleError} Your bill items are kept so you can try again.</span>
+                    <span data-testid="sale-error">
+                      <span className="block">{t('pricing.saleFailed')}</span>
+                      <span className="block font-semibold mt-0.5 break-words">{saleError}</span>
+                    </span>
                   </div>
                 )}
 
@@ -704,21 +860,45 @@ export const Sales: React.FC<SalesProps> = ({
                     <span className="text-xs font-bold uppercase text-[#69736C]">
                       {t('sales.total', { count: totalItemCount })}
                     </span>
-                    <span className="text-2xl font-black text-[#202923]">
-                      ₹{totalAmount.toFixed(2)}
+                    <span data-testid="bill-total" data-quote-status={quoteStatus} data-quote-lines={quote?.lines.length ?? 0} data-cart-lines={cart.length}
+                      className={`text-2xl font-black transition-opacity ${
+                      quoteStatus === 'checking' || blockingLines.length > 0 ? 'text-[#69736C] opacity-70' : 'text-[#202923]'}`}>
+                      {formatRupees(shownTotal)}
                     </span>
                   </div>
+                  {cart.length > 0 && quoteStatus === 'checking' && (
+                    <p data-testid="quote-status" role="status" className="text-[11px] font-semibold text-[#69736C] flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[#52745D] animate-pulse" aria-hidden="true" />
+                      {t('pricing.checking')}
+                    </p>
+                  )}
+                  {cart.length > 0 && quoteStatus === 'error' && (
+                    <p data-testid="quote-status" role="status" className="text-[11px] font-semibold text-[#8A5A12]">{t('pricing.notChecked')}</p>
+                  )}
+                  {blockingLines.length > 0 && (
+                    <p data-testid="quote-blocked" role="alert" className="text-[11px] font-semibold text-[#B93838]">{t('pricing.resolveFirst')}</p>
+                  )}
+                  {approvalPending && (
+                    <div data-testid="approval-pending-note" className="text-[11px] font-semibold text-[#8A5A12] bg-[#FBF4E7] border border-[#D6AE62]/50 rounded-lg px-2.5 py-2 space-y-1">
+                      <p>{t('pricing.notFinal', { amount: formatRupees(catalogueTotal) })}</p>
+                      <p data-testid="approval-role-note" className="font-bold">{canApprove ? t('pricing.approverNote') : t('pricing.cashierNote')}</p>
+                    </div>
+                  )}
 
                   <Button
                     variant="primary"
                     size="lg"
                     className="w-full font-bold text-base py-3.5 rounded-lg shadow-xs min-h-[48px]"
-                    disabled={cart.length === 0}
+                    disabled={checkoutBlocked || isProcessing}
                     loading={isProcessing}
                     onClick={handleCompleteSale}
                     icon={<CheckCircle2 className="w-5 h-5" />}
                   >
-                    {isProcessing ? 'Processing Sale...' : t('sales.completeSale', { total: `₹${totalAmount.toFixed(2)}` })}
+                    {isProcessing
+                      ? 'Processing Sale...'
+                      : approvalPending && canApprove
+                      ? t('pricing.approveAndComplete', { total: formatRupees(shownTotal) })
+                      : t('sales.completeSale', { total: `${formatRupees(shownTotal)}${approvalPending ? ` · ${t('pricing.notFinalShort')}` : ''}` })}
                   </Button>
                 </div>
               </Card>
@@ -738,7 +918,9 @@ export const Sales: React.FC<SalesProps> = ({
                     {totalItemCount} {totalItemCount === 1 ? 'item' : 'items'} in bill
                   </p>
                   <p className="text-sm font-extrabold text-white leading-tight">
-                    ₹{totalAmount.toFixed(2)}
+                    {formatRupees(shownTotal)}
+                    {approvalPending && <span className="ml-1 text-[10px] font-bold text-amber-300">{t('pricing.notFinalShort')}</span>}
+                    {!approvalPending && quoteStatus === 'checking' && <span className="ml-1 text-[10px] font-semibold text-slate-300">{t('pricing.checking')}</span>}
                   </p>
                 </div>
               </div>
@@ -1149,7 +1331,7 @@ export const Sales: React.FC<SalesProps> = ({
           <VoiceBillModal
             isOpen={showVoiceModal}
             onClose={() => setShowVoiceModal(false)}
-            products={products}
+            products={catalogue}
             onConfirmToCart={handleVoiceItemsConfirmed}
             onDirectCheckout={handleVoiceDirectCheckout}
           />

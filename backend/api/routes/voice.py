@@ -62,17 +62,16 @@ def resolve_catalog_products(
     """
     catalog = []
     if current_user:
-        user_shop = shop_service.get_shop_by_owner(db, owner_id=current_user.id)
+        # The user's own shop or the shop they work in (staff membership), never another shop's products
+        user_shop = deps.get_user_accessible_shop(db, current_user)
         if user_shop:
             catalog = db.query(Product).filter(Product.shop_id == user_shop.id).all()
+            return catalog
 
-    if not catalog and custom_products:
+    if custom_products:
         return custom_products
 
-    if not catalog:
-        # Fallback to any products in DB
-        catalog = db.query(Product).limit(100).all()
-
+    # No shop: nothing to match against (previously every shop's products were used: a cross-shop leak)
     return catalog
 
 @router.get("/status", response_model=VoiceStatusResponse)

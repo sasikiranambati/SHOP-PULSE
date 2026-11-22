@@ -23,3 +23,15 @@ class ShopMemberResponse(ShopMemberBase):
     user_email: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+
+class MyMembershipResponse(BaseModel):
+    """The signed-in user's own role in their shop (read-only; used by the frontend to show the right actions).
+
+    Authorization is still enforced by every endpoint; these flags only decide what the interface offers."""
+    shop_id: UUID
+    shop_name: Optional[str] = None
+    role: str
+    can_verify_pricing: bool
+    can_approve_price_overrides: bool
+    can_deactivate_products: bool

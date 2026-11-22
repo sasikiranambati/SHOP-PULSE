@@ -23,6 +23,13 @@ export interface ProductBackend {
   sku?: string | null;
   is_active?: boolean;
   stock_status: 'In Stock' | 'Low Stock' | 'Critical';
+  /** Pricing lifecycle (server-authoritative): only VERIFIED and WHOLESALE_ONLY products can be sold. */
+  pricing_status?: 'VERIFIED' | 'NEEDS_REVIEW' | 'INCOMPLETE' | 'WHOLESALE_ONLY' | string | null;
+  /** selling_price is per this quantity of price_basis_unit (₹30 per 100 g). */
+  price_basis_quantity?: number | null;
+  price_basis_unit?: string | null;
+  mrp_basis_quantity?: number | null;
+  mrp_basis_unit?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 }
@@ -70,6 +77,14 @@ export interface ProductQueryParams {
 }
 
 export const productsApi = {
+  /**
+   * Verify a product's pricing (Manager / Owner only; the server checks the role, basis, units and MRP and
+   * records an audit entry). Returns the updated product.
+   */
+  verifyProduct: async (id: string, reason?: string): Promise<ProductBackend> => {
+    return apiClient.post<ProductBackend>(`/api/v1/products/${id}/verify`, reason ? { reason } : {});
+  },
+
   /**
    * Get paginated products for the user's shop with search and category filtering.
    */

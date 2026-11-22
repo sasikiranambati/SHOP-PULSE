@@ -1,19 +1,22 @@
 /**
  * Voice-to-Bill line helpers: how a recognised line becomes a cart line, and manual price correction.
- * A price spoken (or corrected by the user) is carried as the line's own unit price, so the cart, the
- * displayed bill and the saved sale all use it; the catalogue price applies only when no price was said.
+ * A spoken (or corrected) price that differs from the catalogue is carried with the line as a requested
+ * price pending Manager / Owner approval; the server applies it only after that approval (audited).
  */
 import type { MatchedVoiceItem } from '../api/voice';
 import type { CartItem, Product } from '../types';
-import { catalogPrice, lineTotal } from './cartPricing';
+import { lineTotal } from './cartPricing';
 
-/** True when the line's price must be kept instead of the catalogue price. */
-export function hasAgreedPrice(item: MatchedVoiceItem, product?: Product): boolean {
-  if (item.price_source === 'spoken' || item.price_source === 'edited') return true;
+/**
+ * Stage 4C.1 Decision 1: a spoken (or corrected) price is a customer request. When it differs from the
+ * catalogue line it needs Manager / Owner approval at checkout; when it matches, the line is a normal
+ * catalogue line. It is never applied silently and never replaced silently by the catalogue price.
+ */
+export function needsPriceApproval(item: MatchedVoiceItem): boolean {
+  if (typeof item.needs_price_approval === 'boolean') return item.needs_price_approval;
   if (item.price_source === 'catalogue') return false;
-  // Older responses without price_source: keep any price that differs from the catalogue
-  const exact = item.unit_price_exact ?? item.unit_price;
-  return product ? Math.abs(exact - catalogPrice(product)) > 1e-9 : false;
+  if (typeof item.catalog_line_total === 'number') return Math.abs(item.total_price - item.catalog_line_total) > 0.01;
+  return item.price_source === 'spoken' || item.price_source === 'edited';
 }
 
 /** Exact unit price of a line: quantity x this, rounded to paise, gives the line total. */
@@ -24,9 +27,12 @@ export function exactUnitPrice(item: MatchedVoiceItem): number {
 
 export function voiceLineToCartItem(item: MatchedVoiceItem, product: Product): CartItem {
   const line: CartItem = { product, quantity: item.quantity };
-  if (hasAgreedPrice(item, product)) {
+  if (needsPriceApproval(item)) {
+    // The requested price travels with the line, clearly marked as pending approval
     line.unitPrice = exactUnitPrice(item);
     line.priceSource = item.price_source === 'edited' ? 'edited' : 'spoken';
+    line.needsApproval = true;
+    if (typeof item.catalog_line_total === 'number') line.catalogueLineTotal = item.catalog_line_total;
   }
   if (item.spoken_quantity) line.spokenQuantity = item.spoken_quantity;
   return line;
@@ -36,11 +42,13 @@ export function voiceLineToCartItem(item: MatchedVoiceItem, product: Product): C
 export function withEditedLineTotal(item: MatchedVoiceItem, total: number): MatchedVoiceItem {
   const paise = lineTotal(1, total); // to the paisa, half-up
   const exact = item.quantity > 0 ? paise / item.quantity : paise;
+  const differs = typeof item.catalog_line_total === 'number' ? Math.abs(paise - item.catalog_line_total) > 0.01 : true;
   return {
     ...item,
     total_price: paise,
     unit_price_exact: exact,
     unit_price: Math.round(exact * 1000) / 1000,
     price_source: 'edited',
+    needs_price_approval: differs,
   };
 }

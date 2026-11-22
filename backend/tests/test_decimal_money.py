@@ -92,6 +92,21 @@ def _product(c, h, name, price=10.0, stock=1000):
     return r.json()["id"]
 
 
+def _sellable(c, h, name, price):
+    """A valid retail product at this catalogue price, verified by the shop owner (Stage 4: the catalogue
+    price is authoritative and only verified products can be sold)."""
+    from tests.pricing_helpers import verify_product
+    pid = _product(c, h, name, price=price)
+    verify_product(c, h, pid)
+    return pid
+
+
+def _set_price(c, h, pid, price):
+    """The owner changes the catalogue price between sales (allowed for a verified product, and audited)."""
+    r = c.put(f"/api/v1/products/{pid}", json={"selling_price": price}, headers=h)
+    assert r.status_code == 200, r.text
+
+
 def _sale(c, h, lines):
     r = c.post("/api/v1/sales", json={"items": [{"product_id": p, "quantity": q, "unit_price": u} for p, q, u in lines]},
                headers=h)
@@ -117,7 +132,8 @@ def test_purchase_totals(api):
 ])
 def test_sale_lines_are_rounded_and_summed(api, lines, expected):
     c, h = api
-    ids = {i: _product(c, h, f"P{i}") for i in {n for n, _, _ in lines}}
+    # Each product is sold at its catalogue price (the client price is only an assertion since Stage 4)
+    ids = {n: _sellable(c, h, f"P{n}", u) for n, _, u in lines}
     body = _sale(c, h, [(ids[n], q, u) for n, q, u in lines])
     assert body["total_amount"] == expected and isinstance(body["total_amount"], float)
     # unit prices are stored as given (3-dp precision kept); response shape unchanged
@@ -127,13 +143,17 @@ def test_sale_lines_are_rounded_and_summed(api, lines, expected):
 
 def test_voice_bill_total_is_reproduced_by_the_sale(api):
     c, h = api
-    tea = _product(c, h, "Tea Packet", price=40.0)
+    tea = _sellable(c, h, "Tea Packet", 40.0)
     r = c.post("/api/v1/voice/process", json={"simulation_text": "3 tea packet 100 rupees"}, headers=h)
     item = r.json()["matched_items"][0]
     assert (item["quantity"], item["total_price"], item["unit_price"]) == (3, 100.0, 33.333)
     assert r.json()["total"] == 100.0 and r.json()["subtotal"] == 100.0
-    sale = _sale(c, h, [(tea, item["quantity"], item["unit_price_exact"])])
-    assert sale["total_amount"] == 100.0  # was 99.99
+    # Stage 4C.1 Decision 1: ₹100 differs from the catalogue ₹120, so it is a requested price the owner approves
+    assert item["needs_price_approval"] is True
+    r = c.post("/api/v1/sales", json={"items": [{"product_id": tea, "quantity": item["quantity"],
+                                                 "requested_line_total": item["total_price"]}]}, headers=h)
+    assert r.status_code == 201, r.text
+    assert r.json()["total_amount"] == 100.0  # was 99.99
 
 
 @pytest.mark.parametrize("qty,spoken", [(3, "100"), (30, "100"), (7, "50"), (12, "99.99"), (1, "45.5")])
@@ -161,8 +181,9 @@ def test_voice_without_spoken_price_uses_the_selling_price():
 
 def test_reports_use_decimal_and_the_same_line_rule(api):
     c, h = api
-    a, b = _product(c, h, "Report A"), _product(c, h, "Report B")
+    a, b = _sellable(c, h, "Report A", 0.1), _sellable(c, h, "Report B", 1.005)
     _sale(c, h, [(a, 3, 0.1)])
+    _set_price(c, h, a, 33.335)
     _sale(c, h, [(a, 3, 33.335), (b, 1, 1.005)])
     dash = c.get("/api/v1/dashboard", headers=h).json()
     assert dash["today_sales"] == 101.32  # 0.30 + (100.01 + 1.01)
@@ -176,8 +197,9 @@ def test_reports_use_decimal_and_the_same_line_rule(api):
 
 def test_daily_notification_total(api):
     c, h = api
-    a = _product(c, h, "Notify A")
+    a = _sellable(c, h, "Notify A", 1.005)
     _sale(c, h, [(a, 1, 1.005)])
+    _set_price(c, h, a, 2.675)
     _sale(c, h, [(a, 1, 2.675)])
     assert c.post("/api/v1/notifications/trigger-evaluation", headers=h).status_code == 200
     notes = c.get("/api/v1/notifications", headers=h).json()["items"]
@@ -191,7 +213,7 @@ def test_historical_records_are_never_rewritten(api):
     from db.models.sale import Sale
     from db.models.shop import Shop
 
-    pid = _product(c, h, "Hist A")
+    pid = _sellable(c, h, "Hist A", 33.335)
     s = _Session()
     shop = s.query(Shop).first()
     old = Sale(shop_id=shop.id, total_amount=100.005, payment_method="cash", created_at=datetime.now(timezone.utc))

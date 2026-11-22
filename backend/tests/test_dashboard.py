@@ -9,6 +9,7 @@ from main import app
 from db.session import Base
 import db.models
 from api.deps import get_db
+from tests.pricing_helpers import verify_product
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 
@@ -144,6 +145,9 @@ def test_dashboard_shop_with_sales():
     }, headers=headers)
     assert p_b_res.status_code == 201
     p_b = p_b_res.json()
+    # Valid retail products: verified by the shop owner before sale (Stage 4)
+    verify_product(client, headers, p_a["id"])
+    verify_product(client, headers, p_b["id"])
 
     # Sale 1: 5 of Product A (Revenue = 500)
     s1_res = client.post("/api/v1/sales", json={

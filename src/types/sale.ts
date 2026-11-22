@@ -48,6 +48,11 @@ export interface CartItem {
   priceSource?: 'spoken' | 'edited';
   /** What was said when it differs from the stock quantity (e.g. "500 g" sold as 0.5 kg). */
   spokenQuantity?: string;
+  /** The requested (spoken / corrected) price differs from the catalogue: it is a customer request that only a
+   * Manager or Owner can approve at checkout (Stage 4C.1). Never applied silently. */
+  needsApproval?: boolean;
+  /** Catalogue price of this line, shown next to a requested price. */
+  catalogueLineTotal?: number;
 }
 
 /**
@@ -87,6 +92,8 @@ export interface CreateSaleInput {
     unitPrice?: number;
     price?: number;
     total?: number;
+    /** Customer-requested line price (needs Manager / Owner approval when it differs from the catalogue). */
+    requestedLineTotal?: number;
   }>;
   paymentMethod: PaymentMethod;
   customerName?: string;

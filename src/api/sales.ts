@@ -36,6 +36,8 @@ export interface SaleItemCreateInput {
   product_id: string;
   quantity: number;
   unit_price?: number;
+  /** Customer-requested line price; the server applies it only with Manager / Owner approval (audited). */
+  requested_line_total?: number;
 }
 
 export interface SaleCreateInput {
@@ -43,7 +45,45 @@ export interface SaleCreateInput {
   payment_method?: string;
 }
 
+/** Server price check of one cart line (POST /sales/quote: nothing is recorded). */
+export interface SaleQuoteLine {
+  index: number;
+  product_id: string;
+  ok: boolean;
+  code?: 'pricing_status' | 'mrp_exceeded' | 'insufficient_stock' | 'unit' | 'price_mismatch' | 'approval_required' | 'not_found' | 'invalid' | null;
+  message?: string | null;
+  line_total?: number | null;
+  catalogue_line_total?: number | null;
+  effective_unit_price?: number | null;
+  pricing_basis_quantity?: number | null;
+  pricing_basis_unit?: string | null;
+  requested_quantity?: number | null;
+  requested_unit?: string | null;
+  stock_deduction_quantity?: number | null;
+  inventory_unit?: string | null;
+  line_mrp_total?: number | null;
+  requires_approval: boolean;
+  pricing_status?: string | null;
+}
+
+export interface SaleQuote {
+  lines: SaleQuoteLine[];
+  total: number;
+  all_ok: boolean;
+  requires_approval: boolean;
+  role?: string | null;
+  can_approve_price_overrides: boolean;
+}
+
 export const salesApi = {
+  /** Price the cart exactly as checkout would, without recording a sale (the server stays authoritative). */
+  quoteSale: async (input: SaleCreateInput): Promise<SaleQuote> => {
+    return apiClient.post<SaleQuote>('/api/v1/sales/quote', {
+      items: input.items,
+      payment_method: input.payment_method || 'cash',
+    });
+  },
+
   /**
    * Record a new sale transaction.
    * Deducts inventory automatically in the backend.

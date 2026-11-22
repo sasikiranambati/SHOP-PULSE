@@ -44,17 +44,8 @@ def update_shop(db: Session, db_shop: Shop, shop_in: ShopUpdate) -> Shop:
     for field, value in update_data.items():
         setattr(db_shop, field, value)
     
+    # The owner's membership is created with the shop (create_shop); an update never adds one
     db.add(db_shop)
-    db.flush()
-
-    # Automatically register the creator as OWNER of this shop
-    owner_membership = ShopMember(
-        shop_id=db_shop.id,
-        user_id=owner_id,
-        role=ShopRole.OWNER.value,
-        is_active=True
-    )
-    db.add(owner_membership)
     db.commit()
     db.refresh(db_shop)
     return db_shop

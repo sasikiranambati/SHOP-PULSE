@@ -152,12 +152,20 @@ def _voice(c, h, text):
     return r.json()
 
 
-def _sell(c, h, matched):
-    # What the frontend sends: the cart line's agreed unit price (unit_price_exact) for spoken prices
-    items = [{"product_id": m["product_id"], "quantity": m["quantity"], "unit_price": m["unit_price_exact"]} for m in matched]
+def _sell(c, h, matched, expect=(200, 201)):
+    # What the frontend sends (Stage 4C.1 Decision 1): the catalogue price assertion for normal lines; for a
+    # spoken price that differs from the catalogue, the customer-requested line total (approval needed)
+    items = [{"product_id": m["product_id"], "quantity": m["quantity"],
+              **({"requested_line_total": m["total_price"]} if m["needs_price_approval"] else {"unit_price": m["unit_price_exact"]})}
+             for m in matched]
     r = c.post("/api/v1/sales", json={"items": items, "payment_method": "cash"}, headers=h)
-    assert r.status_code in (200, 201), r.text
+    assert r.status_code in expect, r.text
     return r.json()
+
+
+def _overrides(c, h, product_id):
+    trail = c.get(f"/api/v1/products/{product_id}/audit-trail", headers=h).json()
+    return [e for e in trail if e["action_type"] == "SALE_PRICE_OVERRIDE"]
 
 
 def test_three_tea_packets_for_100_rupees_end_to_end(api):
@@ -166,10 +174,14 @@ def test_three_tea_packets_for_100_rupees_end_to_end(api):
     v = _voice(c, h, "3 tea packets for 100 rupees")
     assert len(v["matched_items"]) == 1 and v["total"] == 100.0
     m = v["matched_items"][0]
-    assert (m["quantity"], m["total_price"], m["price_source"]) == (3, 100.0, "spoken")
-    sale = _sell(c, h, v["matched_items"])
-    assert sale["total_amount"] == 100.0  # displayed = saved (catalogue would be 120.00)
+    # Decision 1: the spoken ₹100 is a customer request (catalogue ₹120): shown, flagged for approval
+    assert (m["quantity"], m["total_price"], m["price_source"], m["catalog_line_total"], m["needs_price_approval"]) == (
+        3, 100.0, "spoken", 120.0, True)
+    sale = _sell(c, h, v["matched_items"])  # the shop owner approves it
+    assert sale["total_amount"] == 100.0
     assert c.get(f"/api/v1/products/{tea['id']}", headers=h).json()["current_stock"] == 17
+    (audit,) = _overrides(c, h, tea["id"])
+    assert "requested ₹100.00 instead of catalogue ₹120.00" in audit["reason"]
 
 
 def test_grams_spoken_for_a_kg_product_reduce_stock_in_kg(api):
@@ -187,9 +199,10 @@ def test_multiple_items_with_mixed_prices(api):
     _product(c, h, "Sugar", "kg", 10, 44.0)
     _product(c, h, "Soap", "pcs", 10, 35.0)
     v = _voice(c, h, "2 kg sugar 90 rupees and 3 soap for 100")
-    got = {m["name"]: (m["quantity"], m["total_price"], m["price_source"]) for m in v["matched_items"]}
-    assert got == {"Sugar": (2, 90.0, "spoken"), "Soap": (3, 100.0, "spoken")}
-    assert v["total"] == 190.0 and _sell(c, h, v["matched_items"])["total_amount"] == 190.0
+    got = {m["name"]: (m["quantity"], m["total_price"], m["price_source"], m["needs_price_approval"]) for m in v["matched_items"]}
+    # Sugar 2 kg at ₹90 vs catalogue ₹88 and soap 3 for ₹100 vs ₹105: both need approval
+    assert got == {"Sugar": (2, 90.0, "spoken", True), "Soap": (3, 100.0, "spoken", True)}
+    assert v["total"] == 190.0 and _sell(c, h, v["matched_items"])["total_amount"] == 190.0  # owner-approved
 
 
 def test_incompatible_unit_is_not_billed(api):

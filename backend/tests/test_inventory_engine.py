@@ -8,6 +8,7 @@ from main import app
 from db.session import Base
 import db.models
 from api.deps import get_db
+from tests.pricing_helpers import verify_product
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 
@@ -63,6 +64,7 @@ def test_sale_reduces_stock():
         "reorder_level": 10
     }, headers=headers)
     product_id = p_res.json()["id"]
+    verify_product(client, headers, product_id)  # valid retail product (Stage 4: verify before sale)
     
     # Perform sale of 15 units
     client.post("/api/v1/sales", json={
@@ -110,6 +112,7 @@ def test_overselling_blocked():
         "reorder_level": 2
     }, headers=headers)
     product_id = p_res.json()["id"]
+    verify_product(client, headers, product_id)  # valid retail product (Stage 4: verify before sale)
     
     # Attempt sale of 10 units (greater than 5)
     sale_res = client.post("/api/v1/sales", json={

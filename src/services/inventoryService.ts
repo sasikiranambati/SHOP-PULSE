@@ -6,6 +6,7 @@
 
 import type { Product, ProductInput, StockStatus, ProductQueryFilters } from '../types/product';
 import { productsApi, type ProductBackend } from '../api/products';
+import { normalizePricingStatus } from '../utils/productPricing';
 
 export function calculateStockStatus(stock: number, reorderLevel: number): StockStatus {
   if (stock <= 0) return 'Out of Stock';
@@ -46,6 +47,11 @@ export function mapBackendProductToFrontend(bp: ProductBackend): Product {
     purchasePrice,
     mrp: typeof bp.mrp === 'number' ? bp.mrp : undefined,
     mrpSource: bp.mrp_source || undefined,
+    pricingStatus: normalizePricingStatus(bp.pricing_status),
+    priceBasisQuantity: typeof bp.price_basis_quantity === 'number' ? bp.price_basis_quantity : undefined,
+    priceBasisUnit: bp.price_basis_unit || undefined,
+    mrpBasisQuantity: typeof bp.mrp_basis_quantity === 'number' ? bp.mrp_basis_quantity : undefined,
+    mrpBasisUnit: bp.mrp_basis_unit || undefined,
     reorderLevel,
     minStock: reorderLevel,
     status,

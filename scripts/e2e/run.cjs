@@ -41,6 +41,7 @@ const CHECKS = {
   unit_registry_check: null,
   invoice_units_fraction_check: null,
   voice_bill_price_check: null,
+  pos_pricing_check: null,
 };
 
 const log = (msg) => console.log(`[e2e] ${msg}`);

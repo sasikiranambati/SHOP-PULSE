@@ -9,15 +9,18 @@ import { resolve } from 'node:path';
 import type { MatchedVoiceItem } from '../api/voice';
 import type { CartItem, Product } from '../types';
 import {
+  cartCatalogueTotal,
   cartLineKey,
+  cartNeedsApproval,
   cartLineTotal,
   cartTotal,
   cartUnitPrice,
   displayUnitPrice,
   lineTotal,
   mergeIntoCart,
+  withCataloguePrice,
 } from '../utils/cartPricing';
-import { voiceLineToCartItem, withEditedLineTotal } from '../utils/voiceBill';
+import { needsPriceApproval, voiceLineToCartItem, withEditedLineTotal } from '../utils/voiceBill';
 
 const product = (over: Partial<Product> = {}): Product =>
   ({ id: 'tea', name: 'Tea', sellingPrice: 40, price: 40, unit: 'packet', ...over }) as Product;
@@ -104,5 +107,47 @@ describe('integration points (source)', () => {
     expect(modal).toMatch(/voiceLineToCartItem\(item, prod\)/);
     expect(modal).toMatch(/amb\.options\?\.find/);
     expect(modal).not.toMatch(/cartItemsToAdd\.push\(\{ product: prod, quantity: item\.quantity \}\)/);
+  });
+});
+
+describe('Stage 4C.1 Decision 1: a spoken price is a request needing approval', () => {
+  const requested = voiceLine({ catalog_line_total: 120, needs_price_approval: true });
+
+  it('a differing spoken price stays a marked request in the cart, never a settled bill', () => {
+    const line = voiceLineToCartItem(requested, product());
+    expect(line).toMatchObject({ needsApproval: true, catalogueLineTotal: 120, unitPrice: 33.3333333333 });
+    expect(cartNeedsApproval([line])).toBe(true);
+    expect(cartTotal([line])).toBe(100);           // shown as requested ...
+    expect(cartCatalogueTotal([line])).toBe(120);  // ... next to the catalogue total
+  });
+
+  it('a spoken price equal to the catalogue is an ordinary catalogue line', () => {
+    const same = voiceLineToCartItem(voiceLine({ total_price: 120, unit_price_exact: 40, catalog_line_total: 120, needs_price_approval: false }), product());
+    expect(same.unitPrice).toBeUndefined();
+    expect(same.needsApproval).toBeUndefined();
+    expect(cartNeedsApproval([same])).toBe(false);
+    expect(cartLineTotal(same)).toBe(120);
+  });
+
+  it('"use catalogue price" drops the request', () => {
+    const line = withCataloguePrice(voiceLineToCartItem(requested, product()));
+    expect(line).toEqual({ product: product(), quantity: 3 });
+    expect(cartTotal([line])).toBe(120);
+  });
+
+  it('a corrected total needs approval unless it equals the catalogue line', () => {
+    expect(needsPriceApproval(withEditedLineTotal(requested, 95))).toBe(true);
+    expect(needsPriceApproval(withEditedLineTotal(requested, 120))).toBe(false);
+  });
+
+  it('checkout sends the request for approval; labels say the total is not final', () => {
+    const sales = readFileSync(resolve(__dirname, '../pages/Sales.tsx'), 'utf8');
+    const service = readFileSync(resolve(__dirname, '../services/salesService.ts'), 'utf8');
+    const modal = readFileSync(resolve(__dirname, '../components/VoiceBillModal.tsx'), 'utf8');
+    expect(sales).toMatch(/item\.needsApproval \? \{ requestedLineTotal: cartLineTotal\(item\) \}/);
+    expect(service).toMatch(/requested_line_total: item\.requestedLineTotal/);
+    expect(sales).toMatch(/data-testid="approval-pending-note"/);
+    expect(sales).toMatch(/t\('pricing\.useCatalogue'\)/);  // localized since Stage 5
+    expect(modal).toMatch(/data-testid="voice-approval-note"/);
   });
 });

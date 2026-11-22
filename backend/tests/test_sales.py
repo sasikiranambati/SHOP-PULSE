@@ -8,6 +8,7 @@ from main import app
 from db.session import Base
 import db.models
 from api.deps import get_db
+from tests.pricing_helpers import verify_product
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 
@@ -67,7 +68,11 @@ def get_auth_setup(email: str = "seller@example.com"):
         "current_stock": 30
     }, headers=headers)
     product2_id = p2_res.json()["id"]
-    
+
+    # Both are valid retail products: verified by the shop owner before they can be sold (Stage 4)
+    verify_product(client, headers, product1_id)
+    verify_product(client, headers, product2_id)
+
     return {
         "headers": headers,
         "shop_id": shop_id,
@@ -206,7 +211,7 @@ def test_invalid_product_fails_and_rollbacks():
     
     response = client.post("/api/v1/sales", json=payload, headers=headers)
     assert response.status_code == 400
-    assert "not found or does not belong" in response.json()["detail"]
+    assert "not found" in response.json()["detail"]  # Stage 4 wording: unknown product -> "Product <id> not found."
     
     # Verify product1 stock remained at 50 (atomic rollback)
     p1 = client.get(f"/api/v1/products/{product1_id}", headers=headers).json()

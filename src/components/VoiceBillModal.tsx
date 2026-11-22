@@ -19,7 +19,7 @@ import { Button } from './Button';
 import { useDialog } from '../hooks/useDialog';
 import type { CartItem, Product } from '../types';
 import { lineTotal, lineTotalPaise, round3 } from '../utils/cartPricing';
-import { voiceLineToCartItem, withEditedLineTotal } from '../utils/voiceBill';
+import { needsPriceApproval, voiceLineToCartItem, withEditedLineTotal } from '../utils/voiceBill';
 import {
   voiceApi,
   type MatchedVoiceItem,
@@ -220,6 +220,12 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
     [matchedItems],
   );
   const total = subtotal;
+  // The same bill at catalogue prices, shown while requested prices await approval
+  const catalogueTotal = useMemo(
+    () => Number(matchedItems.reduce((acc, item) => acc + lineTotalPaise(1, needsPriceApproval(item) && typeof item.catalog_line_total === 'number'
+      ? item.catalog_line_total : item.total_price), 0n)) / 100,
+    [matchedItems],
+  );
 
   // Dev Simulation panel
   const [showDevPanel, setShowDevPanel] = useState(true);
@@ -1266,11 +1272,18 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                         <span className="text-xs text-slate-500 font-semibold">
                           ₹{item.unit_price} / {getLocalizedUnit(item.unit, displayLanguage)}
                         </span>
-                        {item.price_source && item.price_source !== 'catalogue' && (
-                          <span data-testid="voice-price-source" className="text-[10px] font-black text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded-md">
-                            {item.price_source === 'spoken' ? 'Spoken price' : 'Edited price'}
+                        {needsPriceApproval(item) ? (
+                          // A customer request, not the catalogue price: approved only by a Manager / Owner at checkout
+                          <span data-testid="voice-price-source" className="text-[10px] font-black text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded-md">
+                            {getLocalizedBillLabel(item.price_source === 'edited' ? 'editedNeedsApproval' : 'spokenNeedsApproval', displayLanguage)}
+                            {typeof item.catalog_line_total === 'number'
+                              ? ` (${getLocalizedBillLabel('catalogue', displayLanguage)} ₹${item.catalog_line_total.toFixed(2)})` : ''}
                           </span>
-                        )}
+                        ) : item.price_source === 'spoken' ? (
+                          <span data-testid="voice-price-source" className="text-[10px] font-black text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded-md">
+                            {getLocalizedBillLabel('spokenMatchesCatalogue', displayLanguage)}
+                          </span>
+                        ) : null}
                         {item.spoken_quantity && (
                           <span className="text-[10px] font-semibold text-slate-500">said {item.spoken_quantity}</span>
                         )}
@@ -1347,6 +1360,11 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                     ₹{total}
                   </span>
                 </div>
+                {matchedItems.some(needsPriceApproval) && (
+                  <p data-testid="voice-approval-note" className="px-3.5 pb-3 bg-slate-50 text-[11px] font-semibold text-amber-800">
+                    {getLocalizedBillLabel('notFinalApproval', displayLanguage)} ₹{catalogueTotal.toFixed(2)}.
+                  </p>
+                )}
               </div>
             ) : (
               <div className="py-8 text-center text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-2xl">
@@ -1574,7 +1592,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
               className="sm:flex-initial rounded-lg text-xs font-bold cursor-pointer min-h-[44px]"
               icon={<CheckCircle2 className="w-4 h-4" />}
             >
-              {getLocalizedBillLabel('confirmAndPay', displayLanguage)} (₹{total})
+              {getLocalizedBillLabel('confirmAndPay', displayLanguage)} (₹{total}{matchedItems.some(needsPriceApproval) ? ` · ${getLocalizedBillLabel('needsApprovalShort', displayLanguage)}` : ''})
             </Button>
           </div>
         </div>

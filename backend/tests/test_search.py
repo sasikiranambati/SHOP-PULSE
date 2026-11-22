@@ -12,6 +12,7 @@ from main import app
 from db.session import Base
 import db.models  # noqa: F401
 from api.deps import get_db
+from tests.pricing_helpers import verify_product
 
 engine = create_engine(
     "sqlite:///:memory:",
@@ -147,6 +148,7 @@ def test_purchase_invoices_match_by_number_supplier_and_product():
 def test_sales_match_by_bill_number_and_product_sold():
     h = auth_headers("search_sales@example.com")
     milk = add_product(h, "Amul Gold Milk 1L", stock=20, price=68)
+    verify_product(client, h, milk["id"])  # valid retail product (Stage 4: verify before sale)
     sale = client.post("/api/v1/sales", json={
         "items": [{"product_id": milk["id"], "quantity": 2}], "payment_method": "upi",
     }, headers=h)

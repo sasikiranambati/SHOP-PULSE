@@ -17,6 +17,8 @@ export type ProductCategory =
   | 'Staples'
   | 'Other';
 
+export type PricingStatus = 'VERIFIED' | 'NEEDS_REVIEW' | 'INCOMPLETE' | 'WHOLESALE_ONLY';
+
 /**
  * Main Product data model representing items in shop inventory.
  * Uses Firestore timestamp ISO strings or server timestamps.
@@ -33,6 +35,13 @@ export interface Product {
   mrp?: number;
   /** Where the stored MRP came from (INVOICE, API, MANUAL, STORE) */
   mrpSource?: string;
+  /** Pricing lifecycle from the server; only VERIFIED and WHOLESALE_ONLY products can be sold. */
+  pricingStatus?: PricingStatus | null;
+  /** sellingPrice is quoted per priceBasisQuantity of priceBasisUnit (e.g. ₹30 per 100 g). */
+  priceBasisQuantity?: number;
+  priceBasisUnit?: string;
+  mrpBasisQuantity?: number;
+  mrpBasisUnit?: string;
   reorderLevel: number;
   minStock: number; // Backward compatibility alias for reorderLevel
   imageUrl?: string;

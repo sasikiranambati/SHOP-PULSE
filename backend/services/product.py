@@ -197,6 +197,11 @@ def get_products_by_shop(
     items = query.order_by(Product.created_at.desc()).offset(skip).limit(limit).all()
     return items, total
 
+# Fields that change what a product sells for or how its price is read
+_PRICING_FIELDS = ("selling_price", "mrp", "price_basis_quantity", "price_basis_unit",
+                   "mrp_basis_quantity", "mrp_basis_unit", "unit")
+
+
 def update_product(
     db: Session,
     db_product: Product,
@@ -206,6 +211,16 @@ def update_product(
     update_data = product_in.model_dump(exclude_unset=True)
     # Never allow generic product updates to modify pricing_status directly
     update_data.pop("pricing_status", None)
+
+    # Verified pricing may only be changed by a Manager or Owner (same rule as invoice confirmation):
+    # a Cashier cannot override the selling price, MRP or pricing basis of a VERIFIED product here.
+    changed_pricing = [f for f in _PRICING_FIELDS if f in update_data and update_data[f] != getattr(db_product, f, None)]
+    if changed_pricing and db_product.pricing_status == "VERIFIED" and acting_user_id is not None:
+        member = get_shop_member(db, db_product.shop_id, acting_user_id)
+        if not member or member.role not in (ShopRole.OWNER.value, ShopRole.MANAGER.value):
+            raise PermissionError(
+                f"Only a Manager or Owner can change the verified pricing of '{db_product.name}' "
+                f"({', '.join(changed_pricing)}).")
     if {"unit", "current_stock", "reorder_level"} & set(update_data):
         # Check the resulting unit, stock and reorder level together (a unit change must suit the stock)
         final_unit = update_data["unit"] if "unit" in update_data else db_product.unit

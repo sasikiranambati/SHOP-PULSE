@@ -68,7 +68,8 @@ def get_products(
     """
     Get paginated list of products for the authenticated user's shop with search and category filtering.
     """
-    shop = shop_service.get_shop_by_owner(db, owner_id=current_user.id)
+    # Owner or staff member of the shop (cashiers sell from this catalogue)
+    shop = deps.get_user_accessible_shop(db, current_user)
     if not shop:
         return PaginatedProductResponse(items=[], total=0, skip=skip, limit=limit)
     
@@ -88,7 +89,8 @@ def get_low_stock_products(
     """
     Get products that need reordering (current_stock <= reorder_level) for the authenticated shop.
     """
-    shop = shop_service.get_shop_by_owner(db, owner_id=current_user.id)
+    # Owner or staff member of the shop (cashiers sell from this catalogue)
+    shop = deps.get_user_accessible_shop(db, current_user)
     if not shop:
         return PaginatedProductResponse(items=[], total=0, skip=skip, limit=limit)
     
@@ -172,6 +174,8 @@ def update_product(
             product_in=product_in,
             acting_user_id=current_user.id,
         )
+    except PermissionError as e:  # verified pricing changed by a role without that authority
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
     except ValueError as e:  # unit / stock validation
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -196,6 +200,14 @@ def delete_product(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to delete this product.",
+        )
+    # Deactivating a product removes it from sale and from the catalogue: a catalogue-management
+    # operation reserved for Managers and Owners (cashiers keep selling, stock and product details)
+    member = shop_member_service.get_shop_member(db, shop_id=product.shop_id, user_id=current_user.id)
+    if not member or member.role not in (ShopRole.OWNER.value, ShopRole.MANAGER.value):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Managers and Owners can deactivate products.",
         )
     product_service.delete_product(db, db_product=product)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

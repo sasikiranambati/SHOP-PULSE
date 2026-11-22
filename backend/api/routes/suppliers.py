@@ -37,7 +37,10 @@ def create_supplier(
     Create a new supplier for the authenticated user's shop.
     """
     user_shop = get_user_shop_or_raise(db, current_user)
-    return supplier_service.create_supplier(db, supplier_in=supplier_in, shop_id=user_shop.id)
+    try:
+        return supplier_service.create_supplier(db, supplier_in=supplier_in, shop_id=user_shop.id)
+    except supplier_service.DuplicateSupplierError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
 
 @router.get("", response_model=PaginatedSupplierResponse)
 @router.get("/", response_model=PaginatedSupplierResponse, include_in_schema=False)
@@ -108,7 +111,10 @@ def update_supplier(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to update this supplier.",
         )
-    return supplier_service.update_supplier(db, db_supplier=supplier, supplier_in=supplier_in)
+    try:
+        return supplier_service.update_supplier(db, db_supplier=supplier, supplier_in=supplier_in)
+    except supplier_service.DuplicateSupplierError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_supplier(

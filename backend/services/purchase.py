@@ -44,8 +44,12 @@ def create_purchase(db: Session, purchase_in: PurchaseCreate, shop_id: UUID) -> 
                 price_basis_unit=basis_unit,
                 product_name=product.name,
             )
-            total_amount += cost_res.line_cost
-            products_to_update.append((product, item, qty, cost_res))
+            # Purchase documents keep the printed precision (approved Decimal rule): the exact line
+            # (quantity in the basis unit x price / basis quantity), never rounded to paise (12 x 5.249 = 62.988)
+            exact_line = cost_res.normalized_quantity * to_decimal(item.purchase_price) / to_decimal(basis_qty)
+            total_amount += exact_line
+            # Each line keeps its own pricing basis (not the last line's)
+            products_to_update.append((product, item, qty, cost_res, basis_qty, basis_unit, exact_line))
 
         # Create Purchase Header
         db_purchase = Purchase(
@@ -57,13 +61,13 @@ def create_purchase(db: Session, purchase_in: PurchaseCreate, shop_id: UUID) -> 
         db.flush()  # Obtain db_purchase.id
 
         # Create Purchase Items & Update Inventory
-        for product, item, qty, cost_res in products_to_update:
+        for product, item, qty, cost_res, basis_qty, basis_unit, exact_line in products_to_update:
             db_item = PurchaseItem(
                 purchase_id=db_purchase.id,
                 product_id=product.id,
                 quantity=float(qty),
                 purchase_price=item.purchase_price,
-                line_amount=float(cost_res.line_cost),
+                line_amount=to_number(keep_printed_precision(exact_line)),
                 price_basis_quantity=float(basis_qty),
                 price_basis_unit=str(basis_unit) if basis_unit else None,
             )

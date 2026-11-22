@@ -10,6 +10,7 @@ from main import app
 from db.session import Base
 import db.models
 from api.deps import get_db
+from tests.pricing_helpers import verify_product
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 engine = create_engine(
@@ -116,6 +117,10 @@ def test_sales_and_inventory_insights_with_data():
         "unit": "pack"
     })
     p4_id = p4_res.json()["id"]
+
+    # Products sold below are valid retail products: verified by the shop owner (Stage 4)
+    verify_product(client, headers, p1_id)
+    verify_product(client, headers, p2_id)
 
     # 2. Record Sales
     sale_res = client.post("/api/v1/sales", headers=headers, json={
@@ -336,6 +341,7 @@ def test_sale_creation_triggers_low_stock_alert():
         "unit": "bag"
     })
     prod_id = prod_res.json()["id"]
+    verify_product(client, headers, prod_id)  # valid retail product (Stage 4: verify before sale)
 
     # Sell 2 units -> stock drops to 3 (which is <= reorder_level 4)
     sale_res = client.post("/api/v1/sales", headers=headers, json={

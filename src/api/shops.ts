@@ -31,7 +31,21 @@ export interface ShopUpdateInput {
   location?: string | null;
 }
 
+/** The signed-in user's role in their shop (read-only; the server still authorizes every action). */
+export interface MyMembership {
+  shop_id: string;
+  shop_name?: string | null;
+  role: 'OWNER' | 'MANAGER' | 'CASHIER' | string;
+  can_verify_pricing: boolean;
+  can_approve_price_overrides: boolean;
+  can_deactivate_products: boolean;
+}
+
 export const shopsApi = {
+  getMyMembership: async (): Promise<MyMembership> => {
+    return apiClient.get<MyMembership>('/api/v1/shops/me/membership');
+  },
+
   /**
    * Create a new shop profile for the authenticated user.
    */
