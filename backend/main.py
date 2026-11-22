@@ -6,86 +6,32 @@ _backend_dir = Path(__file__).resolve().parent
 if str(_backend_dir) not in sys.path:
     sys.path.insert(0, str(_backend_dir))
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
 from api.main import api_router
-from db.session import Base, engine
-import db.models  # noqa
+import db.models  # noqa: F401  (models are registered; no database access at import)
 
 import logging
-from sqlalchemy import inspect, text
 
 logger = logging.getLogger(__name__)
 
-# Additive, nullable columns applied in place to existing databases. Existing rows are
-# preserved (new columns start as NULL); nothing is dropped or recreated.
-INCREMENTAL_COLUMNS = {
-    "products": {
-        "mrp": "FLOAT",
-        "mrp_source": "VARCHAR",
-        "mrp_updated_at": "DATETIME",
-    },
-    "purchases": {
-        "invoice_number": "VARCHAR",
-        "invoice_date": "VARCHAR",
-        "processing_status": "VARCHAR",
-        "review_status": "VARCHAR",
-    },
-    "purchase_items": {
-        "line_amount": "FLOAT",
-        "mrp": "FLOAT",
-        "mrp_source": "VARCHAR",
-    },
-}
+# Stage 5.1: importing this module never touches a database. Schema initialization is an explicit,
+# logged startup step (unmanaged development / test databases only; Alembic-managed databases are never
+# changed; SHOPPULSE_DB_INIT=off disables it) - see db/init_schema.py.
+from db.init_schema import INCREMENTAL_COLUMNS, init_db_schema, initialize_database_on_startup  # noqa: E402,F401
 
 
-def init_db_schema(bind=None):
-    bind = bind or engine
-    Base.metadata.create_all(bind=bind)
-    with bind.connect() as conn:
-        inspector = inspect(conn)
-        tables = set(inspector.get_table_names())
-        # If database is managed by Alembic, schema evolution belongs exclusively to migrations.
-        # Skipping INCREMENTAL_COLUMNS prevents subverting Alembic downgrades.
-        if "alembic_version" in tables:
-            logger.info("Database schema is managed by Alembic; skipping legacy INCREMENTAL_COLUMNS sync.")
-            return
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    initialize_database_on_startup()
+    yield
 
-        for table, columns in INCREMENTAL_COLUMNS.items():
-            if table not in tables:
-                continue
-            existing = {c["name"] for c in inspector.get_columns(table)}
-            for name, ddl in columns.items():
-                if name in existing:
-                    continue
-                try:
-                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
-                    conn.commit()
-                    logger.info("Schema migration: added %s.%s", table, name)
-                except Exception as exc:
-                    conn.rollback()
-                    logger.error("Schema migration failed for %s.%s: %s", table, name, exc)
-                    raise
-
-        # Ensure high-traffic query indexes exist for SQLite / PostgreSQL
-        indexes_to_ensure = [
-            ("ix_sale_items_sale_id", "sale_items", "sale_id"),
-            ("ix_sale_items_product_id", "sale_items", "product_id"),
-            ("ix_sales_shop_id_created_at", "sales", "shop_id, created_at"),
-        ]
-        for idx_name, table, cols in indexes_to_ensure:
-            if table not in tables:
-                continue
-            try:
-                conn.execute(text(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table} ({cols})"))
-                conn.commit()
-            except Exception as exc:
-                logger.debug("Index creation %s skipped: %s", idx_name, exc)
-
-init_db_schema()
 
 app = FastAPI(
+    lifespan=lifespan,
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     docs_url="/docs"

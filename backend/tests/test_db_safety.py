@@ -90,12 +90,19 @@ def _fingerprint(path: Path):
     return hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_mtime_ns
 
 
-def _import_app(env_overrides, cwd=BACKEND_DIR):
-    env = {k: v for k, v in os.environ.items() if k not in ("DATABASE_URL", "SHOPPULSE_TEST_MODE")}
+IMPORT_ONLY = "import main; from db.session import engine; print(engine.url)"
+# Stage 5.1: importing creates nothing; the schema is created when the application starts (lifespan)
+START_APP = ("import main; from db.session import engine; print(engine.url)\n"
+             "from fastapi.testclient import TestClient\n"
+             "with TestClient(main.app):\n    pass")
+
+
+def _import_app(env_overrides, cwd=BACKEND_DIR, code=IMPORT_ONLY):
+    env = {k: v for k, v in os.environ.items() if k not in ("DATABASE_URL", "SHOPPULSE_TEST_MODE", "SHOPPULSE_DB_INIT")}
     if "DATABASE_URL" not in env_overrides:
         env["DATABASE_URL"] = ""
     env.update(env_overrides)
-    return subprocess.run([sys.executable, "-c", "import main; from db.session import engine; print(engine.url)"],
+    return subprocess.run([sys.executable, "-c", code],
                           cwd=cwd, env=env, capture_output=True, text=True, timeout=120)
 
 
@@ -117,7 +124,10 @@ def test_app_refuses_the_development_database_in_test_mode():
 def test_app_starts_on_a_test_database_and_creates_its_schema_there(tmp_path):
     before = _fingerprint(DEFAULT_DB_PATH)
     db = tmp_path / "isolated.db"
-    proc = _import_app({"SHOPPULSE_TEST_MODE": "1", "DATABASE_URL": f"sqlite:///{db}"})
+    imported = _import_app({"SHOPPULSE_TEST_MODE": "1", "DATABASE_URL": f"sqlite:///{db}"})
+    assert imported.returncode == 0, imported.stderr
+    assert not db.exists()  # Stage 5.1: importing the application creates nothing
+    proc = _import_app({"SHOPPULSE_TEST_MODE": "1", "DATABASE_URL": f"sqlite:///{db}"}, code=START_APP)
     assert proc.returncode == 0, proc.stderr
     import urllib.parse
     stdout_unquoted = urllib.parse.unquote(proc.stdout)

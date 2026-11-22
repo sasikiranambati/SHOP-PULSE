@@ -3,8 +3,9 @@ Test-database isolation for the backend test suite (Phase 4, workstream 9a).
 
 pytest loads this file before any test module, i.e. before ``main`` / ``db.session`` are imported.
 It switches the process into test mode and points ``DATABASE_URL`` at a throwaway SQLite file in a
-temporary directory, so ``init_db_schema()`` (run when ``main`` is imported) and every test that uses
-the application's own engine work on that file - never on ``backend/shoppulse.db``.
+temporary directory, so every test that uses the application's own engine works on that file - never on
+``backend/shoppulse.db``. Importing ``main`` no longer creates any schema (Stage 5.1): the test database
+is initialized explicitly below, once, before the first test.
 
 ``core.db_safety`` re-checks the URL when the engine is created and stops the run if it is not a
 dedicated test database. Set ``SHOPPULSE_TEST_DATABASE_URL`` to use a specific test database instead
@@ -40,6 +41,9 @@ def _assert_isolated_database():
     expected_url = urllib.parse.unquote(_TEST_DB_URL).replace("\\", "/")
     assert actual_url.lower() == expected_url.lower(), f"application engine is {engine.url}, expected {_TEST_DB_URL}"
     assert str(DEFAULT_DB_PATH) not in str(engine.url)
+    # Explicit schema initialization of the isolated test database (never done on import any more)
+    from db.init_schema import init_db_schema
+    init_db_schema(engine)
     yield
 
 
