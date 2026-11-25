@@ -716,4 +716,3 @@ export function clarifyAnswer(options: AssistantIntent[]): AssistantAnswer {
     followUps: options.map(suggestionForIntent),
   });
 }
-
