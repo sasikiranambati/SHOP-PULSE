@@ -14,8 +14,6 @@ import {
   Volume2,
   ChevronDown,
   ChevronUp,
-  Languages,
-  FileText,
   Loader2,
 } from 'lucide-react';
 import { Button } from './Button';
@@ -31,17 +29,7 @@ import {
   type VoiceProcessResponse,
   type VoiceProductCandidate
 } from '../api/voice';
-import {
-  VOICE_LANGUAGES,
-  VOICE_LANGUAGES_LIST,
-  SPEECH_LANGUAGES,
-  type VoiceLanguageKey,
-  getLocalizedItemName,
-  getLocalizedUnit,
-  getLocalizedBillLabel
-} from '../config/voiceLanguages';
 import { parseMultilingualVoiceBill } from '../utils/multilingualVoiceParser';
-import { useLanguage } from '../i18n/LanguageContext';
 
 interface VoiceBillModalProps {
   isOpen: boolean;
@@ -54,118 +42,31 @@ interface VoiceBillModalProps {
 
 type VoiceButtonState = 'IDLE' | 'LISTENING' | 'PROCESSING' | 'SUCCESS' | 'ERROR';
 
+const VOICE_LANGUAGE_NAME = 'English';
+const VOICE_SPEECH_CODE = 'en-IN';
+
 interface PresetItem {
   text: string;
-  langKey: VoiceLanguageKey;
   label: string;
 }
 
-const MULTILINGUAL_DEV_PRESETS: PresetItem[] = [
+const ENGLISH_DEV_PRESETS: PresetItem[] = [
   {
-    text: 'రెండు కిలోల బియ్యం నూట ఇరవై రూపాయలు',
-    langKey: 'telugu',
-    label: 'Telugu: 2 kg Rice ₹120'
-  },
-  {
-    text: 'రెండు కిలోల బియ్యం',
-    langKey: 'telugu',
-    label: 'Telugu: 2 kg Rice'
-  },
-  {
-    text: 'రెండు టాటా సాల్ట్',
-    langKey: 'telugu',
-    label: 'Telugu: 2 Tata Salt'
-  },
-  {
-    text: 'दो किलो चावल एक सौ बीस रुपये',
-    langKey: 'hindi',
-    label: 'Hindi: 2 kg Rice ₹120'
-  },
-  {
-    text: 'दो किलो चावल',
-    langKey: 'hindi',
-    label: 'Hindi: 2 kg Rice'
-  },
-  {
-    text: 'दो टाटा नमक',
-    langKey: 'hindi',
-    label: 'Hindi: 2 Tata Salt'
+    text: '2 kg Rice 120 rupees',
+    label: '2 kg Rice ₹120',
   },
   {
     text: '2 Tata Salt, 3 Parle-G and 1 Aashirvaad Atta',
-    langKey: 'english',
-    label: 'English: Salt, Biscuits, Atta'
-  },
-  {
-    text: '2 kg Rice 120 rupees',
-    langKey: 'english',
-    label: 'English: 2 kg Rice ₹120'
-  },
-  {
-    text: 'రెండు kilo rice',
-    langKey: 'telugu',
-    label: 'Code-Mixed: 2 kilo rice'
-  },
-  {
-    text: 'दो kilo चावल',
-    langKey: 'hindi',
-    label: 'Code-Mixed: 2 kilo rice'
+    label: 'Salt, Biscuits, Atta',
   },
   {
     text: '3 packets Parle-G',
-    langKey: 'english',
-    label: 'English: 3 packets Parle-G'
+    label: '3 packets Parle-G',
   },
   {
-    text: 'இரண்டு கிலோ அரிசி',
-    langKey: 'tamil',
-    label: 'Tamil: 2 kg Rice'
+    text: '500 g Sugar and 1 L Sunflower Cooking Oil',
+    label: '500g Sugar & 1L Oil',
   },
-  {
-    text: 'இரண்டு கிலோ அரிசி நூற்று இருபது ரூபாய்',
-    langKey: 'tamil',
-    label: 'Tamil: 2 kg Rice ₹120'
-  },
-  {
-    text: 'ಎರಡು ಕಿಲೋ ಅಕ್ಕಿ',
-    langKey: 'kannada',
-    label: 'Kannada: 2 kg Rice'
-  },
-  {
-    text: 'രണ്ട് കിലോ അരി',
-    langKey: 'malayalam',
-    label: 'Malayalam: 2 kg Rice'
-  },
-  {
-    text: 'दोन किलो तांदूळ',
-    langKey: 'marathi',
-    label: 'Marathi: 2 kg Rice'
-  },
-  {
-    text: 'দুই কেজি চাল',
-    langKey: 'bengali',
-    label: 'Bengali: 2 kg Rice'
-  },
-  {
-    text: 'બે કિલો ચોખા',
-    langKey: 'gujarati',
-    label: 'Gujarati: 2 kg Rice'
-  },
-  {
-    text: 'ਦੋ ਕਿਲੋ ਚਾਵਲ',
-    langKey: 'punjabi',
-    label: 'Punjabi: 2 kg Rice'
-  },
-  {
-    text: 'ଦୁଇ କିଲୋ ଚାଉଳ',
-    langKey: 'odia',
-    label: 'Odia: 2 kg Rice'
-  },
-  {
-    text: 'দুই কেজি চাউল',
-    langKey: 'assamese',
-    label: 'Assamese: 2 kg Rice'
-  }
 ];
 
 export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
@@ -175,26 +76,6 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
   onConfirmToCart,
   onDirectCheckout,
 }) => {
-  const { language: appLang } = useLanguage();
-
-  // Language selectors
-  const [spokenLanguage, setSpokenLanguage] = useState<VoiceLanguageKey>(() => {
-    // Map initial language based on current app language if applicable
-    if (appLang === 'te') return 'telugu';
-    if (appLang === 'hi') return 'hindi';
-    if (appLang === 'ta') return 'tamil';
-    if (appLang === 'kn') return 'kannada';
-    if (appLang === 'ml') return 'malayalam';
-    if (appLang === 'mr') return 'marathi';
-    if (appLang === 'bn') return 'bengali';
-    if (appLang === 'gu') return 'gujarati';
-    if (appLang === 'pa') return 'punjabi';
-    if (appLang === 'or') return 'odia';
-    if (appLang === 'as') return 'assamese';
-    return 'telugu';
-  });
-
-  const [displayLanguage, setDisplayLanguage] = useState<VoiceLanguageKey>('english');
 
   // Recording & Primary Button visual state
   const [buttonState, setButtonState] = useState<VoiceButtonState>('IDLE');
@@ -243,23 +124,20 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
     apiRequest: string;
     apiResponse: string;
     error: string | null;
-  }>(() => {
-    const initCfg = SPEECH_LANGUAGES.telugu;
-    return {
-      selectedLanguage: initCfg.name,
-      speechCode: initCfg.speechCode,
-      hasSpeechRecognition: typeof window !== 'undefined' && Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition),
-      recognitionState: 'IDLE',
-      rawTranscript: '',
-      detectedLanguage: '',
-      normalizedTranscript: '',
-      extractedItems: [],
-      inventoryMatches: [],
-      apiRequest: '',
-      apiResponse: '',
-      error: null,
-    };
-  });
+  }>(() => ({
+    selectedLanguage: VOICE_LANGUAGE_NAME,
+    speechCode: VOICE_SPEECH_CODE,
+    hasSpeechRecognition: typeof window !== 'undefined' && Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition),
+    recognitionState: 'IDLE',
+    rawTranscript: '',
+    detectedLanguage: '',
+    normalizedTranscript: '',
+    extractedItems: [],
+    inventoryMatches: [],
+    apiRequest: '',
+    apiResponse: '',
+    error: null,
+  }));
 
   // Audio recording refs
   const speechRecognitionRef = useRef<any>(null);
@@ -345,19 +223,15 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
   }));
 
   // ---------------------------------------------------------------------------
-  // Pipeline Processing
+  // Pipeline Processing (English-only)
   // ---------------------------------------------------------------------------
-  const handleProcessTranscript = async (textToProcess: string, langKeyOverride?: VoiceLanguageKey) => {
+  const handleProcessTranscript = async (textToProcess: string) => {
     if (!textToProcess.trim()) {
       setErrorMessage("No speech detected. Please speak clearly or enter items to simulate.");
       setButtonState('ERROR');
       setTimeout(() => setButtonState('IDLE'), 2500);
       return;
     }
-
-    const activeLang = langKeyOverride || spokenLanguage;
-    const speechConfig = SPEECH_LANGUAGES[activeLang] || SPEECH_LANGUAGES.english;
-    const speechCode = speechConfig.speechCode;
 
     setTranscript(textToProcess.trim());
     setEditedTranscript(textToProcess.trim());
@@ -370,11 +244,11 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
 
     setDebugInfo(prev => ({
       ...prev,
-      selectedLanguage: speechConfig.name,
-      speechCode: speechCode,
+      selectedLanguage: VOICE_LANGUAGE_NAME,
+      speechCode: VOICE_SPEECH_CODE,
       recognitionState: 'PROCESSING',
       rawTranscript: textToProcess.trim(),
-      detectedLanguage: speechConfig.name,
+      detectedLanguage: VOICE_LANGUAGE_NAME,
       apiRequest: 'POST /api/v1/voice/process',
       error: null
     }));
@@ -385,7 +259,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
       const localResult = parseMultilingualVoiceBill(
         textToProcess.trim(),
         products,
-        activeLang
+        'english'
       );
 
       if (localResult.matched_items.length > 0 || localResult.ambiguous_items.length > 0) {
@@ -404,7 +278,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
     try {
       const response: VoiceProcessResponse = await voiceApi.processVoiceBill({
         simulation_text: textToProcess.trim(),
-        language_code: speechCode,
+        language_code: VOICE_SPEECH_CODE,
         custom_products: customProductCandidates,
       });
 
@@ -446,7 +320,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         return;
       }
     } catch (backendErr: any) {
-      console.warn("Backend voice processing unavailable, relying on client-side multilingual parser:", backendErr);
+      console.warn("Backend voice processing unavailable, relying on client-side parser:", backendErr);
       setDebugInfo(prev => ({
         ...prev,
         apiResponse: `Backend offline/fallback (${backendErr.message || 'Network'}), using local parser`
@@ -461,7 +335,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         const fallbackResult = parseMultilingualVoiceBill(
           textToProcess.trim(),
           products,
-          activeLang
+          'english'
         );
 
         setMatchedItems(fallbackResult.matched_items);
@@ -491,9 +365,9 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
   };
 
   // ---------------------------------------------------------------------------
-  // Microphone Capture with Selected Spoken Language
+  // Microphone Capture (Fixed English Speech Recognition)
   // ---------------------------------------------------------------------------
-  const startRecording = (langKeyToUse: VoiceLanguageKey = spokenLanguage) => {
+  const startRecording = () => {
     // Prevent repeated or simultaneous sessions
     if (isRecording || isProcessing || buttonState === 'PROCESSING') {
       return;
@@ -513,9 +387,6 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
     accumulatedFinalRef.current = '';
     setInterimTranscript('');
     setLivePreviewItems([]);
-
-    const selectedConfig = SPEECH_LANGUAGES[langKeyToUse] || SPEECH_LANGUAGES.english;
-    const speechCode = selectedConfig.speechCode;
 
     // Check if browser supports Web Speech API
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -539,20 +410,20 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
       const recognition = new SpeechRecognition();
       speechRecognitionRef.current = recognition;
 
-      // Enable real-time streaming interim results, multi-alternatives, and continuous speech
-      recognition.lang = speechCode;
+      // Enable real-time streaming interim results, multi-alternatives, and continuous speech in English
+      recognition.lang = VOICE_SPEECH_CODE;
       recognition.interimResults = true;
       recognition.maxAlternatives = 3;
       recognition.continuous = true;
 
       if (import.meta.env.DEV) {
-        console.log(`VOICE DEBUG:\nselected language = ${selectedConfig.name}\nspeech code = ${speechCode}\nrecognition language = ${recognition.lang}`);
+        console.log(`VOICE DEBUG:\nlanguage = ${VOICE_LANGUAGE_NAME}\nspeech code = ${VOICE_SPEECH_CODE}\nrecognition language = ${recognition.lang}`);
       }
 
       setDebugInfo(prev => ({
         ...prev,
-        selectedLanguage: selectedConfig.name,
-        speechCode: speechCode,
+        selectedLanguage: VOICE_LANGUAGE_NAME,
+        speechCode: VOICE_SPEECH_CODE,
         hasSpeechRecognition: true,
         recognitionState: 'LISTENING',
         error: null
@@ -582,7 +453,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
               for (let a = 0; a < res.length; a++) {
                 const candText = res[a]?.transcript?.trim();
                 if (!candText) continue;
-                const parsed = parseMultilingualVoiceBill(candText, products, langKeyToUse);
+                const parsed = parseMultilingualVoiceBill(candText, products, 'english');
                 const score = (parsed.matched_items.length * 10) + ((res[a].confidence || 0) * 5);
                 if (score > highestScore) {
                   highestScore = score;
@@ -610,7 +481,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         debouncedPreviewTimerRef.current = setTimeout(() => {
           if (fullCurrentTranscript) {
             try {
-              const liveParsed = parseMultilingualVoiceBill(fullCurrentTranscript, products, langKeyToUse);
+              const liveParsed = parseMultilingualVoiceBill(fullCurrentTranscript, products, 'english');
               setLivePreviewItems(
                 liveParsed.matched_items.map(m => ({
                   name: m.name,
@@ -633,7 +504,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
             const finalText = (accumulatedFinalRef.current + ' ' + interimText).trim();
             if (finalText) {
               stopRecording();
-              handleProcessTranscript(finalText, langKeyToUse);
+              handleProcessTranscript(finalText);
             }
           }, 1800);
         }
@@ -647,7 +518,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         if (errType === 'not-allowed' || errType === 'permission-denied') {
           msg = "Microphone access is required for Voice-to-Bill. Please allow microphone access in your browser settings.";
         } else if (errType === 'language-not-supported') {
-          msg = `Speech recognition for ${selectedConfig.name} is not available in your current browser.`;
+          msg = "English speech recognition is not available in your current browser.";
         } else if (errType === 'no-speech') {
           msg = "No speech detected. Please speak clearly into the microphone.";
         } else if (errType === 'network') {
@@ -691,7 +562,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
     const textToCommit = (accumulatedFinalRef.current + ' ' + interimTranscript).trim();
     stopRecording();
     if (textToCommit) {
-      handleProcessTranscript(textToCommit, spokenLanguage);
+      handleProcessTranscript(textToCommit);
     } else {
       setButtonState('IDLE');
     }
@@ -706,21 +577,8 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
     if (isRecording || buttonState === 'LISTENING') {
       handleStopRecordingAndProcess();
     } else {
-      startRecording(spokenLanguage);
+      startRecording();
     }
-  };
-
-  const handleSelectSpokenLanguage = (langKey: VoiceLanguageKey) => {
-    if (isRecording) {
-      stopRecording();
-    }
-    setSpokenLanguage(langKey);
-    const config = SPEECH_LANGUAGES[langKey] || SPEECH_LANGUAGES.english;
-    setDebugInfo(prev => ({
-      ...prev,
-      selectedLanguage: config.name,
-      speechCode: config.speechCode,
-    }));
   };
 
   // ---------------------------------------------------------------------------
@@ -814,7 +672,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
 
     for (const item of matchedItems) {
       const prod = products.find(p => p.id === item.product_id) ||
-                   products.find(p => p.name.toLowerCase() === item.name.toLowerCase());
+        products.find(p => p.name.toLowerCase() === item.name.toLowerCase());
       if (prod) {
         cartItemsToAdd.push(voiceLineToCartItem(item, prod));
       } else {
@@ -838,7 +696,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
   };
 
   return (
-    <div 
+    <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-[#141E18]/60 backdrop-blur-xs animate-in fade-in duration-200"
       onClick={() => {
         if (!isRecording && !isProcessing) {
@@ -847,7 +705,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         }
       }}
     >
-      <div 
+      <div
         ref={panelRef}
         className="bg-white rounded-t-2xl sm:rounded-xl shadow-2xl border border-[#DDE9DF] w-full max-w-2xl max-h-[92dvh] flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-200"
         role="dialog"
@@ -857,7 +715,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
       >
         {/* Screen Reader Voice State Announcement */}
         <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-          {buttonState === 'LISTENING' && `Listening in ${SPEECH_LANGUAGES[spokenLanguage]?.name || spokenLanguage}... Speak now.`}
+          {buttonState === 'LISTENING' && 'Listening in English... Speak now.'}
           {buttonState === 'PROCESSING' && 'Processing voice recording and matching products...'}
           {buttonState === 'SUCCESS' && `Bill generated with ${matchedItems.length} items.`}
           {buttonState === 'ERROR' && (errorMessage || 'Voice recognition error occurred.')}
@@ -872,7 +730,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h2 id="voice-to-bill-title" className="text-base font-bold text-[#153D32]">
-                  {getLocalizedBillLabel('billTitle', displayLanguage)}
+                  Voice-to-Bill
                 </h2>
                 {isMockProvider ? (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FEF9EB] text-[#A07828] border border-[#D6AE62]/40">
@@ -885,7 +743,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                 )}
               </div>
               <p className="text-xs text-[#5E6C64] font-medium mt-0.5">
-                Speak in Telugu, Hindi, English, Tamil &amp; 12 Indian languages
+                Speak items clearly in English to create a bill
               </p>
             </div>
           </div>
@@ -902,18 +760,18 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
 
         {/* Modal Scrollable Body */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4 sm:space-y-5 flex-1 bg-white">
-          
+
           {/* Error Banner */}
           {errorMessage && (
-            <div 
+            <div
               role="alert"
               className="p-3 bg-[#FDF1EF] border border-[#EF806D]/40 text-[#B93838] rounded-xl text-xs font-semibold flex items-start gap-2.5 animate-in fade-in"
             >
               <AlertTriangle className="w-4 h-4 text-[#B93838] shrink-0 mt-0.5" />
               <div className="flex-1 leading-relaxed">{errorMessage}</div>
-              <button 
-                type="button" 
-                onClick={() => setErrorMessage(null)} 
+              <button
+                type="button"
+                onClick={() => setErrorMessage(null)}
                 className="text-[#B93838]/70 hover:text-[#B93838] p-0.5 rounded transition-colors cursor-pointer"
                 aria-label="Dismiss error"
               >
@@ -923,89 +781,21 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
           )}
 
           {/* ========================================================================= */}
-          {/* Voice to Bill Primary Card with Language Selectors & Microphone Control   */}
+          {/* Voice to Bill Primary Card (English Speech -> English Transcript -> Bill) */}
           {/* ========================================================================= */}
-          <div className="bg-[#FAF8F2] rounded-2xl p-4 sm:p-5 border border-[#DDE9DF] shadow-2xs space-y-5">
-            
+          <div className="bg-[#FAF8F2] rounded-2xl p-4 sm:p-5 border border-[#DDE9DF] shadow-2xs space-y-4">
+
             {/* Card Sub-Header */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#DDE9DF]">
+            <div className="flex items-center justify-between gap-2 pb-3 border-b border-[#DDE9DF]">
               <div className="flex items-center gap-2">
                 <Mic className="w-4 h-4 text-[#153D32]" strokeWidth={2} />
                 <span className="font-bold text-sm text-[#153D32] tracking-tight">
                   Voice to Bill
                 </span>
               </div>
-              <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#153D32] bg-[#E7F3EE] border border-[#23866A]/25 px-2.5 py-0.5 rounded-full">
-                <Languages className="w-3.5 h-3.5 text-[#23866A]" strokeWidth={2} />
-                <span>12 Indian Languages</span>
-              </div>
-            </div>
-
-            {/* Secondary Controls: Language Selectors */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 w-full text-left">
-              
-              {/* Language I Speak */}
-              <div className="space-y-1.5">
-                <label 
-                  htmlFor="spoken-lang-dropdown"
-                  className="text-xs font-bold text-[#153D32] flex items-center gap-1.5"
-                >
-                  <Mic className="w-3.5 h-3.5 text-[#23866A]" strokeWidth={2} />
-                  <span>Language I Speak</span>
-                </label>
-                <div className="relative">
-                  <select
-                    id="spoken-lang-dropdown"
-                    value={spokenLanguage}
-                    onChange={(e) => handleSelectSpokenLanguage(e.target.value as VoiceLanguageKey)}
-                    className="w-full pl-3.5 pr-8 py-2.5 bg-white border border-[#DDE9DF] hover:border-[#23866A] focus:border-[#153D32] rounded-xl text-xs sm:text-sm font-semibold text-[#252D29] shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#153D32]/15 cursor-pointer appearance-none transition-colors"
-                  >
-                    {VOICE_LANGUAGES_LIST.map((lang) => (
-                      <option key={lang.key} value={lang.key}>
-                        {lang.label}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-[#5E6C64]">
-                    <ChevronDown className="w-4 h-4" />
-                  </div>
-                </div>
-                <p className="text-[11px] text-[#5E6C64]">
-                  Voice input recognition language
-                </p>
-              </div>
-
-              {/* Show Bill In */}
-              <div className="space-y-1.5">
-                <label 
-                  htmlFor="display-lang-dropdown"
-                  className="text-xs font-bold text-[#153D32] flex items-center gap-1.5"
-                >
-                  <FileText className="w-3.5 h-3.5 text-[#153D32]" strokeWidth={2} />
-                  <span>Show Bill In</span>
-                </label>
-                <div className="relative">
-                  <select
-                    id="display-lang-dropdown"
-                    value={displayLanguage}
-                    onChange={(e) => setDisplayLanguage(e.target.value as VoiceLanguageKey)}
-                    className="w-full pl-3.5 pr-8 py-2.5 bg-white border border-[#DDE9DF] hover:border-[#23866A] focus:border-[#153D32] rounded-xl text-xs sm:text-sm font-semibold text-[#252D29] shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#153D32]/15 cursor-pointer appearance-none transition-colors"
-                  >
-                    {VOICE_LANGUAGES_LIST.map((lang) => (
-                      <option key={lang.key} value={lang.key}>
-                        {lang.label}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-[#5E6C64]">
-                    <ChevronDown className="w-4 h-4" />
-                  </div>
-                </div>
-                <p className="text-[11px] text-[#5E6C64]">
-                  Generated bill display language
-                </p>
-              </div>
-
+              <span className="text-[11px] font-semibold text-[#153D32] bg-[#E7F3EE] border border-[#23866A]/25 px-2.5 py-0.5 rounded-full">
+                English Only
+              </span>
             </div>
 
             {/* Primary Action: Microphone Control */}
@@ -1015,17 +805,16 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                   type="button"
                   onClick={handleMainButtonClick}
                   disabled={buttonState === 'PROCESSING' || isProcessing}
-                  className={`relative group w-full max-w-sm h-14 sm:h-15 px-6 rounded-xl font-bold text-sm sm:text-base tracking-wide flex items-center justify-center gap-2.5 transition-all duration-150 select-none shadow-sm cursor-pointer ${
-                    buttonState === 'LISTENING'
-                      ? 'bg-[#B93838] hover:bg-[#9E2E2E] text-white ring-4 ring-[#B93838]/20 active:scale-[0.99]'
-                      : buttonState === 'PROCESSING'
+                  className={`relative group w-full max-w-sm h-14 sm:h-15 px-6 rounded-xl font-bold text-sm sm:text-base tracking-wide flex items-center justify-center gap-2.5 transition-all duration-150 select-none shadow-sm cursor-pointer ${buttonState === 'LISTENING'
+                    ? 'bg-[#B93838] hover:bg-[#9E2E2E] text-white ring-4 ring-[#B93838]/20 active:scale-[0.99]'
+                    : buttonState === 'PROCESSING'
                       ? 'bg-[#FBF4E7] text-[#8A6118] border border-[#D6AE62] cursor-not-allowed shadow-none'
                       : buttonState === 'SUCCESS'
-                      ? 'bg-[#23866A] text-white ring-4 ring-[#23866A]/20'
-                      : buttonState === 'ERROR'
-                      ? 'bg-[#B93838] hover:bg-[#9E2E2E] text-white active:scale-[0.99]'
-                      : 'bg-[#153D32] hover:bg-[#0A241D] text-[#FAF8F2] active:scale-[0.99] ring-4 ring-[#153D32]/10'
-                  }`}
+                        ? 'bg-[#23866A] text-white ring-4 ring-[#23866A]/20'
+                        : buttonState === 'ERROR'
+                          ? 'bg-[#B93838] hover:bg-[#9E2E2E] text-white active:scale-[0.99]'
+                          : 'bg-[#153D32] hover:bg-[#0A241D] text-[#FAF8F2] active:scale-[0.99] ring-4 ring-[#153D32]/10'
+                    }`}
                   aria-label="Voice-to-Bill primary action button"
                 >
                   {/* Dynamic Visual States */}
@@ -1067,7 +856,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                   <div className="space-y-2.5">
                     <p className="text-xs font-bold text-[#B93838] flex items-center justify-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-[#B93838] animate-pulse" />
-                      Listening in {VOICE_LANGUAGES[spokenLanguage]?.name} ({recordingSeconds}s)
+                      Listening in English ({recordingSeconds}s)
                     </p>
 
                     {/* Live streaming interim transcript box */}
@@ -1122,7 +911,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                   </p>
                 ) : (
                   <p className="text-xs text-[#5E6C64]">
-                    Speak items naturally in {VOICE_LANGUAGES[spokenLanguage]?.name} (e.g., &ldquo;2 kg rice 120 rupees&rdquo;)
+                    Speak items naturally in English (e.g., &ldquo;2 kg rice 120 rupees&rdquo;)
                   </p>
                 )}
               </div>
@@ -1137,7 +926,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold uppercase text-[#5E6C64] tracking-wider flex items-center gap-1.5">
                   <Volume2 className="w-3.5 h-3.5 text-[#23866A]" />
-                  {getLocalizedBillLabel('speechTranscript', displayLanguage)}
+                  Speech Transcript
                 </span>
                 <button
                   type="button"
@@ -1195,12 +984,12 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                         className="p-2.5 text-left rounded-lg border border-[#DDE9DF] hover:border-[#23866A] hover:bg-[#E7F3EE]/40 transition-colors cursor-pointer flex flex-col justify-between group"
                       >
                         <p className="text-xs font-bold text-[#153D32] group-hover:text-[#0A241D] truncate">
-                          {getLocalizedItemName(cand.name, displayLanguage)}
+                          {cand.name}
                         </p>
                         <div className="flex items-center justify-between mt-1 text-[11px] font-semibold">
                           <span className="text-[#23866A] tabular-nums">₹{cand.selling_price}</span>
                           <span className="text-[#5E6C64]">
-                            {cand.current_stock} {getLocalizedBillLabel('inStock', displayLanguage)}
+                            {cand.current_stock} in stock
                           </span>
                         </div>
                       </button>
@@ -1241,15 +1030,15 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
             </div>
           )}
 
-          {/* Recognized Bill Items Table - Display Localized via "Show Bill In" */}
+          {/* Recognized Bill Items Table */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between px-0.5">
               <h3 className="text-xs font-bold uppercase tracking-wider text-[#5E6C64]">
-                {getLocalizedBillLabel('recognizedItems', displayLanguage)} ({matchedItems.length})
+                Recognized Bill Items ({matchedItems.length})
               </h3>
               {matchedItems.length > 0 && (
                 <span className="text-xs font-bold text-[#153D32] tabular-nums">
-                  {getLocalizedBillLabel('subtotal', displayLanguage)}: ₹{subtotal}
+                  Subtotal: ₹{subtotal}
                 </span>
               )}
             </div>
@@ -1260,11 +1049,11 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                   <div key={idx} className="p-3.5 flex items-center justify-between gap-3 hover:bg-[#FAF8F2]/60 transition-colors">
                     <div className="min-w-0 flex-1">
                       <p className="font-bold text-xs sm:text-sm text-[#153D32] truncate">
-                        {getLocalizedItemName(item.name, displayLanguage)}
+                        {item.name}
                       </p>
                       <div className="flex flex-wrap items-center gap-1.5 mt-1">
                         <span className="text-xs text-[#5E6C64] font-medium tabular-nums">
-                          ₹{item.unit_price} / {getLocalizedUnit(item.unit, displayLanguage)}
+                          ₹{item.unit_price} / {item.unit}
                         </span>
                         {item.price_source && item.price_source !== 'catalogue' ? (
                           <span
@@ -1286,7 +1075,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                         {item.is_out_of_stock ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#FDF1EF] text-[#B93838] border border-[#EF806D]/40">
                             <AlertTriangle className="w-3 h-3" />
-                            {getLocalizedBillLabel('outOfStock', displayLanguage)}
+                            Out of stock
                           </span>
                         ) : item.is_insufficient_stock ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#FEF9EB] text-[#A07828] border border-[#D6AE62]/40">
@@ -1348,7 +1137,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                           onClick={() => handleRemoveMatchedItem(idx)}
                           className="text-[11px] font-semibold text-[#5E6C64] hover:text-[#B93838] mt-1 inline-flex items-center gap-1 cursor-pointer transition-colors"
                         >
-                          <Trash2 className="w-3 h-3" /> {getLocalizedBillLabel('remove', displayLanguage)}
+                          <Trash2 className="w-3 h-3" /> Remove
                         </button>
                       </div>
                     </div>
@@ -1358,7 +1147,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                 {/* Grand Total Summary Bar */}
                 <div className="px-4 py-3.5 bg-[#FAF8F2] flex items-center justify-between border-t border-[#DDE9DF]">
                   <span className="text-xs font-bold uppercase tracking-wider text-[#5E6C64]">
-                    {getLocalizedBillLabel('grandTotal', displayLanguage)}
+                    Grand Total
                   </span>
                   <span className="text-xl font-extrabold text-[#153D32] tabular-nums">
                     ₹{total}
@@ -1369,10 +1158,10 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
               <div className="py-8 text-center bg-[#FAF8F2] border border-dashed border-[#DDE9DF] rounded-xl">
                 <ShoppingCart className="w-7 h-7 mx-auto text-[#5E6C64]/50 mb-1.5" strokeWidth={1.75} />
                 <p className="text-xs font-bold text-[#153D32]">
-                  {getLocalizedBillLabel('noItemsYet', displayLanguage)}
+                  No items recognized yet
                 </p>
                 <p className="text-[11px] text-[#5E6C64] mt-0.5">
-                  {getLocalizedBillLabel('speakHint', displayLanguage)}
+                  Tap the microphone or choose an English preset below
                 </p>
               </div>
             )}
@@ -1387,7 +1176,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
             >
               <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-[#153D32]">
                 <Sparkles className="w-3.5 h-3.5 text-[#D6AE62]" />
-                <span>Multilingual Voice Simulation Presets</span>
+                <span>English Voice Simulation Presets</span>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#FEF9EB] text-[#A07828] border border-[#D6AE62]/40">
                   Zero-Mic Testing
                 </span>
@@ -1400,19 +1189,17 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
             {showDevPanel && (
               <div className="space-y-2.5 pt-1">
                 <div className="flex flex-wrap gap-1.5">
-                  {MULTILINGUAL_DEV_PRESETS.map((preset, pIdx) => (
+                  {ENGLISH_DEV_PRESETS.map((preset, pIdx) => (
                     <button
                       key={pIdx}
                       type="button"
                       onClick={() => {
-                        handleSelectSpokenLanguage(preset.langKey);
                         setSimulatedInput(preset.text);
-                        handleProcessTranscript(preset.text, preset.langKey);
+                        handleProcessTranscript(preset.text);
                       }}
                       className="px-2.5 py-1.5 text-[11px] font-semibold rounded-lg bg-white border border-[#DDE9DF] hover:border-[#23866A] hover:text-[#153D32] transition-colors cursor-pointer shadow-2xs text-left"
                       title={preset.label}
                     >
-                      <span className="text-[#5E6C64] text-[10px] mr-1">[{VOICE_LANGUAGES[preset.langKey]?.name}]:</span>
                       &ldquo;{preset.text}&rdquo;
                     </button>
                   ))}
@@ -1421,12 +1208,12 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                 <div className="flex gap-2 pt-1">
                   <input
                     type="text"
-                    placeholder={`Type voice sentence in ${VOICE_LANGUAGES[spokenLanguage]?.name} to simulate...`}
+                    placeholder="Type an English voice sentence to simulate..."
                     value={simulatedInput}
                     onChange={(e) => setSimulatedInput(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
-                        handleProcessTranscript(simulatedInput, spokenLanguage);
+                        handleProcessTranscript(simulatedInput);
                       }
                     }}
                     className="flex-1 px-3 py-2 text-xs rounded-lg border border-[#DDE9DF] focus:outline-none focus:ring-2 focus:ring-[#153D32]/15 focus:border-[#153D32] font-medium bg-white text-[#252D29]"
@@ -1434,7 +1221,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => handleProcessTranscript(simulatedInput, spokenLanguage)}
+                    onClick={() => handleProcessTranscript(simulatedInput)}
                     disabled={!simulatedInput.trim() || isProcessing}
                     className="text-xs font-bold px-4 rounded-lg cursor-pointer"
                   >
@@ -1540,17 +1327,17 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                     <pre className="p-2 bg-slate-950 rounded-xl text-teal-300 text-[10px] overflow-x-auto max-h-28 border border-slate-800">
                       {debugInfo.inventoryMatches.length > 0
                         ? JSON.stringify(
-                            debugInfo.inventoryMatches.map(m => ({
-                              product_id: m.product_id,
-                              name: m.name,
-                              quantity: m.quantity,
-                              unit_price: m.unit_price,
-                              total_price: m.total_price,
-                              stock: m.current_stock
-                            })),
-                            null,
-                            2
-                          )
+                          debugInfo.inventoryMatches.map(m => ({
+                            product_id: m.product_id,
+                            name: m.name,
+                            quantity: m.quantity,
+                            unit_price: m.unit_price,
+                            total_price: m.total_price,
+                            stock: m.current_stock
+                          })),
+                          null,
+                          2
+                        )
                         : '// No inventory matches yet'}
                     </pre>
                   </div>
@@ -1566,7 +1353,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
           <div className="flex items-center gap-2 text-xs text-[#5E6C64]">
             <Info className="w-4 h-4 text-[#153D32] shrink-0" />
             <span>
-              {matchedItems.length} {getLocalizedBillLabel('itemsReady', displayLanguage)}
+              {matchedItems.length} items ready to transfer to billing
             </span>
           </div>
 
@@ -1577,7 +1364,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
               onClick={onClose}
               className="col-span-2 sm:col-span-1 sm:flex-initial rounded-lg text-xs font-bold cursor-pointer border-[#DDE9DF] text-[#252D29] hover:bg-[#FAF8F2] min-h-[44px]"
             >
-              {getLocalizedBillLabel('cancel', displayLanguage)}
+              Cancel
             </Button>
 
             <Button
@@ -1588,7 +1375,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
               className="sm:flex-initial rounded-lg text-xs font-bold cursor-pointer min-h-[44px]"
               icon={<ShoppingCart className="w-4 h-4" />}
             >
-              {getLocalizedBillLabel('addToBill', displayLanguage)} ({matchedItems.length})
+              Add to Bill ({matchedItems.length})
             </Button>
 
             <Button
@@ -1599,7 +1386,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
               className="sm:flex-initial rounded-lg text-xs font-bold cursor-pointer min-h-[44px]"
               icon={<CheckCircle2 className="w-4 h-4" />}
             >
-              {getLocalizedBillLabel('confirmAndPay', displayLanguage)} (₹{total})
+              Confirm &amp; Pay (₹{total})
             </Button>
           </div>
         </div>
