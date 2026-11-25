@@ -38,6 +38,30 @@ class MatchedVoiceItem(BaseModel):
     pricing_status: Optional[str] = Field(None, description="Product pricing verification status")
     mrp: Optional[float] = Field(None, description="Maximum Retail Price")
     catalog_line_total: Optional[float] = Field(None, description="Standard catalog line total for comparison if spoken price was agreed")
+    action: str = Field("add", description="Bill action intent: add, update, or remove")
+    explicit_quantity: bool = Field(True, description="Whether quantity was explicitly spoken")
+    match_confidence: Optional[float] = Field(None, description="Catalog matching confidence score (0.0 to 1.0)")
+    quantity_source: str = Field("explicit", description="How quantity was obtained: explicit, contextual_homophone, stt_alternative, or default")
+    quantity_confidence: float = Field(1.0, description="Confidence score (0.0 to 1.0) in the resolved quantity")
+    original_quantity_token: Optional[str] = Field(None, description="Original STT homophone token corrected by context, if any")
+    raw_text: Optional[str] = Field(None, description="Raw segmented utterance slice for this item")
+    package_size: Optional[str] = Field(None, description="Extracted per-pack size annotation if spoken (e.g. 70g)")
+
+class StructuredVoiceItem(BaseModel):
+    raw_text: str
+    product_name: str
+    quantity: Union[int, float] = Field(1, gt=0)
+    unit: Optional[str] = None
+    package_size: Optional[str] = None
+    action: str = "add"
+    explicit_quantity: bool = True
+    matched_product_id: Optional[str] = None
+    match_confidence: float = 0.0
+    quantity_source: str = "explicit"
+    quantity_confidence: float = 1.0
+    original_quantity_token: Optional[str] = None
+    status: str = Field(..., description="MATCHED, AMBIGUOUS, UNMATCHED, or INVALID")
+    reason: Optional[str] = None
 
 class AmbiguousVoiceItem(BaseModel):
     queried_name: str
@@ -47,6 +71,11 @@ class AmbiguousVoiceItem(BaseModel):
     spoken_price: Optional[float] = None
     # The ready line for each candidate the item can be sold as (unit converted, spoken price kept)
     options: List[MatchedVoiceItem] = Field(default_factory=list)
+    ambiguity_type: str = Field("product", description="'product' (multiple catalog SKUs) or 'quantity' (moderate-confidence homophone quantity confirmation)")
+    suggested_quantity: Optional[Union[int, float]] = None
+    fallback_quantity: Optional[Union[int, float]] = None
+    raw_phrase: Optional[str] = None
+    reason: Optional[str] = None
 
 class UnmatchedVoiceItem(BaseModel):
     queried_name: str
@@ -59,6 +88,8 @@ class VoiceProcessRequest(BaseModel):
     audio_content_type: Optional[str] = Field(None, description="Audio MIME type (e.g. audio/webm, audio/wav)")
     language_code: Optional[str] = Field("en-IN", description="Language locale code (e.g. en-IN, hi-IN, te-IN)")
     custom_products: Optional[List[VoiceProductCandidate]] = Field(None, description="Optional custom product catalog override for testing")
+    stt_confidence: Optional[float] = Field(None, ge=0.0, le=1.0, description="Browser/STT confidence if available")
+    speech_alternatives: Optional[List[str]] = Field(None, description="Alternative STT hypotheses for context disambiguation")
 
 class VoiceProcessResponse(BaseModel):
     transcript: str
@@ -71,6 +102,7 @@ class VoiceProcessResponse(BaseModel):
     subtotal: float
     tax: float
     total: float
+    items: List[StructuredVoiceItem] = Field(default_factory=list)
 
 class VoiceStatusResponse(BaseModel):
     voice_mode: str

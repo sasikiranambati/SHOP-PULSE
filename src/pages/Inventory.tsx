@@ -334,7 +334,7 @@ export const Inventory: React.FC<InventoryProps> = ({
   };
 
   return (
-    <div className="space-y-4 max-w-5xl mx-auto">
+    <div className="w-full space-y-4 max-w-5xl mx-auto min-w-0">
 
       <PageHeader
         title={t('inventory.title')}

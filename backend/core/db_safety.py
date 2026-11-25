@@ -18,8 +18,9 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from pathlib import Path
-from typing import Mapping, Optional
+from typing import Mapping, Optional, Tuple
 
 from sqlalchemy.engine import make_url
 
@@ -28,6 +29,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_DB_PATH = (BACKEND_DIR / "shoppulse.db").resolve()
 
 _TRUE = {"1", "true", "yes", "on"}
+_TEST_MODULES = ("pytest", "fastapi.testclient", "starlette.testclient")
 
 
 class UnsafeTestDatabaseError(RuntimeError):
@@ -37,7 +39,10 @@ class UnsafeTestDatabaseError(RuntimeError):
 def is_test_mode(environ: Optional[Mapping[str, str]] = None, modules: Optional[Mapping[str, object]] = None) -> bool:
     environ = os.environ if environ is None else environ
     modules = sys.modules if modules is None else modules
-    return environ.get(TEST_MODE_ENV, "").strip().lower() in _TRUE or "pytest" in modules
+    return (
+        environ.get(TEST_MODE_ENV, "").strip().lower() in _TRUE
+        or any(mod in modules for mod in _TEST_MODULES)
+    )
 
 
 def _sqlite_target(url: str, cwd: Path) -> Optional[Path]:
@@ -89,3 +94,30 @@ def guard_database_url(url: Optional[str], *, explicit: bool) -> None:
     """Check the application's database URL before the engine is created (no-op outside test mode)."""
     if is_test_mode():
         assert_safe_test_database(url, explicit=explicit)
+
+
+def prepare_isolated_diagnostic_db(db_path: Optional[Path] = None) -> Tuple[str, Path]:
+    """Configure SHOPPULSE_TEST_MODE and DATABASE_URL to an isolated temporary SQLite file.
+
+    Refuses to run if ``core.config``, ``db.session``, or ``main`` has already been imported so
+    a diagnostic script can never silently switch or bind late after the production DB was loaded.
+    """
+    already_loaded = [m for m in ("core.config", "db.session", "main") if m in sys.modules]
+    if already_loaded:
+        raise RuntimeError(
+            f"Cannot configure isolated diagnostic database after importing {', '.join(already_loaded)}. "
+            "Call prepare_isolated_diagnostic_db() before importing application modules."
+        )
+
+    if db_path is None:
+        tmp_dir = Path(tempfile.mkdtemp(prefix="shoppulse-diag-"))
+        target_path = (tmp_dir / "diag.db").resolve()
+    else:
+        target_path = Path(db_path).resolve()
+
+    url = f"sqlite:///{target_path.as_posix()}"
+    assert_safe_test_database(url, explicit=True)
+    os.environ[TEST_MODE_ENV] = "1"
+    os.environ["DATABASE_URL"] = url
+    print(f"[db_safety] Isolated diagnostic target: {url}")
+    return url, target_path

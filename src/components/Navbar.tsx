@@ -179,7 +179,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* CENTER SECTION: One Prominent Responsive Search Field             */}
         {/* ================================================================= */}
         {isLoggedIn && onOpenSearch && (
-          <div className="flex-1 max-w-xl mx-2 sm:mx-4 flex justify-center">
+          <div className="hidden sm:flex flex-1 max-w-xl sm:mx-4 justify-center">
             <button
               type="button"
               id="global-search-header-btn"
@@ -204,7 +204,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* ================================================================= */}
         {/* RIGHT SECTION: Notification Bell & Profile Avatar Control         */}
         {/* ================================================================= */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           {isLoggedIn ? (
             <>
               {/* Mobile Search Icon Button (visible only below sm) */}
@@ -213,7 +213,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   type="button"
                   onClick={onOpenSearch}
                   aria-label="Search products, bills, invoices"
-                  className="sm:hidden w-9 h-9 rounded-lg bg-[#FAF8F2] hover:bg-[#F3EFE3] border border-[#DDE9DF] text-[#252D29] flex items-center justify-center transition-colors cursor-pointer active:scale-95 focus-visible:ring-2 focus-visible:ring-[#153D32] focus-visible:outline-none"
+                  className="sm:hidden w-8 h-8 rounded-lg bg-[#FAF8F2] hover:bg-[#F3EFE3] border border-[#DDE9DF] text-[#252D29] flex items-center justify-center transition-colors cursor-pointer active:scale-95 focus-visible:ring-2 focus-visible:ring-[#153D32] focus-visible:outline-none"
                 >
                   <Search className="w-4 h-4 text-[#252D29]" />
                 </button>
@@ -233,7 +233,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
                   aria-expanded={showNotifications}
                   aria-controls="notifications-panel"
-                  className="w-9 h-9 rounded-lg bg-[#FAF8F2] hover:bg-[#F3EFE3] border border-[#DDE9DF] text-[#252D29] flex items-center justify-center transition-colors cursor-pointer relative focus-visible:ring-2 focus-visible:ring-[#153D32] focus-visible:outline-none active:scale-95"
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-[#FAF8F2] hover:bg-[#F3EFE3] border border-[#DDE9DF] text-[#252D29] flex items-center justify-center transition-colors cursor-pointer relative focus-visible:ring-2 focus-visible:ring-[#153D32] focus-visible:outline-none active:scale-95"
                 >
                   <Bell className="w-4 h-4 text-[#252D29]" />
                   {unreadCount > 0 && (
@@ -268,7 +268,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   aria-label="User account menu"
                   aria-expanded={isProfileOpen}
                   aria-controls="user-profile-dropdown"
-                  className="w-9 h-9 rounded-lg bg-[#E7F3EE] text-[#153D32] hover:bg-[#B9E5D0] border border-[#23866A]/25 flex items-center justify-center font-bold text-xs tracking-wider transition-all cursor-pointer relative focus-visible:ring-2 focus-visible:ring-[#153D32] focus-visible:outline-none active:scale-95"
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-[#E7F3EE] text-[#153D32] hover:bg-[#B9E5D0] border border-[#23866A]/25 flex items-center justify-center font-bold text-xs tracking-wider transition-all cursor-pointer relative focus-visible:ring-2 focus-visible:ring-[#153D32] focus-visible:outline-none active:scale-95"
                 >
                   <span>{userInitials}</span>
 
@@ -439,7 +439,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   aria-label="Open navigation menu"
                   aria-controls="mobile-nav-drawer"
                   aria-haspopup="dialog"
-                  className="md:hidden w-9 h-9 rounded-lg bg-[#FAF8F2] hover:bg-[#F3EFE3] border border-[#DDE9DF] text-[#252D29] flex items-center justify-center transition-colors cursor-pointer active:scale-95 focus-visible:ring-2 focus-visible:ring-[#153D32] focus-visible:outline-none"
+                  className="md:hidden w-8 h-8 rounded-lg bg-[#FAF8F2] hover:bg-[#F3EFE3] border border-[#DDE9DF] text-[#252D29] flex items-center justify-center transition-colors cursor-pointer active:scale-95 focus-visible:ring-2 focus-visible:ring-[#153D32] focus-visible:outline-none"
                 >
                   <Menu className="w-5 h-5 text-[#252D29]" />
                 </button>
