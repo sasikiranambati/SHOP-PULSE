@@ -16,6 +16,10 @@ class ExtractedItem(BaseModel):
     # Action intent: "add", "remove", "update"
     action: Optional[str] = "add"
     explicit_quantity: bool = True
+    quantity_source: str = "explicit"
+    quantity_confidence: float = 1.0
+    original_quantity_token: Optional[str] = None
+    needs_quantity_confirmation: bool = False
     raw_text: Optional[str] = None
     package_size: Optional[str] = None
 
@@ -560,13 +564,22 @@ def _catalog_phrase_set(catalog: Optional[Sequence[Any]]) -> set[str]:
     return phrases
 
 
+from services.voice_context import (
+    build_light_catalog_index,
+    is_conversational_non_product_phrase,
+    parse_context_qty_tag,
+    resolve_contextual_homophones,
+    strip_context_tags_to_digits,
+)
+
+
 def _is_numeric_token(tok: str) -> bool:
-    return bool(re.fullmatch(r"\d+(?:\.\d+)?", tok))
+    return bool(re.fullmatch(r"\d+(?:\.\d+)?", tok)) or parse_context_qty_tag(tok) is not None
 
 
 def _is_product_word(tok: str) -> bool:
     low = tok.lower().strip(",.;:-")
-    if not low or _is_numeric_token(low) or low.startswith("__pkg_"):
+    if not low or _is_numeric_token(low) or low.startswith("__pkg_") or low.startswith("__q"):
         return False
     if low in _NON_PRODUCT_TOKENS:
         return False
@@ -606,13 +619,18 @@ def _number_belongs_to_catalog_product(
     return False
 
 
+def _is_boundary_digit_only(tok: str) -> bool:
+    return bool(re.fullmatch(r"\d+(?:\.\d+)?", tok))
+
+
 def _segment_continuous_clause(clause: str, catalog_phrases: set[str]) -> List[str]:
     """
     Splits an unpunctuated spoken clause into per-item sub-clauses using numeric boundaries,
-    unit positions, currency endings, and dynamic catalog phrase awareness.
+    contextual quantity tags, unit positions, currency endings, and dynamic catalog phrase awareness.
     """
     tokens = clause.split()
     if len(tokens) <= 2:
+        # Still split if 2 items shouldn't happen in <=2 tokens, e.g. "__qauto...__ Maggie" stays 1 slice
         return [clause]
 
     slices: List[str] = []
@@ -648,6 +666,14 @@ def _segment_continuous_clause(clause: str, catalog_phrases: set[str]) -> List[s
                     break
 
             if _is_numeric_token(tok) and has_prod:
+                # If this token is an explicit contextual quantity tag, it unambiguously starts a new item
+                if parse_context_qty_tag(tok) is not None:
+                    if i + 1 < n:
+                        split_at = i
+                        break
+                    i += 1
+                    continue
+
                 prev_low = tokens[i - 1].lower() if i > start else ""
                 next_low = tokens[i + 1].lower() if i + 1 < n else ""
 
@@ -680,7 +706,7 @@ def _segment_continuous_clause(clause: str, catalog_phrases: set[str]) -> List[s
                     # Keep trailing price on this item if immediately present
                     if end_idx < n and (
                         tokens[end_idx].lower() in {"for", "at", "@"}
-                        or (_is_numeric_token(tokens[end_idx]) and end_idx + 1 < n and tokens[end_idx + 1].lower() in _CURRENCY_WORDS | {"each", "apiece", "per"})
+                        or (_is_boundary_digit_only(tokens[end_idx]) and end_idx + 1 < n and tokens[end_idx + 1].lower() in _CURRENCY_WORDS | {"each", "apiece", "per"})
                     ):
                         i = end_idx
                         continue
@@ -718,17 +744,23 @@ def _extract_package_size(text: str) -> Tuple[str, Optional[str]]:
 def extract_items_from_transcript(
     transcript: str,
     catalog: Optional[Sequence[Any]] = None,
+    *,
+    stt_confidence: Optional[float] = None,
+    speech_alternatives: Optional[Sequence[str]] = None,
+    has_active_bill_context: bool = False,
 ) -> List[ExtractedItem]:
     """
     Parses natural language transcript into structured list of ExtractedItem.
-    Supports continuous multi-items, catalog-aware segmentation, forward & reverse order,
-    spoken prices, package-size annotations, update/remove commands, and fractions.
+    Supports continuous multi-items, catalog-aware homophone disambiguation,
+    catalog-aware segmentation, forward & reverse order, spoken prices,
+    package-size annotations, update/remove commands, and fractions.
     """
     if not transcript or not transcript.strip():
         return []
 
     normalized = normalize_digits_and_numbers(transcript)
     catalog_phrases = _catalog_phrase_set(catalog)
+    catalog_index = build_light_catalog_index(catalog) if catalog else []
 
     # Split mid-utterance action connectors before a new quantity ("5 Maggie also add 2 Colgate")
     normalized = re.sub(r"\s+\b(?:and\s+also|and\s+then|also\s+add|also|then|add)\s+(?=\d+(?:\.\d+)?\b)", ", ", normalized, flags=re.IGNORECASE)
@@ -776,6 +808,19 @@ def extract_items_from_transcript(
         if not s:
             continue
 
+        # Context-aware STT homophone disambiguation (e.g. "to Maggie" -> 2 Maggie when catalog supports it)
+        if catalog_index:
+            ctx_res = resolve_contextual_homophones(
+                s,
+                catalog,
+                catalog_index=catalog_index,
+                unit_words=_UNIT_WORDS_SET,
+                stt_confidence=stt_confidence,
+                speech_alternatives=speech_alternatives,
+                has_active_bill_context=has_active_bill_context,
+            )
+            s = ctx_res.resolved_text
+
         sub_clauses = _segment_continuous_clause(s, catalog_phrases)
 
         for sub in sub_clauses:
@@ -791,7 +836,26 @@ def extract_items_from_transcript(
                 if not sub:
                     break
 
-                raw_slice = sub
+                # Resolve leading contextual quantity tag if present
+                sub_tokens = sub.split()
+                first_tag = parse_context_qty_tag(sub_tokens[0]) if sub_tokens else None
+                if first_tag:
+                    sub = " ".join([str(first_tag["quantity"])] + sub_tokens[1:])
+                    qty_meta = {
+                        "quantity_source": first_tag["source"],
+                        "quantity_confidence": first_tag["confidence"],
+                        "original_quantity_token": first_tag["original_token"],
+                        "needs_quantity_confirmation": (first_tag["mode"] == "conf"),
+                    }
+                else:
+                    qty_meta = {
+                        "quantity_source": "explicit",
+                        "quantity_confidence": 1.0,
+                        "original_quantity_token": None,
+                        "needs_quantity_confirmation": False,
+                    }
+
+                raw_slice = strip_context_tags_to_digits(sub)
                 # Extract a spoken price if present: a line total, or a unit price ("each", "per kg")
                 sub, extracted_price, unit_price, price_unit = _extract_price(sub)
                 price_fields = dict(spoken_price=extracted_price, spoken_unit_price=unit_price, price_unit=price_unit)
@@ -810,15 +874,19 @@ def extract_items_from_transcript(
                     unit_id = canonical_voice_unit(lead_match.group(2)) or _trailing_unit(lead_match.group(3))
                     prod_text = clean_product_name(lead_match.group(3))
 
-                    if prod_text:
+                    if prod_text and not (
+                        catalog_index and unit_id is None and seg_pkg_size is None
+                        and is_conversational_non_product_phrase(prod_text, catalog_index=catalog_index)
+                    ):
                         items.append(ExtractedItem(
                             name=prod_text,
                             quantity=qty_val if qty_val > 0 else 1,
                             unit=unit_id,
                             action=item_action,
                             explicit_quantity=explicit_qty,
-                            raw_text=lead_match.group(0).strip(),
+                            raw_text=strip_context_tags_to_digits(lead_match.group(0).strip()),
                             package_size=seg_pkg_size,
+                            **qty_meta,
                             **price_fields,
                         ))
 
@@ -838,15 +906,19 @@ def extract_items_from_transcript(
                     qty_val = int(raw_qty) if raw_qty.is_integer() else raw_qty
                     unit_id = canonical_voice_unit(trail_match.group(3))
 
-                    if prod_text:
+                    if prod_text and not (
+                        catalog_index and unit_id is None and seg_pkg_size is None
+                        and is_conversational_non_product_phrase(prod_text, catalog_index=catalog_index)
+                    ):
                         items.append(ExtractedItem(
                             name=prod_text,
                             quantity=qty_val if qty_val > 0 else 1,
                             unit=unit_id,
                             action=item_action,
                             explicit_quantity=explicit_qty,
-                            raw_text=trail_match.group(0).strip(),
+                            raw_text=strip_context_tags_to_digits(trail_match.group(0).strip()),
                             package_size=seg_pkg_size,
+                            **qty_meta,
                             **price_fields,
                         ))
 
@@ -855,13 +927,20 @@ def extract_items_from_transcript(
 
                 # Pattern 3: Fallback single item without explicit number (e.g. "Tata Salt", "Remove Colgate")
                 prod_text = clean_product_name(sub)
-                if prod_text:
+                if prod_text and not (
+                    catalog_index and seg_pkg_size is None
+                    and is_conversational_non_product_phrase(prod_text, catalog_index=catalog_index)
+                ):
                     items.append(ExtractedItem(
                         name=prod_text,
                         quantity=1,
                         unit=None,
                         action=item_action,
-                        explicit_quantity=False if item_action == "remove" else False,
+                        explicit_quantity=False,
+                        quantity_source="default",
+                        quantity_confidence=1.0,
+                        original_quantity_token=None,
+                        needs_quantity_confirmation=False,
                         raw_text=raw_slice,
                         package_size=seg_pkg_size,
                         **price_fields,

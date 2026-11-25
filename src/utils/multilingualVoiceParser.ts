@@ -21,6 +21,12 @@ import {
   type CanonicalUnit,
   type VoiceLanguageKey,
 } from '../config/voiceLanguages';
+import {
+  isConversationalNonProductPhraseClient,
+  parseContextQtyTagClient,
+  resolveContextualHomophonesClient,
+  stripContextTagsToDigitsClient,
+} from './voiceContext';
 
 /**
  * Indic script numeral characters to standard Arabic digits (0-9).
@@ -857,6 +863,16 @@ export interface ExtractedVoiceClause {
   action?: 'add' | 'update' | 'remove';
   explicit_quantity?: boolean;
   package_size?: string | null;
+  quantity_source?: 'explicit' | 'contextual_homophone' | 'stt_alternative' | 'default';
+  quantity_confidence?: number;
+  original_quantity_token?: string | null;
+  needs_quantity_confirmation?: boolean;
+}
+
+export interface VoiceParseContextOptions {
+  sttConfidence?: number | null;
+  speechAlternatives?: string[];
+  hasActiveBillContext?: boolean;
 }
 
 const EXTRA_PACKAGE_UNIT_MAP: Record<string, CanonicalUnit> = {
@@ -909,13 +925,17 @@ function buildClientCatalogPhraseSet(catalog?: Product[]): Set<string> {
   return phrases;
 }
 
-function isNumericTok(tok: string): boolean {
+function isDigitOnlyTok(tok: string): boolean {
   return /^\d+(?:\.\d+)?$/.test(tok);
+}
+
+function isNumericTok(tok: string): boolean {
+  return isDigitOnlyTok(tok) || parseContextQtyTagClient(tok) !== null;
 }
 
 function isProdWordTok(tok: string): boolean {
   const low = tok.toLowerCase().replace(/^[,.;:-]+|[,.;:-]+$/g, '');
-  if (!low || isNumericTok(low)) return false;
+  if (!low || isNumericTok(low) || low.startsWith('__q')) return false;
   if (CLIENT_NON_PRODUCT_WORDS.has(low)) return false;
   return /[a-zA-Z\u0900-\u0D7F]/.test(low);
 }
@@ -1007,6 +1027,14 @@ function segmentContinuousClauseClient(clause: string, catalogPhrases: Set<strin
       }
 
       if (isNumericTok(tok) && hasProd) {
+        if (parseContextQtyTagClient(tok) !== null) {
+          if (i + 1 < n) {
+            splitAt = i;
+            break;
+          }
+          i += 1;
+          continue;
+        }
         const prevLow = i > start ? tokens[i - 1].toLowerCase() : '';
         const nextLow = i + 1 < n ? tokens[i + 1].toLowerCase() : '';
 
@@ -1040,7 +1068,7 @@ function segmentContinuousClauseClient(clause: string, catalogPhrases: Set<strin
           if (
             endIdx < n &&
             (['for', 'at', '@'].includes(tokens[endIdx].toLowerCase()) ||
-              (isNumericTok(tokens[endIdx]) &&
+              (isDigitOnlyTok(tokens[endIdx]) &&
                 endIdx + 1 < n &&
                 (CLIENT_CURRENCY_WORDS.has(tokens[endIdx + 1].toLowerCase()) ||
                   ['each', 'apiece', 'per'].includes(tokens[endIdx + 1].toLowerCase()))))
@@ -1086,7 +1114,11 @@ function extractPackageSizeClient(text: string): { cleaned: string; pkgSize: str
  * Supports continuous multi-items, catalog-aware segmentation, forward & reverse order,
  * package-size preservation, update/remove commands, and spoken currency prices.
  */
-export function extractItemsFromClause(clause: string, catalog?: Product[]): ExtractedVoiceClause[] {
+export function extractItemsFromClause(
+  clause: string,
+  catalog?: Product[],
+  options: VoiceParseContextOptions = {},
+): ExtractedVoiceClause[] {
   const text = clause.trim();
   if (!text) return [];
 
@@ -1099,6 +1131,8 @@ export function extractItemsFromClause(clause: string, catalog?: Product[]): Ext
     .split(/[,;\n+]|\b(?:and|aur|mariyu|matrum|mattu|tatha|evam|plus)\b|&/gi)
     .map((s) => s.trim().replace(/[.!?]+$/, ''))
     .filter(Boolean);
+
+  const clientUnitSet = new Set(Object.keys(ALL_CLIENT_UNITS_MAP));
 
   for (const chunk of subChunks) {
     let s = chunk.trim();
@@ -1127,6 +1161,16 @@ export function extractItemsFromClause(clause: string, catalog?: Product[]): Ext
 
     if (!s) continue;
 
+    if (catalog && catalog.length > 0) {
+      const ctxRes = resolveContextualHomophonesClient(s, catalog, {
+        unitWords: clientUnitSet,
+        sttConfidence: options.sttConfidence,
+        speechAlternatives: options.speechAlternatives,
+        hasActiveBillContext: options.hasActiveBillContext,
+      });
+      s = ctxRes.resolvedText;
+    }
+
     const segmented = segmentContinuousClauseClient(s, catalogPhrases);
 
     for (const seg of segmented) {
@@ -1136,6 +1180,21 @@ export function extractItemsFromClause(clause: string, catalog?: Product[]): Ext
       while (sub.length > 0) {
         sub = sub.trim();
         if (!sub) break;
+
+        const subTokens = sub.split(/\s+/);
+        const firstTag = subTokens.length > 0 ? parseContextQtyTagClient(subTokens[0]) : null;
+        let qtySource: ExtractedVoiceClause['quantity_source'] = 'explicit';
+        let qtyConfidence = 1.0;
+        let originalQtyToken: string | null = null;
+        let needsQtyConfirmation = false;
+
+        if (firstTag) {
+          sub = [String(firstTag.quantity), ...subTokens.slice(1)].join(' ');
+          qtySource = firstTag.source;
+          qtyConfidence = firstTag.confidence;
+          originalQtyToken = firstTag.originalToken;
+          needsQtyConfirmation = firstTag.mode === 'conf';
+        }
 
         let extractedPrice: number | null = null;
         const priceBeforeMatch = sub.match(new RegExp(`(?:${CURRENCY_REGEX.source})\\s*(\\d+(?:\\.\\d+)?)`, 'i'));
@@ -1170,17 +1229,26 @@ export function extractItemsFromClause(clause: string, catalog?: Product[]): Ext
             }
           }
           const prod = leadMatch[3].trim();
+          const skipProse =
+            Boolean(catalog && catalog.length > 0 && matchedUnit === null && !pkgSize) &&
+            isConversationalNonProductPhraseClient(cleanExtractedProductName(prod), catalog);
 
-          items.push({
-            raw: leadMatch[0].trim(),
-            quantity: qty > 0 ? qty : 1,
-            unit: matchedUnit,
-            productName: prod,
-            price: extractedPrice,
-            action: itemAction,
-            explicit_quantity: explicitQty,
-            package_size: pkgSize,
-          });
+          if (!skipProse) {
+            items.push({
+              raw: stripContextTagsToDigitsClient(leadMatch[0].trim()),
+              quantity: qty > 0 ? qty : 1,
+              unit: matchedUnit,
+              productName: prod,
+              price: extractedPrice,
+              action: itemAction,
+              explicit_quantity: explicitQty,
+              package_size: pkgSize,
+              quantity_source: qtySource,
+              quantity_confidence: qtyConfidence,
+              original_quantity_token: originalQtyToken,
+              needs_quantity_confirmation: needsQtyConfirmation,
+            });
+          }
 
           sub = sub.slice(leadMatch[0].length).trim();
           continue;
@@ -1198,33 +1266,52 @@ export function extractItemsFromClause(clause: string, catalog?: Product[]): Ext
           const qty = parseFloat(trailMatch[2]);
           const unitWord = trailMatch[3]?.toLowerCase();
           const matchedUnit = unitWord ? ALL_CLIENT_UNITS_MAP[unitWord] || null : null;
+          const skipProse =
+            Boolean(catalog && catalog.length > 0 && matchedUnit === null && !pkgSize) &&
+            isConversationalNonProductPhraseClient(cleanExtractedProductName(prod), catalog);
 
-          items.push({
-            raw: trailMatch[0].trim(),
-            quantity: qty > 0 ? qty : 1,
-            unit: matchedUnit,
-            productName: prod,
-            price: extractedPrice,
-            action: itemAction,
-            explicit_quantity: explicitQty,
-            package_size: pkgSize,
-          });
+          if (!skipProse) {
+            items.push({
+              raw: stripContextTagsToDigitsClient(trailMatch[0].trim()),
+              quantity: qty > 0 ? qty : 1,
+              unit: matchedUnit,
+              productName: prod,
+              price: extractedPrice,
+              action: itemAction,
+              explicit_quantity: explicitQty,
+              package_size: pkgSize,
+              quantity_source: qtySource,
+              quantity_confidence: qtyConfidence,
+              original_quantity_token: originalQtyToken,
+              needs_quantity_confirmation: needsQtyConfirmation,
+            });
+          }
 
           sub = sub.slice(trailMatch[0].length).trim();
           continue;
         }
 
         // Pattern 3: Fallback single item without explicit number
-        items.push({
-          raw: sub,
-          quantity: 1,
-          unit: null,
-          productName: sub,
-          price: extractedPrice,
-          action: itemAction,
-          explicit_quantity: false,
-          package_size: pkgSize,
-        });
+        const cleanedFallback = cleanExtractedProductName(sub);
+        const skipFallbackProse =
+          Boolean(catalog && catalog.length > 0 && !pkgSize) &&
+          isConversationalNonProductPhraseClient(cleanedFallback, catalog);
+        if (!skipFallbackProse) {
+          items.push({
+            raw: stripContextTagsToDigitsClient(sub),
+            quantity: 1,
+            unit: null,
+            productName: sub,
+            price: extractedPrice,
+            action: itemAction,
+            explicit_quantity: false,
+            package_size: pkgSize,
+            quantity_source: 'default',
+            quantity_confidence: 1.0,
+            original_quantity_token: null,
+            needs_quantity_confirmation: false,
+          });
+        }
         break;
       }
     }
@@ -1250,7 +1337,8 @@ export interface MultilingualParseResult {
 export function parseMultilingualVoiceBill(
   transcript: string,
   catalog: Product[],
-  _spokenLang?: VoiceLanguageKey
+  _spokenLang?: VoiceLanguageKey,
+  options: VoiceParseContextOptions = {},
 ): MultilingualParseResult {
   if (!transcript || !transcript.trim()) {
     return {
@@ -1267,8 +1355,8 @@ export function parseMultilingualVoiceBill(
   // 1. Normalize numbers and fractions
   const normalized = normalizeIndianSpeechNumbers(transcript);
 
-  // 2. High-efficiency catalog-aware sequential item extraction
-  const extractedClauses = extractItemsFromClause(normalized, catalog);
+  // 2. High-efficiency catalog-aware sequential item extraction with context homophone scoring
+  const extractedClauses = extractItemsFromClause(normalized, catalog, options);
 
   const matchedItems: MatchedVoiceItem[] = [];
   const ambiguousItems: AmbiguousVoiceItem[] = [];
@@ -1348,29 +1436,71 @@ export function parseMultilingualVoiceBill(
       }
 
       const effectiveBasis = normalizedBasisQty > 0 ? normalizedBasisQty : 1.0;
-      const calculatedLineTotal = Math.round(((catalogPrice * effectiveQuantity) / effectiveBasis) * 100) / 100;
-      const lineTotal = spokenPrice !== null ? spokenPrice : calculatedLineTotal;
-      const unitPriceExact = spokenPrice !== null ? spokenPrice / effectiveQuantity : (catalogPrice / effectiveBasis);
+      const buildReadyLine = (qtyValue: number, isExplicit: boolean, qtySrc: MatchedVoiceItem['quantity_source']): MatchedVoiceItem => {
+        const calculatedLineTotal = Math.round(((catalogPrice * qtyValue) / effectiveBasis) * 100) / 100;
+        const lineTotalVal = spokenPrice !== null ? spokenPrice : calculatedLineTotal;
+        const unitPriceExact = spokenPrice !== null ? spokenPrice / qtyValue : (catalogPrice / effectiveBasis);
+        return {
+          product_id: matchedProduct.id,
+          name: matchedProduct.name,
+          quantity: qtyValue,
+          unit_price: Math.round(unitPriceExact * 1000) / 1000,
+          unit_price_exact: unitPriceExact,
+          price_source: spokenPrice !== null ? 'spoken' : 'catalogue',
+          total_price: lineTotalVal,
+          unit: matchedProduct.unit || 'pcs',
+          current_stock: matchedProduct.stock ?? 10,
+          is_out_of_stock: (matchedProduct.stock ?? 0) <= 0,
+          is_insufficient_stock: qtyValue > (matchedProduct.stock ?? 0),
+          available_stock: Math.max(0, matchedProduct.stock ?? 0),
+          action: itemClause.action || 'add',
+          explicit_quantity: isExplicit,
+          match_confidence: Math.round(confidence * 1000) / 1000,
+          quantity_source: qtySrc,
+          quantity_confidence: itemClause.quantity_confidence ?? 1.0,
+          original_quantity_token: itemClause.original_quantity_token ?? null,
+          raw_text: itemClause.raw,
+          package_size: itemClause.package_size ?? null,
+        };
+      };
 
-      matchedItems.push({
-        product_id: matchedProduct.id,
-        name: matchedProduct.name,
-        quantity: effectiveQuantity,
-        unit_price: Math.round(unitPriceExact * 1000) / 1000,
-        unit_price_exact: unitPriceExact,
-        price_source: spokenPrice !== null ? 'spoken' : 'catalogue',
-        total_price: lineTotal,
-        unit: matchedProduct.unit || 'pcs',
-        current_stock: matchedProduct.stock ?? 10,
-        is_out_of_stock: (matchedProduct.stock ?? 0) <= 0,
-        is_insufficient_stock: effectiveQuantity > (matchedProduct.stock ?? 0),
-        available_stock: Math.max(0, matchedProduct.stock ?? 0),
-        action: itemClause.action || 'add',
-        explicit_quantity: itemClause.explicit_quantity ?? true,
-        match_confidence: Math.round(confidence * 1000) / 1000,
-        raw_text: itemClause.raw,
-        package_size: itemClause.package_size ?? null,
-      });
+      if (itemClause.needs_quantity_confirmation) {
+        const candSummary: VoiceProductCandidate = {
+          id: matchedProduct.id,
+          name: matchedProduct.name,
+          selling_price: catalogPrice,
+          current_stock: matchedProduct.stock ?? 0,
+          unit: matchedProduct.unit || 'pcs',
+          category: matchedProduct.category,
+        };
+        const displayRaw =
+          itemClause.original_quantity_token && itemClause.raw.startsWith(String(itemClause.quantity))
+            ? `${itemClause.original_quantity_token}${itemClause.raw.slice(String(itemClause.quantity).length)}`
+            : itemClause.raw;
+        ambiguousItems.push({
+          queried_name: cleanName,
+          quantity: effectiveQuantity,
+          candidates: [candSummary],
+          spoken_price: spokenPrice,
+          ambiguity_type: 'quantity',
+          suggested_quantity: effectiveQuantity,
+          fallback_quantity: 1,
+          raw_phrase: displayRaw,
+          reason: `Did you mean ${effectiveQuantity} × ${matchedProduct.name}, or add without quantity?`,
+          options: [
+            buildReadyLine(effectiveQuantity, true, itemClause.quantity_source || 'contextual_homophone'),
+            buildReadyLine(1, false, 'default'),
+          ],
+        });
+      } else {
+        matchedItems.push(
+          buildReadyLine(
+            effectiveQuantity,
+            itemClause.explicit_quantity ?? true,
+            itemClause.quantity_source || 'explicit',
+          ),
+        );
+      }
     } else if (candidates.length > 0 && confidence >= 0.60) {
       const candidatesList: VoiceProductCandidate[] = candidates.map((c) => ({
         id: c.id,

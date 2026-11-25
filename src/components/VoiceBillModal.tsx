@@ -157,6 +157,9 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
   const debouncedPreviewTimerRef = useRef<any>(null);
   const accumulatedFinalRef = useRef<string>('');
   const interimOnlyRef = useRef<string>('');
+  const sttConfidenceRef = useRef<number | null>(null);
+  const speechAlternativesRef = useRef<string[]>([]);
+  const lastFinalChunkRef = useRef<string>('');
 
   const stopRecording = useCallback(() => {
     // Stop Web Speech API recognition session
@@ -241,7 +244,10 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
   // ---------------------------------------------------------------------------
   // Pipeline Processing (English-only, multi-utterance safe)
   // ---------------------------------------------------------------------------
-  const handleProcessTranscript = async (textToProcess: string, options: { replaceLast?: boolean } = {}) => {
+  const handleProcessTranscript = async (
+    textToProcess: string,
+    options: { replaceLast?: boolean; sttConfidence?: number | null; speechAlternatives?: string[] } = {},
+  ) => {
     const cleanedText = textToProcess.trim();
     if (!cleanedText) {
       setErrorMessage("No speech detected. Please speak clearly or enter items to simulate.");
@@ -271,6 +277,12 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
     setButtonState('PROCESSING');
     setIsProcessing(true);
 
+    const parseCtxOptions = {
+      sttConfidence: options.sttConfidence,
+      speechAlternatives: options.speechAlternatives,
+      hasActiveBillContext: matchedItems.length > 0,
+    };
+
     setDebugInfo(prev => ({
       ...prev,
       selectedLanguage: VOICE_LANGUAGE_NAME,
@@ -278,6 +290,9 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
       recognitionState: 'PROCESSING',
       rawTranscript: cleanedText,
       detectedLanguage: VOICE_LANGUAGE_NAME,
+      normalizedTranscript: options.speechAlternatives?.length
+        ? `STT alts: ${options.speechAlternatives.join(' | ')}`
+        : '',
       apiRequest: 'POST /api/v1/voice/process',
       error: null
     }));
@@ -285,7 +300,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
     // STEP 1: Instant zero-latency (<1ms) client-side parsing for immediate responsive feedback
     let instantSuccess = false;
     try {
-      const localResult = parseMultilingualVoiceBill(cleanedText, products, 'english');
+      const localResult = parseMultilingualVoiceBill(cleanedText, products, 'english', parseCtxOptions);
 
       if (localResult.matched_items.length > 0 || localResult.ambiguous_items.length > 0) {
         setDraft(prev =>
@@ -308,6 +323,8 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         simulation_text: cleanedText,
         language_code: VOICE_SPEECH_CODE,
         custom_products: customProductCandidates,
+        stt_confidence: options.sttConfidence ?? undefined,
+        speech_alternatives: options.speechAlternatives?.length ? options.speechAlternatives : undefined,
       });
 
       setDebugInfo(prev => ({
@@ -342,7 +359,13 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         setDebugInfo(prev => ({
           ...prev,
           recognitionState: 'SUCCESS',
-          extractedItems: response.matched_items.map(m => ({ item: m.name, quantity: m.quantity, price: m.unit_price })),
+          extractedItems: response.matched_items.map(m => ({
+            item: m.name,
+            quantity: m.quantity,
+            price: m.unit_price,
+            qty_source: m.quantity_source,
+            qty_confidence: m.quantity_confidence,
+          })),
           inventoryMatches: response.matched_items
         }));
 
@@ -363,7 +386,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
     // STEP 3: Fallback handling if backend failed and instant preview had nothing yet
     if (!instantSuccess) {
       try {
-        const fallbackResult = parseMultilingualVoiceBill(cleanedText, products, 'english');
+        const fallbackResult = parseMultilingualVoiceBill(cleanedText, products, 'english', parseCtxOptions);
         setDraft(prev =>
           upsertVoiceUtteranceOutcome(prev, seq, fallbackResult, {
             replaceLast: isReprocess,
@@ -415,6 +438,9 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
     setErrorMessage(null);
     accumulatedFinalRef.current = '';
     interimOnlyRef.current = '';
+    sttConfidenceRef.current = null;
+    speechAlternativesRef.current = [];
+    lastFinalChunkRef.current = '';
     setInterimTranscript('');
     setLivePreviewItems([]);
 
@@ -443,7 +469,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
       // Enable real-time streaming interim results, multi-alternatives, and continuous speech in English
       recognition.lang = VOICE_SPEECH_CODE;
       recognition.interimResults = true;
-      recognition.maxAlternatives = 3;
+      recognition.maxAlternatives = 5;
       recognition.continuous = true;
 
       if (import.meta.env.DEV) {
@@ -472,26 +498,44 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
       recognition.onresult = (event: any) => {
         let interimText = '';
         let newFinalChunk = '';
+        const collectedAlts: string[] = [];
+        let bestConf: number | null = null;
 
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           const res = event.results[i];
           if (res.isFinal) {
-            // Multi-alternative evaluation: pick the alternative that scores highest with catalog matching
-            let bestAltText = res[0]?.transcript || '';
-            if (res.length > 1) {
+            // Multi-alternative evaluation: prefer explicit unambiguous numeric quantities + catalog matches + confidence
+            let bestAltText = (res[0]?.transcript || '').trim();
+            bestConf = typeof res[0]?.confidence === 'number' && res[0].confidence > 0 ? res[0].confidence : null;
+            if (res.length > 0) {
               let highestScore = -1;
               for (let a = 0; a < res.length; a++) {
                 const candText = res[a]?.transcript?.trim();
                 if (!candText) continue;
+                collectedAlts.push(candText);
                 const parsed = parseMultilingualVoiceBill(candText, products, 'english');
-                const score = (parsed.matched_items.length * 10) + ((res[a].confidence || 0) * 5);
+                const explicitQtyBonus = parsed.matched_items.reduce(
+                  (acc, m) => acc + (m.quantity_source === 'explicit' ? 4 : 0),
+                  0,
+                );
+                const altConf = typeof res[a].confidence === 'number' ? res[a].confidence : 0;
+                const score =
+                  (parsed.matched_items.length * 10) +
+                  explicitQtyBonus +
+                  (altConf * 5) -
+                  (parsed.unmatched_items.length * 2);
                 if (score > highestScore) {
                   highestScore = score;
                   bestAltText = candText;
+                  if (altConf > 0) bestConf = altConf;
                 }
               }
             }
-            newFinalChunk += (newFinalChunk ? ' ' : '') + bestAltText;
+            // Deduplicate consecutive identical final emissions from Chrome/Android Web Speech API
+            if (bestAltText && bestAltText.toLowerCase() !== lastFinalChunkRef.current.toLowerCase()) {
+              lastFinalChunkRef.current = bestAltText;
+              newFinalChunk += (newFinalChunk ? ' ' : '') + bestAltText;
+            }
           } else {
             interimText += (interimText ? ' ' : '') + (res[0]?.transcript || '');
           }
@@ -499,6 +543,12 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
 
         if (newFinalChunk) {
           accumulatedFinalRef.current = (accumulatedFinalRef.current + ' ' + newFinalChunk).trim();
+        }
+        if (collectedAlts.length > 0) {
+          speechAlternativesRef.current = Array.from(new Set([...speechAlternativesRef.current, ...collectedAlts])).slice(0, 6);
+        }
+        if (bestConf !== null) {
+          sttConfidenceRef.current = bestConf;
         }
         interimOnlyRef.current = interimText.trim();
 
@@ -512,7 +562,11 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         debouncedPreviewTimerRef.current = setTimeout(() => {
           if (fullCurrentTranscript) {
             try {
-              const liveParsed = parseMultilingualVoiceBill(fullCurrentTranscript, products, 'english');
+              const liveParsed = parseMultilingualVoiceBill(fullCurrentTranscript, products, 'english', {
+                sttConfidence: sttConfidenceRef.current,
+                speechAlternatives: speechAlternativesRef.current,
+                hasActiveBillContext: matchedItems.length > 0,
+              });
               setLivePreviewItems(
                 liveParsed.matched_items.map(m => ({
                   name: m.name,
@@ -533,11 +587,19 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         if (fullCurrentTranscript) {
           silenceTimeoutRef.current = setTimeout(() => {
             const finalText = (accumulatedFinalRef.current + ' ' + interimOnlyRef.current).trim();
+            const capturedConf = sttConfidenceRef.current;
+            const capturedAlts = [...speechAlternativesRef.current];
             accumulatedFinalRef.current = '';
             interimOnlyRef.current = '';
+            sttConfidenceRef.current = null;
+            speechAlternativesRef.current = [];
+            lastFinalChunkRef.current = '';
             if (finalText) {
               stopRecording();
-              handleProcessTranscript(finalText);
+              handleProcessTranscript(finalText, {
+                sttConfidence: capturedConf,
+                speechAlternatives: capturedAlts,
+              });
             }
           }, 1800);
         }
@@ -593,11 +655,19 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
       silenceTimeoutRef.current = null;
     }
     const textToCommit = (accumulatedFinalRef.current + ' ' + interimOnlyRef.current).trim();
+    const capturedConf = sttConfidenceRef.current;
+    const capturedAlts = [...speechAlternativesRef.current];
     accumulatedFinalRef.current = '';
     interimOnlyRef.current = '';
+    sttConfidenceRef.current = null;
+    speechAlternativesRef.current = [];
+    lastFinalChunkRef.current = '';
     stopRecording();
     if (textToCommit) {
-      handleProcessTranscript(textToCommit);
+      handleProcessTranscript(textToCommit, {
+        sttConfidence: capturedConf,
+        speechAlternatives: capturedAlts,
+      });
     } else {
       setButtonState('IDLE');
     }
@@ -617,8 +687,19 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
   };
 
   // ---------------------------------------------------------------------------
-  // Ambiguity Resolution: User picks specific variant
+  // Ambiguity Resolution: User picks specific variant or confirms contextual qty
   // ---------------------------------------------------------------------------
+  const handleResolveAmbiguityOption = (ambiguousIndex: number, chosenLine: MatchedVoiceItem) => {
+    setDraft(prev => {
+      const flat = flattenDraftToBase(prev);
+      return {
+        ...flat,
+        baseItems: mergeVoiceMatchedItems(flat.baseItems, [chosenLine]),
+        ambiguousItems: flat.ambiguousItems.filter((_, idx) => idx !== ambiguousIndex),
+      };
+    });
+  };
+
   const handleResolveAmbiguity = (ambiguousIndex: number, candidate: VoiceProductCandidate) => {
     const amb = ambiguousItems[ambiguousIndex];
     if (!amb) return;
@@ -1034,35 +1115,89 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
             <div className="bg-[#FEF9EB] border border-[#D6AE62] rounded-xl p-4 space-y-3">
               <div className="flex items-center gap-2 text-[#8A6118] font-bold text-xs uppercase tracking-wide">
                 <AlertTriangle className="w-4 h-4 text-[#A07828]" />
-                <span>Multiple Matches Detected — Select Product</span>
+                <span>
+                  {ambiguousItems.every(a => a.ambiguity_type === 'quantity')
+                    ? 'Confirm Quantity Interpretation'
+                    : 'Multiple Matches Detected — Select Product'}
+                </span>
               </div>
 
               {ambiguousItems.map((amb, ambIdx) => (
-                <div key={ambIdx} className="bg-white rounded-xl p-3 border border-[#D6AE62]/50 space-y-2">
-                  <p className="text-xs font-bold text-[#252D29]">
-                    Which <span className="text-[#8A6118]">&ldquo;{amb.queried_name}&rdquo;</span> did you mean? (Qty: {amb.quantity})
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {amb.candidates.map((cand) => (
+                amb.ambiguity_type === 'quantity' && amb.options && amb.options.length >= 2 ? (
+                  <div key={ambIdx} className="bg-white rounded-xl p-3 border border-[#D6AE62]/50 space-y-2.5" data-testid="quantity-confirmation-card">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-bold text-[#153D32]">
+                        Did you mean?{' '}
+                        <span className="font-normal text-[#5E6C64]">(&ldquo;{amb.raw_phrase || amb.queried_name}&rdquo;)</span>
+                      </p>
                       <button
-                        key={cand.id}
                         type="button"
-                        onClick={() => handleResolveAmbiguity(ambIdx, cand)}
-                        className="p-2.5 text-left rounded-lg border border-[#DDE9DF] hover:border-[#23866A] hover:bg-[#E7F3EE]/40 transition-colors cursor-pointer flex flex-col justify-between group"
+                        onClick={() =>
+                          setDraft(prev => ({
+                            ...prev,
+                            ambiguousItems: prev.ambiguousItems.filter((_, idx) => idx !== ambIdx),
+                          }))
+                        }
+                        className="text-[#5E6C64] hover:text-[#B93838] p-0.5 rounded transition-colors cursor-pointer"
+                        aria-label="Dismiss quantity suggestion"
                       >
-                        <p className="text-xs font-bold text-[#153D32] group-hover:text-[#0A241D] truncate">
-                          {cand.name}
-                        </p>
-                        <div className="flex items-center justify-between mt-1 text-[11px] font-semibold">
-                          <span className="text-[#23866A] tabular-nums">₹{cand.selling_price}</span>
-                          <span className="text-[#5E6C64]">
-                            {cand.current_stock} in stock
-                          </span>
-                        </div>
+                        <X className="w-3.5 h-3.5" />
                       </button>
-                    ))}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleResolveAmbiguityOption(ambIdx, amb.options![0])}
+                        className="p-2.5 text-left rounded-lg border border-[#23866A]/40 bg-[#E7F3EE]/50 hover:bg-[#E7F3EE] transition-colors cursor-pointer flex items-center justify-between gap-2"
+                      >
+                        <span className="text-xs font-bold text-[#153D32]">
+                          {amb.options[0].quantity} × {amb.options[0].name}
+                        </span>
+                        <span className="text-xs font-extrabold text-[#23866A] tabular-nums shrink-0">
+                          ₹{amb.options[0].total_price}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleResolveAmbiguityOption(ambIdx, amb.options![1])}
+                        className="p-2.5 text-left rounded-lg border border-[#DDE9DF] hover:border-[#153D32] hover:bg-[#FAF8F2] transition-colors cursor-pointer flex items-center justify-between gap-2"
+                      >
+                        <span className="text-xs font-semibold text-[#252D29]">
+                          Add {amb.options[1].name} without quantity
+                        </span>
+                        <span className="text-xs font-bold text-[#5E6C64] tabular-nums shrink-0">
+                          1 × ₹{amb.options[1].total_price}
+                        </span>
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div key={ambIdx} className="bg-white rounded-xl p-3 border border-[#D6AE62]/50 space-y-2">
+                    <p className="text-xs font-bold text-[#252D29]">
+                      Which <span className="text-[#8A6118]">&ldquo;{amb.queried_name}&rdquo;</span> did you mean? (Qty: {amb.quantity})
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {amb.candidates.map((cand) => (
+                        <button
+                          key={cand.id}
+                          type="button"
+                          onClick={() => handleResolveAmbiguity(ambIdx, cand)}
+                          className="p-2.5 text-left rounded-lg border border-[#DDE9DF] hover:border-[#23866A] hover:bg-[#E7F3EE]/40 transition-colors cursor-pointer flex flex-col justify-between group"
+                        >
+                          <p className="text-xs font-bold text-[#153D32] group-hover:text-[#0A241D] truncate">
+                            {cand.name}
+                          </p>
+                          <div className="flex items-center justify-between mt-1 text-[11px] font-semibold">
+                            <span className="text-[#23866A] tabular-nums">₹{cand.selling_price}</span>
+                            <span className="text-[#5E6C64]">
+                              {cand.current_stock} in stock
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )
               ))}
             </div>
           )}

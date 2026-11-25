@@ -521,6 +521,9 @@ def make_matched_item(
         action=getattr(item, "action", None) or "add",
         explicit_quantity=bool(getattr(item, "explicit_quantity", True)),
         match_confidence=match_confidence,
+        quantity_source=getattr(item, "quantity_source", None) or "explicit",
+        quantity_confidence=float(getattr(item, "quantity_confidence", 1.0) or 1.0),
+        original_quantity_token=getattr(item, "original_quantity_token", None),
         raw_text=getattr(item, "raw_text", None),
         package_size=getattr(item, "package_size", None),
     )
@@ -576,6 +579,40 @@ def match_items_to_inventory(
     unmatched_items: List[UnmatchedVoiceItem] = []
 
     def add_match(prod: VoiceProductCandidate, item: ExtractedItem, confidence: float = 1.0) -> None:
+        if getattr(item, "needs_quantity_confirmation", False):
+            # Moderate contextual homophone confidence: offer lightweight "Did you mean? N × Product vs Add without quantity"
+            suggested_qty = item.quantity
+            fallback_item = item.model_copy(update={
+                "quantity": 1,
+                "explicit_quantity": False,
+                "quantity_source": "default",
+                "needs_quantity_confirmation": False,
+            })
+            options: List[MatchedVoiceItem] = []
+            try:
+                options.append(make_matched_item(prod, item, match_confidence=round(confidence, 3)))
+                options.append(make_matched_item(prod, fallback_item, match_confidence=round(confidence, 3)))
+            except VoiceItemError as exc:
+                unmatched_items.append(UnmatchedVoiceItem(queried_name=item.name, quantity=item.quantity, reason=str(exc)))
+                return
+            spoken = to_decimal(getattr(item, "spoken_price", None))
+            orig_tok = getattr(item, "original_quantity_token", None)
+            raw_phrase = getattr(item, "raw_text", None) or item.name
+            if orig_tok and re.match(rf"^{re.escape(str(suggested_qty))}\b", raw_phrase):
+                raw_phrase = re.sub(rf"^{re.escape(str(suggested_qty))}\b", orig_tok, raw_phrase, count=1)
+            ambiguous_items.append(AmbiguousVoiceItem(
+                queried_name=item.name,
+                quantity=suggested_qty,
+                candidates=[prod],
+                spoken_price=to_number(round_currency(spoken)) if spoken is not None and spoken > 0 else None,
+                options=options,
+                ambiguity_type="quantity",
+                suggested_quantity=suggested_qty,
+                fallback_quantity=1,
+                raw_phrase=raw_phrase,
+                reason=f"Detected possible homophone quantity '{orig_tok or ''}' -> {suggested_qty}",
+            ))
+            return
         try:
             matched_items.append(make_matched_item(prod, item, match_confidence=round(confidence, 3)))
         except VoiceItemError as exc:
@@ -809,6 +846,9 @@ def build_structured_voice_items(
                 explicit_quantity=exp_qty,
                 matched_product_id=m.product_id,
                 match_confidence=m.match_confidence or 1.0,
+                quantity_source=getattr(ext, "quantity_source", None) or "explicit",
+                quantity_confidence=float(getattr(ext, "quantity_confidence", 1.0) or 1.0),
+                original_quantity_token=getattr(ext, "original_quantity_token", None),
                 status="MATCHED",
             ))
             continue
@@ -818,7 +858,7 @@ def build_structured_voice_items(
             a_pool_item = amb_pool.pop(a_idx)
             structured.append(StructuredVoiceItem(
                 raw_text=raw_txt,
-                product_name=ext.name,
+                product_name=a_pool_item.candidates[0].name if (a_pool_item.ambiguity_type == "quantity" and a_pool_item.candidates) else ext.name,
                 quantity=ext.quantity,
                 unit=ext.unit,
                 package_size=pkg,
@@ -826,8 +866,11 @@ def build_structured_voice_items(
                 explicit_quantity=exp_qty,
                 matched_product_id=a_pool_item.candidates[0].id if a_pool_item.candidates else None,
                 match_confidence=0.75,
+                quantity_source=getattr(ext, "quantity_source", None) or "explicit",
+                quantity_confidence=float(getattr(ext, "quantity_confidence", 1.0) or 1.0),
+                original_quantity_token=getattr(ext, "original_quantity_token", None),
                 status="AMBIGUOUS",
-                reason=f"Multiple candidates ({len(a_pool_item.candidates)}) found",
+                reason=a_pool_item.reason or f"Multiple candidates ({len(a_pool_item.candidates)}) found",
             ))
             continue
 

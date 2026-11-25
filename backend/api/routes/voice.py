@@ -141,8 +141,13 @@ async def process_voice_bill(
     current_user = get_optional_current_user(db, authorization)
     catalog = resolve_catalog_products(db, current_user=current_user, custom_products=request.custom_products)
 
-    # Step 3: Parse transcript into structured items using catalog-aware segmentation & match
-    extracted_items = extract_items_from_transcript(transcript_text, catalog=catalog)
+    # Step 3: Parse transcript into structured items using catalog-aware segmentation & context resolution
+    extracted_items = extract_items_from_transcript(
+        transcript_text,
+        catalog=catalog,
+        stt_confidence=request.stt_confidence,
+        speech_alternatives=request.speech_alternatives,
+    )
 
     matched, ambiguous, unmatched, subtotal, tax, total = match_items_to_inventory(
         extracted_items=extracted_items,
