@@ -46,6 +46,7 @@ const CHECKS = {
   demand_forecast_check: null,
   ai_assistant_check: null,
   actionable_insights_check: null,
+  ocr_scanner_acceptance: null,
 };
 
 const log = (msg) => console.log(`[e2e] ${msg}`);

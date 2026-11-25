@@ -63,6 +63,7 @@ ROLE_TO_EXPECTED_DATA_TYPE: Dict[ColumnRoleType, ExpectedDataType] = {
     "total": ExpectedDataType.DECIMAL_CURRENCY,
     "cases": ExpectedDataType.DECIMAL_QUANTITY,
     "units_per_case": ExpectedDataType.DECIMAL_QUANTITY,
+    "pack_size": ExpectedDataType.TEXT,
     "unknown": ExpectedDataType.UNKNOWN,
     "ignore": ExpectedDataType.UNKNOWN,
 }
@@ -86,6 +87,7 @@ ROLE_TO_ALIGNMENT: Dict[ColumnRoleType, Literal["left", "center", "right"]] = {
     "total": "right",
     "cases": "right",
     "units_per_case": "right",
+    "pack_size": "center",
     "unknown": "center",
     "ignore": "center",
 }

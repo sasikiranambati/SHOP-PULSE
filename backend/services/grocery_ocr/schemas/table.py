@@ -26,6 +26,7 @@ ColumnRoleType = Literal[
     "taxable",
     "cases",
     "units_per_case",
+    "pack_size",
     "unknown",
     "ignore",
 ]

@@ -102,6 +102,15 @@ class NumericParser:
         # Strip leading non-digit symbols / OCR noise artifacts before the number, preserving OCR letters like I/O
         cleaned = re.sub(r"^[^\d\-IOlo]+", "", cleaned).strip()
 
+        # Decimal comma ('2.350,00', '12,50'): a comma followed by only one or two final digits cannot
+        # be digit grouping (Indian and international groups both end in three digits), so it is the
+        # decimal separator and any dots are thousands separators. Flagged for review, never silent.
+        if re.fullmatch(r"\d{1,3}(?:\.\d{3})*,\d{1,2}|\d+,\d{1,2}", cleaned):
+            int_part, frac_part = cleaned.rsplit(",", 1)
+            cleaned = f"{int_part.replace('.', '')}.{frac_part}"
+            issues.append(f"Read '{raw}' with a decimal comma as {cleaned}")
+            confidence = min(confidence, 85.0)
+
         # Check for Indian comma formatting (e.g. '1,378.62' or '1,00,000.00')
         cleaned = cleaned.replace(",", "").strip()
 

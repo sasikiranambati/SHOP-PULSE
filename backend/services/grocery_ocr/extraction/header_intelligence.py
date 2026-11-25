@@ -51,8 +51,14 @@ HEADER_SEMANTIC_ALIASES: Dict[ColumnRoleType, List[str]] = {
         "ಪ್ರಮಾಣ", "ಸಂಖ್ಯೆ", "नग"
     ],
     "unit": [
-        "unit of measure", "unit of measurement", "unit", "uom", "u.o.m", "pack", "pkg",
-        "packaging", "packing", "measure", "type", "uom code"
+        "unit of measure", "unit of measurement", "unit", "uom", "u.o.m", "measure", "type", "uom code",
+        # Common OCR misreads (bold 'UOM' read as 'UuoM' / 'UoOM'):
+        "uuom", "uoom", "u0m",
+    ],
+    # Content of ONE purchase unit ("25 kg", "500 g", "15 L"): its own column, never the billing unit
+    "pack_size": [
+        "pack size", "pack", "packing", "packaging", "pkg", "pkg size", "pack wt", "net wt", "net weight",
+        "net qty per pack", "size", "weight", "wt", "bag size", "content",
     ],
     "rate": [
         "unit price", "unit rate", "basic rate", "base rate", "basic rt", "basic.rt", "netrate", "net rate",
@@ -150,6 +156,7 @@ CANONICAL_HEADER_LABELS: Dict[ColumnRoleType, str] = {
     "total": "AMOUNT",
     "cases": "CASES",
     "units_per_case": "UNITS_PER_CASE",
+    "pack_size": "PACK_SIZE",
     "unknown": "UNKNOWN",
     "ignore": "IGNORE",
 }

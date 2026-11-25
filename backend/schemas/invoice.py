@@ -100,7 +100,14 @@ class CanonicalInvoiceItemSchema(BaseModel):
     is_free_item: bool = Field(False, description="Printed free / promotional line (rate 0.00); kept with its quantity")
     price_basis_quantity: Optional[float] = Field(1.0, description="Reference quantity for which purchase_price is quoted (default 1.0)")
     price_basis_unit: Optional[str] = Field(None, description="Canonical unit for which purchase_price is quoted (defaults to item unit)")
-    normalized_purchase_price: Optional[float] = Field(None, description="Procurement cost normalized to single inventory/basis unit")
+    normalized_purchase_price: Optional[float] = Field(None, description="Purchase cost per standard unit (same as cost_per_standard_unit)")
+    # Pack size -> physical quantity -> cost per standard unit, computed by the unit registry and the
+    # universal pricing engine from the printed values (services/invoice_pack_pricing.py)
+    physical_quantity: Optional[float] = Field(None, description="Purchase quantity x pack size, in standard_unit (e.g. 2 bag x 25 kg = 50)")
+    standard_unit: Optional[str] = Field(None, description="Unit of physical_quantity and cost_per_standard_unit (kg, L, or the purchase unit)")
+    cost_per_standard_unit: Optional[float] = Field(None, description="Purchase cost per standard unit (e.g. Rs 4,700 / 50 kg = 94 per kg)")
+    rate_basis_unit: Optional[str] = Field(None, description="Unit the printed rate is quoted per (usually the purchase unit)")
+    pack_conversion: Optional[str] = Field(None, description="PACK_CONVERTED, COUNT_ONLY or NONE")
 
 
 class DetectedColumnSchema(BaseModel):
@@ -189,6 +196,12 @@ class InvoiceConfirmItem(BaseModel):
     mrp_basis_quantity: Optional[float] = Field(None, gt=0, description="Reference quantity for which invoice line MRP is quoted (defaults to price_basis_quantity if null)")
     mrp_basis_unit: Optional[str] = Field(None, description="Canonical unit in which invoice line MRP is quoted (defaults to price_basis_unit if null)")
     update_selling_price: bool = Field(False, description="Explicit confirmation to update retail selling price on existing products")
+    # Pack size printed on the invoice (content of ONE purchase unit, e.g. 25 kg per bag). When given,
+    # stock and cost are converted through the unit registry / pricing engine instead of price_basis.
+    pack_size: Optional[float] = Field(None, gt=0, description="Content of one purchase unit (e.g. 25 for 25 kg per bag)")
+    pack_size_unit: Optional[str] = Field(None, description="Unit of pack_size (kg, g, L, ml)")
+    rate_basis_unit: Optional[str] = Field(None, description="Unit the purchase_price is quoted per; defaults to the line unit")
+    stock_unit: Optional[str] = Field(None, description="New products only: stock in this unit (the purchase unit or the pack unit)")
 
     @model_validator(mode="after")
     def free_units_add_up(self) -> "InvoiceConfirmItem":

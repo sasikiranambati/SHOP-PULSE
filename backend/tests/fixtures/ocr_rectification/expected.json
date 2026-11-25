@@ -1,0 +1,112 @@
+{
+ "OR01_pack_column_wholesale.png": [
+  {
+   "product_name": "Basmati Rice",
+   "quantity": 2,
+   "unit": "bag",
+   "purchase_price": 2350.0,
+   "printed_amount": 4700.0,
+   "pack_size": 25,
+   "pack_size_unit": "kg"
+  },
+  {
+   "product_name": "Sugar",
+   "quantity": 1,
+   "unit": "bag",
+   "purchase_price": 2200.0,
+   "printed_amount": 2200.0,
+   "pack_size": 50,
+   "pack_size_unit": "kg"
+  },
+  {
+   "product_name": "Sunflower Oil",
+   "quantity": 3,
+   "unit": "tin",
+   "purchase_price": 1950.0,
+   "printed_amount": 5850.0,
+   "pack_size": 15,
+   "pack_size_unit": "L"
+  },
+  {
+   "product_name": "Toor Dal",
+   "quantity": 10,
+   "unit": "pkt",
+   "purchase_price": 135.0,
+   "printed_amount": 1350.0,
+   "pack_size": 1,
+   "pack_size_unit": "kg"
+  }
+ ],
+ "OR02_header_synonyms.png": [
+  {
+   "product_name": "Toor Dal 1kg",
+   "quantity": 12,
+   "unit": "pkt",
+   "purchase_price": 132.0,
+   "printed_amount": 1584.0
+  },
+  {
+   "product_name": "Tata Salt 1kg",
+   "quantity": 25,
+   "unit": "pkt",
+   "purchase_price": 24.0,
+   "printed_amount": 600.0
+  },
+  {
+   "product_name": "Basmati Rice 5kg",
+   "quantity": 6,
+   "unit": "bag",
+   "purchase_price": 540.0,
+   "printed_amount": 3240.0
+  }
+ ],
+ "OR03_two_page_scanned.pdf": [
+  {
+   "product_name": "Aashirvaad Atta 10kg",
+   "quantity": 5,
+   "unit": "bag",
+   "purchase_price": 375.0,
+   "printed_amount": 1875.0
+  },
+  {
+   "product_name": "Fortune Mustard Oil 1L",
+   "quantity": 8,
+   "unit": "btl",
+   "purchase_price": 145.0,
+   "printed_amount": 1160.0
+  },
+  {
+   "product_name": "Tata Tea Gold 500g",
+   "quantity": 6,
+   "unit": "pkt",
+   "purchase_price": 290.0,
+   "printed_amount": 1740.0
+  },
+  {
+   "product_name": "Maggi Noodles 70g",
+   "quantity": 48,
+   "unit": "pkt",
+   "purchase_price": 11.0,
+   "printed_amount": 528.0
+  },
+  {
+   "product_name": "Surf Excel 1kg",
+   "quantity": 10,
+   "unit": "pkt",
+   "purchase_price": 118.0,
+   "printed_amount": 1180.0
+  }
+ ],
+ "OR04_rate_per_kg.png": [
+  {
+   "product_name": "Sugar",
+   "quantity": 2,
+   "unit": "bag",
+   "purchase_price": 44.0,
+   "printed_amount": 4400.0,
+   "pack_size": 50,
+   "pack_size_unit": "kg",
+   "rate_basis_unit": "kg"
+  }
+ ]
+}

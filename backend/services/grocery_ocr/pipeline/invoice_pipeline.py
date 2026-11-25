@@ -7,6 +7,7 @@ Never writes to the database during extraction.
 Preserves complete OCR evidence, word coordinates, and Decimal precision.
 """
 
+from concurrent.futures import ThreadPoolExecutor
 import re
 import time
 import uuid
@@ -62,11 +63,16 @@ _INT_PART_FRAGMENT_RE = re.compile(r"^\d[\d,]*\.$")       # '130.'
 _FRACTION_FRAGMENT_RE = re.compile(r"^\.\d{2,3}[|\]]?$")  # '.00'
 
 
+_NUMBER_TOKEN_RE = re.compile(r"^\d+(?:[.,]\d+)?$")
+
+
 def money_token_stats(page: Any) -> Dict[str, int]:
     """Count well-formed money values and decimal fragments in an OCR page reading."""
     words = [w.text.strip() for w in getattr(page, "words", []) or [] if getattr(w, "text", "").strip()]
     return {
         "money_values": sum(1 for t in words if _MONEY_TOKEN_RE.match(t)),
+        # every plain number (quantities, codes, amounts): single digits are what a layout loses first
+        "numeric_values": sum(1 for t in words if _NUMBER_TOKEN_RE.match(t)),
         "split_integer_parts": sum(1 for t in words if _INT_PART_FRAGMENT_RE.match(t)),
         "split_fractions": sum(1 for t in words if _FRACTION_FRAGMENT_RE.match(t)),
     }
@@ -77,6 +83,7 @@ def decimal_values_look_split(stats: Dict[str, int]) -> bool:
     # Three or more numbers broken at the decimal point is demonstrable loss; whether the second
     # reading is actually better is decided separately (it must hold clearly more money values).
     return stats["split_integer_parts"] + stats["split_fractions"] >= 3
+
 
 
 def extraction_metadata(rec: Any) -> Dict[str, Any]:
@@ -179,11 +186,21 @@ class InvoicePipeline:
         page_idx: int,
         default_page: OCRPageResult,
         metadata: InvoiceProcessingMetadata,
+        alt_page: Optional[OCRPageResult] = None,
     ) -> OCRPageResult:
-        """R3: the automatic page layout (PSM 3) can split ruled-table numbers at the decimal point
-        ('130.' / '00') and lose them. Only when the default reading shows such fragments is the page
-        read again with the configured fallback mode; the fallback reading is kept only if it holds
-        clearly more well-formed money values. The decision is recorded for audit."""
+        """Choose between the automatic page layout (PSM 3) and a single-block reading (PSM 6).
+
+        Measured on the repository's image invoices (tests/ocr_fixture_benchmark.py): the automatic
+        layout can split ruled-table numbers at the decimal point ('130.' / '00'), lose a whole ruled
+        table on a photographed page (TC03: 0 amounts read), or drop an entire column band on a clean
+        page (TC30: Qty and Unit missing although recognised at 96% in isolation); the single-block
+        reading never read fewer printed cells. Both readings are therefore taken (in parallel by the
+        caller when possible) and the single-block one is kept only when it is clearly better:
+          1. clearly more well-formed money values (+3 or +10%), or
+          2. no fewer money values, at least 5% (+3) more words, and confidence within 5 points, or
+          3. no fewer money values, at least 2 more plain numbers (e.g. single-digit quantities the
+             automatic layout dropped, OR01), and confidence within 5 points.
+        Otherwise the default reading is kept. The decision is recorded for audit."""
         default_psm = str(getattr(self.config, "default_ocr_psm", "3"))
         fallback_psm = str(getattr(self.config, "fallback_ocr_psm", "") or "")
         default_stats = money_token_stats(default_page)
@@ -191,25 +208,56 @@ class InvoicePipeline:
                                   "chosen_psm": default_psm}
         metadata.custom_properties.setdefault("ocr_psm_selection", []).append(record)
         metadata.custom_properties.setdefault("ocr_psm_used", default_psm)
-        if not fallback_psm or fallback_psm == default_psm or not decimal_values_look_split(default_stats):
+        if not fallback_psm or fallback_psm == default_psm:
             record["fallback_tried"] = False
             return default_page
-        try:
-            alt_page = self.ocr_engine.recognize(image_bytes, page_number=page_idx, options={"psm": fallback_psm})
-        except Exception as exc:  # the default reading is still valid
-            record.update(fallback_tried=True, fallback_error=str(exc))
-            return default_page
+        if alt_page is None:
+            try:
+                alt_page = self.ocr_engine.recognize(image_bytes, page_number=page_idx, options={"psm": fallback_psm})
+            except Exception as exc:  # the default reading is still valid
+                record.update(fallback_tried=True, fallback_error=str(exc))
+                return default_page
         alt_stats = money_token_stats(alt_page)
         record.update(fallback_tried=True, fallback_psm=fallback_psm, fallback=alt_stats)
         d_vals, a_vals = default_stats["money_values"], alt_stats["money_values"]
-        if a_vals >= d_vals + max(3, 0.1 * d_vals):  # clearly more amounts read whole
-            record["chosen_psm"] = fallback_psm
-            metadata.custom_properties["ocr_psm_used"] = fallback_psm
-            metadata.warnings.append(
-                f"Page {page_idx}: the table was re-read with a single-block layout because the automatic layout "
-                f"split decimal values ({default_stats['money_values']} -> {alt_stats['money_values']} amounts read)")
-            return alt_page
-        return default_page
+        d_words, a_words = len(default_page.words or []), len(alt_page.words or [])
+        d_conf, a_conf = float(default_page.confidence or 0.0), float(alt_page.confidence or 0.0)
+        record.update(default_words=d_words, fallback_words=a_words,
+                      default_confidence=d_conf, fallback_confidence=a_conf)
+        reason = None
+        if a_vals >= d_vals + max(3, 0.1 * d_vals):
+            reason = ("split decimal values" if decimal_values_look_split(default_stats)
+                      else "read clearly more amounts")
+        elif a_vals >= d_vals and a_words >= d_words * 1.05 + 3 and a_conf >= d_conf - 5.0:
+            reason = "read more of the table text"
+        elif (a_vals >= d_vals and alt_stats.get("numeric_values", 0) >= default_stats.get("numeric_values", 0) + 2
+              and a_conf >= d_conf - 5.0):
+            reason = "read more numbers (e.g. quantities)"
+        if reason is None:
+            return default_page
+        record["chosen_psm"] = fallback_psm
+        record["reason"] = reason
+        metadata.custom_properties["ocr_psm_used"] = fallback_psm
+        metadata.warnings.append(
+            f"Page {page_idx}: the table was read with a single-block layout because it {reason} "
+            f"({d_vals} -> {a_vals} amounts, {d_words} -> {a_words} words)")
+        return alt_page
+
+    def _read_page_both_layouts(self, image_bytes: bytes, page_idx: int):
+        """Default and single-block readings of one page, run in parallel (separate OCR processes)."""
+        fallback_psm = str(getattr(self.config, "fallback_ocr_psm", "") or "")
+        default_psm = str(getattr(self.config, "default_ocr_psm", "3"))
+        if not fallback_psm or fallback_psm == default_psm:
+            return self.ocr_engine.recognize(image_bytes, page_number=page_idx), None
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            f_default = pool.submit(self.ocr_engine.recognize, image_bytes, page_idx)
+            f_alt = pool.submit(self.ocr_engine.recognize, image_bytes, page_idx, {"psm": fallback_psm})
+            default_page = f_default.result()  # a default-reading failure propagates as before
+            try:
+                alt_page = f_alt.result()
+            except Exception:  # the default reading is still valid
+                alt_page = None
+        return default_page, alt_page
 
     def process(
         self,
@@ -293,9 +341,9 @@ class InvoicePipeline:
                         # Preprocess image with adaptive OpenCV pipeline
                         prep_res = self.image_processor.preprocess(img_bytes)
                         # Recognize characters and extract word coordinates
-                        ocr_page = self.ocr_engine.recognize(prep_res.processed_bytes, page_number=page_idx)
+                        ocr_page, alt_page = self._read_page_both_layouts(prep_res.processed_bytes, page_idx)
                         ocr_page = self._compare_fallback_segmentation(
-                            prep_res.processed_bytes, page_idx, ocr_page, metadata)
+                            prep_res.processed_bytes, page_idx, ocr_page, metadata, alt_page=alt_page)
                         ocr_pages.append(ocr_page)
 
                     full_text = "\n\n".join(p.raw_text for p in ocr_pages)

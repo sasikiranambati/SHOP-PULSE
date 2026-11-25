@@ -300,9 +300,30 @@ def test_r3_fallback_mode_used_when_default_splits_decimals():
     assert meta.custom_properties["ocr_psm_selection"][0]["chosen_psm"] == "6"
 
 
-def test_r3_no_second_reading_when_decimals_are_intact():
+def test_r3_default_kept_when_the_second_reading_is_not_better():
+    # Both readings are always compared (TC30: the automatic layout dropped a whole column band);
+    # the single-block reading is kept only when it is clearly better.
     eng, chosen, meta = _r3(["125.00", "12.00", "6.00", "Salt"], ["125.00"])
-    assert eng.calls == ["3"] and meta.custom_properties["ocr_psm_used"] == "3"
+    assert eng.calls == ["3", "6"]
+    assert meta.custom_properties["ocr_psm_used"] == "3" and chosen.words[0].text == "125.00"
+    assert meta.custom_properties["ocr_psm_selection"][0]["chosen_psm"] == "3"
+
+
+def test_r3_second_reading_kept_when_the_default_lost_a_table():
+    # TC03: the automatic layout read no amounts from a photographed ruled table
+    eng, chosen, meta = _r3(["Bill", "To", "Item", "Description"],
+                            ["Atta", "4", "bag", "245.00", "289.00", "980.00", "Salt", "20", "22.00", "440.00"])
+    assert meta.custom_properties["ocr_psm_used"] == "6"
+    assert meta.custom_properties["ocr_psm_selection"][0]["reason"] == "read clearly more amounts"
+
+
+def test_r3_second_reading_kept_when_the_default_dropped_a_column():
+    # TC30: same amounts, but the Qty / Unit column band is missing from the default reading
+    default = ["Nescafe", "175.00", "210.00", "2625.00"] * 4
+    alt = ["Nescafe", "15", "jar", "175.00", "210.00", "2625.00"] * 4
+    eng, chosen, meta = _r3(default, alt)
+    assert meta.custom_properties["ocr_psm_selection"][0]["reason"] == "read more of the table text"
+    assert "jar" in [w.text for w in chosen.words]
 
 
 def test_r9_line_with_its_own_hsn_and_values_is_not_a_continuation():

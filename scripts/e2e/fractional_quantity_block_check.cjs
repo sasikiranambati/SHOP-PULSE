@@ -10,6 +10,7 @@
  * Run through the isolated test launcher (test backend, test database, dedicated ports):
  *   node scripts/e2e/run.cjs fractional_quantity_block_check
  */
+const { enterSellingPrices } = require('./scanner_helpers.cjs');
 const { chromium, devices } = require('playwright');
 const fs = require('fs');
 const SP = process.argv[2] || '.';
@@ -53,6 +54,7 @@ const extraction = (label) => ({
     await page.setInputFiles('input[type=file]:not([multiple]):not([capture])', { name: 'bill.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 e2e') });
     await page.click('button:has-text("Extract Line Items")');
     await page.waitForSelector('text=Extracted Grocery Line Items', { timeout: 60000 });
+    await enterSellingPrices(page);  // the reviewer's step: no selling price is invented
     await page.waitForSelector('select[data-testid="unit-select"]:not([disabled])', { timeout: 30000 });  // unit registry loaded
 
     const sugarRow = page.locator(`tr:has(input[aria-label="Select E2E Gift Box ${label}"])`);

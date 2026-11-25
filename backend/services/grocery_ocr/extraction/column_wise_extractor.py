@@ -146,8 +146,16 @@ class ColumnWiseExtractor:
         if any(lower_name.startswith(pfx) for pfx in NON_ITEM_PREFIXES):
             return None
 
-        # Pack Size Extraction
-        pack_size = self.product_extractor.extract_pack_size(raw_name)
+        # Pack Size Extraction: a printed Pack / Size column is the explicit value and wins over a size
+        # read from the product description; neither is ever assumed
+        pack_size = None
+        pack_cell = self._cell_text(row, columns, "pack_size")
+        if pack_cell:
+            pack_size = self.product_extractor.extract_pack_size(pack_cell)
+            if pack_size is not None:
+                cell_provenance["pack_size"] = pack_cell
+        if pack_size is None:
+            pack_size = self.product_extractor.extract_pack_size(raw_name)
         if pack_size and pack_size.unit and pack_size.unit.lower() in BILLING_UNIT_KEYWORDS:
             logger.debug("Discarding pack_size %s %s (billing unit)", pack_size.value, pack_size.unit)
             pack_size = None

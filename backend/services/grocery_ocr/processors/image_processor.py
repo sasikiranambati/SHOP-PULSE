@@ -37,6 +37,10 @@ class ImagePreprocessResult(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Image metrics and transformations")
 
 
+# Ink-to-paper luminance spread (p99 - p1) below which a page is treated as faded / low contrast
+LOW_CONTRAST_INK_SPREAD = 120.0
+
+
 class IImageProcessor(ABC):
     """Abstract interface for image preprocessing and normalization."""
 
@@ -155,7 +159,18 @@ class AdaptiveImageProcessor(IImageProcessor):
             mean_val, std_val = cv2.meanStdDev(gray)
             mean_lum = float(mean_val[0][0])
             std_lum = float(std_val[0][0])
-            is_low_contrast = std_lum < 40.0
+            # Contrast between ink and paper (0.2nd vs 99th luminance percentile). The overall standard
+            # deviation is NOT a contrast measure for documents: a crisp page that is mostly white has a
+            # low deviation, which made CLAHE run on clean invoices and on phone photos. Measured: on photos
+            # and uneven backgrounds it destroys text (TC03: 0/7 key cells read with CLAHE, 6/7 without; doc-prep
+            # shadow/blur/similar-background photos: CER 0.17-0.26 -> 0.53-0.66), and on a clean skewed page it
+            # misreads item names (TC21 "Oil" -> "Oit"). Its one gain on clean pages is faint grey boilerplate
+            # (e.g. a light footer line); table rows read the same. A genuinely faded page (TC20 thermal
+            # receipt: spread 102) still gets it. The 0.2nd percentile still finds the ink on a sparse page
+            # (one printed line is under 1% of the pixels).
+            p1, p99 = np.percentile(gray, (0.2, 99))
+            ink_spread = float(p99 - p1)
+            is_low_contrast = ink_spread < LOW_CONTRAST_INK_SPREAD
 
             if is_low_contrast:
                 # Faded invoice or dim photo: apply CLAHE
@@ -210,6 +225,7 @@ class AdaptiveImageProcessor(IImageProcessor):
                     "mode": "L",
                     "mean_luminance": round(mean_lum, 2),
                     "std_luminance": round(std_lum, 2),
+                    "ink_spread": round(ink_spread, 2),
                     "is_low_contrast": is_low_contrast,
                     "laplacian_variance": round(lap_var, 2),
                     "is_blurry": is_blurry,

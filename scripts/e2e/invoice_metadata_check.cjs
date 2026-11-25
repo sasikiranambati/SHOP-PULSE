@@ -10,6 +10,7 @@
  * Run through the isolated test launcher (test backend, test database, dedicated ports):
  *   node scripts/e2e/run.cjs invoice_metadata_check
  */
+const { enterSellingPrices } = require('./scanner_helpers.cjs');
 const { chromium } = require('playwright');
 const SP = process.argv[2];
 const { API, HARNESS } = require('./e2e_env.cjs').e2eTarget();
@@ -40,6 +41,7 @@ const check = (n, ok, d = '') => { results.push(ok); console.log(`${ok ? 'PASS' 
     await page.setInputFiles('input[type=file]:not([multiple]):not([capture])', file);
     await page.click('button:has-text("Extract Line Items")');
     await page.waitForSelector('text=Extracted Grocery Line Items', { timeout: 120000 });
+    await enterSellingPrices(page);  // the reviewer's step: no selling price is invented
     // Every printed unit is registered and the 2.5 kg line suits its unit: nothing needs correcting
     blockedLines += (await page.locator('[data-testid="unit-warning"]').count()) + (await page.locator('text=Whole units only').count());
   }

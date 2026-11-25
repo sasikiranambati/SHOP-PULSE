@@ -43,6 +43,7 @@ import {
   type TotalReconciliation,
 } from '../utils/invoiceReliability';
 import { DocumentPrepWorkflow } from '../components/invoice-capture/DocumentPrepWorkflow';
+import { newProductsWithoutSellingPrice, packDisplay, packPayload, priceBasisFor, sellingPricePayload } from '../utils/invoicePack';
 import { useUnitRegistry } from '../hooks/useUnitRegistry';
 import {
   META_LABELS,
@@ -103,6 +104,20 @@ export interface ExtractedItem {
   inventory_unit?: string | null;
   /** Conversion factor from invoice unit to inventory unit (e.g. 1 bag = 50 kg) */
   conversion_factor?: number | null;
+  /** Pack size printed on the invoice: content of ONE purchase unit (e.g. 25 kg per bag). */
+  pack_size?: number | null;
+  pack_size_unit?: string | null;
+  /** Purchase quantity x pack size (from the backend registry / pricing engine, e.g. 50 kg). */
+  physical_quantity?: number | null;
+  standard_unit?: string | null;
+  /** Purchase cost per standard unit (e.g. Rs 94 per kg); never a selling price. */
+  cost_per_standard_unit?: number | null;
+  rate_basis_unit?: string | null;
+  pack_conversion?: string | null;
+  /** New products with a pack size: stock in purchase units (bags) or the physical unit (kg / L). */
+  stock_mode?: 'purchase' | 'physical';
+  /** Set when the reviewer typed a selling price; only then is it sent. */
+  selling_price_edited?: boolean;
 }
 
 export interface ExtractedInvoice {
@@ -244,6 +259,15 @@ export const InvoiceScanner: React.FC = () => {
         mrp_basis_unit: defaultBasisUnit,
         inventory_unit: defaultBasisUnit,
         conversion_factor: 1,
+        pack_size: typeof item.pack_size === 'number' ? item.pack_size : null,
+        pack_size_unit: item.pack_size_unit || null,
+        physical_quantity: typeof item.physical_quantity === 'number' ? item.physical_quantity : null,
+        standard_unit: item.standard_unit || null,
+        cost_per_standard_unit: typeof item.cost_per_standard_unit === 'number' ? item.cost_per_standard_unit : null,
+        rate_basis_unit: item.rate_basis_unit || null,
+        pack_conversion: item.pack_conversion || null,
+        stock_mode: 'purchase',
+        selling_price_edited: false,
       };
     });
 
@@ -290,10 +314,7 @@ export const InvoiceScanner: React.FC = () => {
       : Promise.resolve(null);
 
     try {
-      setProgressStage('Preprocessing image & deskewing layout...');
-      await new Promise((r) => setTimeout(r, 600));
-
-      setProgressStage('Extracting spatial tokens & table structure...');
+      setProgressStage('Reading the invoice: preprocessing, OCR and table reconstruction...');
       const response = await fetch('/api/v1/invoices/extract', {
         method: 'POST',
         headers,
@@ -332,7 +353,8 @@ export const InvoiceScanner: React.FC = () => {
       const updatedItems = prev.items.map((item) => {
         if (item.id === id) {
           // Recalculates the amount from the paid units when qty or rate changes (free units stay as printed)
-          return applyLineEdit(item, field, value);
+          const edited = applyLineEdit(item, field, value);
+          return field === 'selling_price' ? { ...edited, selling_price_edited: true } : edited;
         }
         return item;
       });
@@ -367,26 +389,31 @@ export const InvoiceScanner: React.FC = () => {
 
   const handleAddItem = () => {
     if (!extractedData) return;
+    // A manual line starts empty: every value is typed by the reviewer (nothing is invented) and the
+    // usual checks (name, quantity, rate, registered unit, selling price for a new product) apply.
     const newItem: ExtractedItem = {
       id: `manual_${Date.now()}`,
-      product_name: 'New Product',
+      product_name: '',
       category: 'Groceries',
-      quantity: 1,
-      unit: 'pcs',
-      purchase_price: 100,
-      selling_price: 120,
-      mrp: 120,
-      amount: 100,
-      confidence: 100,
-      confidence_level: 'HIGH',
-      needs_review: false,
+      quantity: null,
+      unit: '',
+      purchase_price: null,
+      selling_price: null,
+      mrp: null,
+      amount: null,
+      confidence: 0,
+      confidence_level: 'LOW',
+      needs_review: true,
+      validation_issues: ['Added manually: enter the values printed on the invoice.'],
       selling_type: 'packaged',
       price_basis_quantity: 1,
-      price_basis_unit: 'pcs',
+      price_basis_unit: null,
       mrp_basis_quantity: 1,
-      mrp_basis_unit: 'pcs',
-      inventory_unit: 'pcs',
+      mrp_basis_unit: null,
+      inventory_unit: null,
       conversion_factor: 1,
+      stock_mode: 'purchase',
+      selling_price_edited: false,
     };
     setExtractedData((prev) => {
       if (!prev) return null;
@@ -448,9 +475,20 @@ export const InvoiceScanner: React.FC = () => {
       return;
     }
 
-    // Loose products must have a selling price configured before saving to inventory
+    // New products need a selling price from the reviewer: purchase cost and MRP are never used instead
+    const newWithoutPrice = newProductsWithoutSellingPrice(selectedItems);
+    if (newWithoutPrice.length > 0) {
+      setError(
+        `Cannot confirm: enter a selling price for ${newWithoutPrice.length} new product(s) (` +
+        newWithoutPrice.map((i) => `'${i.product_name}'`).join(', ') +
+        `). Purchase cost and MRP are not used as a selling price.`
+      );
+      return;
+    }
+
+    // A new loose product needs its selling price per standard unit; an existing product keeps its own
     const looseWithoutPrice = selectedItems.filter(
-      (i) => i.selling_type === 'loose' && (typeof i.selling_price !== 'number' || i.selling_price <= 0)
+      (i) => i.selling_type === 'loose' && !i.matched_product_id && (typeof i.selling_price !== 'number' || i.selling_price <= 0)
     );
     if (looseWithoutPrice.length > 0) {
       setError(
@@ -518,21 +556,14 @@ export const InvoiceScanner: React.FC = () => {
           const isLoose = i.selling_type === 'loose';
           const storageUnit = (isLoose && i.inventory_unit ? i.inventory_unit : i.unit).trim();
 
-          // Selling price: for loose, it MUST be the configured selling price
-          // For packaged: preserve selling price, or fall back to MRP or standard margin if brand new
-          const sellingPrice =
-            typeof i.selling_price === 'number' && i.selling_price > 0
-              ? i.selling_price
-              : !isLoose && typeof i.mrp === 'number' && i.mrp > 0
-              ? i.mrp
-              : !isLoose
-              ? Math.round(purchasePrice * 1.2 * 100) / 100
-              : 0;
 
-          const basisQty = Number(i.price_basis_quantity || 1.0);
-          const basisUnit = (i.price_basis_unit || storageUnit).trim();
-          const mrpBasisQty = Number(i.mrp_basis_quantity || basisQty);
-          const mrpBasisUnit = (i.mrp_basis_unit || basisUnit).trim();
+          // The basis must suit the line's unit (the API reads it as the purchase-rate basis)
+          const basis = priceBasisFor(i, Number(i.price_basis_quantity || 1.0), (i.price_basis_unit || storageUnit).trim(), unitIndex);
+          const basisQty = basis.quantity;
+          const basisUnit = basis.unit;
+          const mrpBasis = priceBasisFor(i, Number(i.mrp_basis_quantity || basisQty), (i.mrp_basis_unit || basisUnit).trim(), unitIndex);
+          const mrpBasisQty = mrpBasis.quantity;
+          const mrpBasisUnit = mrpBasis.unit;
 
           return {
             name: i.product_name.trim(),
@@ -543,7 +574,8 @@ export const InvoiceScanner: React.FC = () => {
             // A registered unit (checked above), as printed or as selected by the user
             unit: i.unit.trim(),
             purchase_price: purchasePrice,
-            selling_price: sellingPrice,
+            // Only a selling price the reviewer entered (or printed for a new product) is sent
+            ...sellingPricePayload(i),
             mrp: typeof i.mrp === 'number' && i.mrp > 0 ? i.mrp : undefined,
             mrp_source: typeof i.mrp === 'number' && i.mrp > 0 ? 'INVOICE' : undefined,
             // Printed amount as printed; otherwise paid units x rate kept to 3 decimals (never paise)
@@ -556,7 +588,8 @@ export const InvoiceScanner: React.FC = () => {
             price_basis_unit: basisUnit,
             mrp_basis_quantity: mrpBasisQty,
             mrp_basis_unit: mrpBasisUnit,
-            update_selling_price: true,
+            // Printed pack size: the backend converts stock and cost through its unit registry
+            ...packPayload(i, unitIndex),
             ...promoPayload(i),
           };
         }),
@@ -1148,7 +1181,7 @@ export const InvoiceScanner: React.FC = () => {
                     <th className="py-3 px-4 min-w-[200px]">Product Name</th>
                     <th className="py-3 px-3 w-20">Qty</th>
                     <th className="py-3 px-3 w-16">Unit</th>
-                    <th className="py-3 px-3 w-24">Purchase Cost</th>
+                    <th className="py-3 px-3 w-24">Invoice Rate</th>
                     <th className="py-3 px-3 w-24">Selling Price</th>
                     <th className="py-3 px-3 w-24">MRP</th>
                     <th className="py-3 px-3 w-24">Line Total</th>
@@ -1200,6 +1233,8 @@ export const InvoiceScanner: React.FC = () => {
                         <td className="py-3 px-4">
                           <input
                             type="text"
+                            aria-label={`Product name, row ${idx + 1}`}
+                            placeholder="Product name"
                             value={item.product_name}
                             onChange={(e) => handleUpdateItem(item.id, 'product_name', e.target.value)}
                             className={`w-full px-2 py-1 rounded-md border text-xs font-semibold focus:outline-none ${
@@ -1218,6 +1253,83 @@ export const InvoiceScanner: React.FC = () => {
                               Matches: {item.matched_product_name}
                             </span>
                           )}
+                          {/* Pack size -> physical quantity -> purchase cost per standard unit (kg / L) */}
+                          {(() => {
+                            const purchaseKind = unitIndex?.get(item.unit)?.kind;
+                            if (!item.pack_size && purchaseKind !== 'package') return null;
+                            const pd = packDisplay(item, unitIndex);
+                            const measureUnits = (unitIndex?.units ?? []).filter((u) => u.kind === 'measure' && u.factor_to_base <= 1000);
+                            return (
+                              <div data-testid="pack-info" className="mt-1 mx-2 px-2 py-1.5 rounded-md bg-[#F2F7F4] border border-[#DDE9DF] text-[10px] text-[#3E4A43] space-y-1">
+                                <div className="flex flex-wrap items-center gap-1">
+                                  <span className="font-bold text-[#153D32]">Pack size</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.001"
+                                    aria-label={`Pack size for ${item.product_name}`}
+                                    value={item.pack_size ?? ''}
+                                    onChange={(e) => {
+                                      const v = parseFloat(e.target.value);
+                                      handleUpdateItem(item.id, 'pack_size', Number.isFinite(v) && v > 0 ? v : null);
+                                    }}
+                                    placeholder="per unit"
+                                    className="w-16 px-1 py-0.5 rounded border border-[#DDE9DF] bg-white text-[10px] font-semibold"
+                                  />
+                                  <select
+                                    aria-label={`Pack size unit for ${item.product_name}`}
+                                    value={unitIndex?.normalize(item.pack_size_unit) ?? item.pack_size_unit ?? ''}
+                                    onChange={(e) => handleUpdateItem(item.id, 'pack_size_unit', e.target.value || null)}
+                                    className="px-1 py-0.5 rounded border border-[#DDE9DF] bg-white text-[10px]"
+                                  >
+                                    <option value="">unit</option>
+                                    {measureUnits.map((u) => (
+                                      <option key={u.id} value={u.id}>{u.id}</option>
+                                    ))}
+                                  </select>
+                                  <span>{item.unit ? `per ${item.unit}` : 'per purchase unit (unit missing)'}</span>
+                                </div>
+                                {pd.physicalQuantity !== null && (
+                                  <div data-testid="physical-quantity">
+                                    Physical: {item.quantity} {item.unit} × {item.pack_size} {unitIndex?.normalize(item.pack_size_unit) ?? item.pack_size_unit} ={' '}
+                                    <strong>{pd.physicalQuantity} {pd.standardUnit}</strong>
+                                  </div>
+                                )}
+                                {pd.costPerStandardUnit !== null && (
+                                  <div data-testid="cost-per-standard-unit">
+                                    Purchase cost: <strong>{formatMoney(pd.costPerStandardUnit)} per {pd.standardUnit}</strong>
+                                    <span className="text-[#5E6C64]"> (invoice rate ÷ pack size; not a selling price)</span>
+                                  </div>
+                                )}
+                                {item.rate_basis_unit && unitIndex?.normalize(item.rate_basis_unit) !== unitIndex?.normalize(item.unit) && (
+                                  <div className="text-[#8A6420] font-semibold">Rate is per {item.rate_basis_unit}, not per {item.unit}</div>
+                                )}
+                                {pd.convertible && !item.matched_product_id && pd.physicalQuantity !== null && (
+                                  <div role="group" aria-label={`Stock ${item.product_name} as`} className="flex items-center gap-1">
+                                    <span>Stock as:</span>
+                                    {(['purchase', 'physical'] as const).map((mode) => (
+                                      <button
+                                        key={mode}
+                                        type="button"
+                                        aria-pressed={(item.stock_mode ?? 'purchase') === mode}
+                                        onClick={() => handleUpdateItem(item.id, 'stock_mode', mode)}
+                                        className={`px-1.5 py-0.5 rounded border text-[10px] font-semibold ${
+                                          (item.stock_mode ?? 'purchase') === mode
+                                            ? 'bg-[#153D32] text-white border-[#153D32]'
+                                            : 'bg-white text-[#153D32] border-[#DDE9DF]'
+                                        }`}
+                                      >
+                                        {mode === 'purchase' ? `${item.quantity ?? ''} ${item.unit}` : `${pd.physicalQuantity} ${pd.standardUnit}`}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                                {!item.pack_size && (
+                                  <div className="text-[#8A6420]">No pack size printed: enter it to convert {item.unit} into kg / L stock.</div>
+                                )}
+                              </div>
+                            );
+                          })()}
                           {/* Selling Type Selector & Loose Config Toggle */}
                           <div className="mt-1.5 px-2 flex flex-wrap items-center gap-1.5">
                             <div className="inline-flex rounded-lg border border-[#DDE9DF] p-0.5 bg-[#FAF8F2] text-[10px]">
@@ -1398,6 +1510,7 @@ export const InvoiceScanner: React.FC = () => {
                               type="number"
                               step="0.001"
                               min="0"
+                              aria-label={`Rate for ${item.product_name || `row ${idx + 1}`}`}
                               value={item.purchase_price ?? ''}
                               onChange={(e) => {
                                 const v = parseFloat(e.target.value);
@@ -1425,19 +1538,12 @@ export const InvoiceScanner: React.FC = () => {
                             <input
                               type="number"
                               step="0.001"
-                              placeholder={
-                                item.selling_type === 'loose'
-                                  ? 'Enter price'
-                                  : item.mrp
-                                  ? String(item.mrp)
-                                  : item.purchase_price
-                                  ? String(Math.round(item.purchase_price * 1.2 * 100) / 100)
-                                  : '0.00'
-                              }
+                              placeholder={item.matched_product_id ? 'Keep current' : 'Required'}
+                              aria-label={`Selling price for ${item.product_name}`}
                               value={item.selling_price ?? ''}
                               onChange={(e) => handleUpdateItem(item.id, 'selling_price', parseFloat(e.target.value) || null)}
                               className={`w-full pl-5 pr-1 py-1 rounded-md border text-xs font-bold focus:outline-none ${
-                                item.selling_type === 'loose' && (!item.selling_price || item.selling_price <= 0)
+                                !item.matched_product_id && (!item.selling_price || item.selling_price <= 0)
                                   ? 'border-[#D6AE62] bg-[#FBF4E7] text-[#8A6420]'
                                   : 'border-transparent hover:border-[#DDE9DF] focus:border-[#153D32] focus:bg-white text-[#252D29]'
                               }`}
@@ -1450,10 +1556,13 @@ export const InvoiceScanner: React.FC = () => {
                           ) : (
                             item.mrp && <span className="text-[10px] text-[#5E6C64] block px-1 mt-0.5">per {item.unit || 'pc'}</span>
                           )}
-                          {item.selling_type === 'loose' && (!item.selling_price || item.selling_price <= 0) && (
-                            <span className="text-[10px] text-[#8A6420] font-bold block px-1 mt-0.5">
+                          {!item.matched_product_id && (!item.selling_price || item.selling_price <= 0) && (
+                            <span data-testid="selling-price-required" className="text-[10px] text-[#8A6420] font-bold block px-1 mt-0.5">
                               Price required
                             </span>
+                          )}
+                          {item.matched_product_id && !item.selling_price_edited && (
+                            <span className="text-[10px] text-[#5E6C64] block px-1 mt-0.5">Current price kept</span>
                           )}
                         </td>
                         <td className="py-3 px-3">
@@ -1462,6 +1571,7 @@ export const InvoiceScanner: React.FC = () => {
                             <input
                               type="number"
                               step="0.001"
+                              aria-label={`MRP for ${item.product_name || `row ${idx + 1}`}`}
                               value={item.mrp ?? ''}
                               onChange={(e) => handleUpdateItem(item.id, 'mrp', parseFloat(e.target.value) || null)}
                               className="w-full pl-5 pr-1 py-1 rounded-md border border-transparent hover:border-[#DDE9DF] focus:border-[#153D32] focus:bg-white focus:outline-none font-medium text-[#252D29]"

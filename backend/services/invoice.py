@@ -25,7 +25,8 @@ from sqlalchemy.orm import Session
 
 from services import ocr as ocr_service
 from services import mrp_lookup
-from services.product_matching import best_name_match, normalize_gtin, normalize_name
+from services.invoice_pack_pricing import cost_invoice_line, pack_conversions
+from services.product_matching import best_name_match, inventory_name_similarity, normalize_gtin, normalize_name
 from db.models.product import Product
 from db.models.purchase import Purchase
 from db.models.purchase_item import PurchaseItem
@@ -51,11 +52,14 @@ from services.invoice_reconciliation import reconcile_invoice_total
 from services.money import format_rupees, keep_printed_precision, quantize_half_up, to_decimal, to_number
 from services.stock import add_stock, format_quantity, to_stock_quantity, validate_unit_text, StockError
 from services.unit_registry import (
+    ALIASES,
     are_units_compatible,
     convert_quantity,
+    InexactConversionError,
     normalize_unit,
     try_normalize_unit,
     UnitError,
+    validate_quantity_unit,
 )
 from services.pricing_engine import (
     calculate_purchase_cost,
@@ -146,8 +150,10 @@ def parse_smart_price_py(tok: Optional[str], allow_zero: bool = False) -> Option
     s = s.replace("%", " ")
     s = re.sub(r"(\d)\s*\.\s*(\d)", r"\1.\2", s)
     s = s.strip()
-    if re.match(r"^\d+,\d{1,2}$", s):
-        s = s.replace(",", ".")
+    if re.match(r"^\d{1,3}(?:\.\d{3})*,\d{1,2}$|^\d+,\d{1,2}$", s):
+        # Decimal comma ('2.350,00', '12,50'): dots are thousands separators
+        int_part, frac_part = s.rsplit(",", 1)
+        s = f"{int_part.replace('.', '')}.{frac_part}"
     else:
         s = s.replace(",", "")
     match = re.search(r"[-+]?\d*\.?\d+", s)
@@ -162,6 +168,24 @@ def parse_smart_price_py(tok: Optional[str], allow_zero: bool = False) -> Option
         return -val if negative else val
     except ValueError:
         return None
+
+
+def suggest_registered_unit(text: str) -> Optional[str]:
+    """The one registered unit spelling that an OCR'd unit differs from by a single character
+    ('pes' -> 'pcs', 'pit' -> 'pkt'); None when there is no such spelling or more than one."""
+    t = (text or "").strip().lower()
+    if len(t) < 2:
+        return None
+    hits = set()
+    for alias in ALIASES:
+        if len(alias) == len(t) and sum(1 for a, b in zip(alias, t) if a != b) == 1:
+            hits.add(ALIASES[alias])
+    if len(hits) != 1:
+        return None
+    unit_id = hits.pop()
+    same_len = sorted(a for a, u in ALIASES.items() if u == unit_id and len(a) == len(t)
+                      and sum(1 for x, y in zip(a, t) if x != y) == 1)
+    return same_len[0] if same_len else unit_id
 
 
 # Decimal money helpers now live in services/money.py (shared with sales, purchases, voice and reports)
@@ -331,7 +355,13 @@ def _clean_supplier_candidate(text: str) -> str:
     cand = re.sub(r"\bstate\s*(?:code)?\s*[:#\-.]?\s*[A-Za-z0-9]+", " ", cand, flags=re.I)
     cand = _FIELD_LABEL_RE.sub(" ", cand)
     cand = re.sub(r"[\s|,:;._\-/#*~=`^<>()\[\]{}]+", " ", cand).strip(" *|,:;._-/#~=`^<>()[]{}")
-    return cand
+    # Trailing OCR debris where the name runs into a neighbouring field ('TRADER §veice' when the name
+    # overlaps 'Invoice No:'): a token with a character no business name uses is dropped from the end
+    # only; '&', apostrophes and dots ("Sri Ram & Co.", "Kumar's") are kept.
+    tokens = cand.split()
+    while len(tokens) > 1 and re.search(r"[^\w&'.]", tokens[-1]):
+        tokens.pop()
+    return " ".join(tokens)
 
 
 def _merge_title_fragments(lines: List[str]) -> List[str]:
@@ -473,7 +503,7 @@ def match_inventory(name: str, barcode: Optional[str], products: List[Product]) 
         for p in products:
             if p.sku and p.sku.strip() == barcode.strip():
                 return p, 1.0, "SKU"
-    m = best_name_match(name, products, lambda p: p.name)
+    m = best_name_match(name, products, lambda p: p.name, scorer=inventory_name_similarity)
     return m.candidate, m.score, m.method
 
 
@@ -647,6 +677,34 @@ def _extract_invoice_with_new_pipeline(
             line_validation_issues.append(
                 f"Unit '{norm_unit}' is not a registered unit: correct it before adding to stock.")
             needs_review = True
+            near = suggest_registered_unit(norm_unit)
+            if near:  # a suggestion only: the unit is never changed without the reviewer
+                extraction_suggestions.append(f"Unit '{norm_unit}' may be a misread of '{near}'.")
+        # Pack size -> physical quantity -> cost per standard unit (unit registry + pricing engine)
+        pack_val = it.package_size.value if (it.package_size and it.package_size.value is not None) else None
+        pack_unit_raw = it.package_size.unit if it.package_size else None
+        costing = cost_invoice_line(q_d, norm_unit, pp_d, pack_val, pack_unit_raw, tot_d, disc_d, tax_d,
+                                    product_name=it.raw_product_name)
+        physical_d = costing.physical_quantity
+        if physical_d is not None and q_d and received_d is not None and received_d != q_d:
+            physical_d = physical_d * received_d / q_d  # free units are received stock too
+        for issue in costing.issues:
+            if issue not in line_validation_issues:
+                line_validation_issues.append(issue)
+        if costing.needs_review:
+            needs_review = True
+        # A matched product stocked in another unit family (e.g. kg) needs the pack size to convert
+        # the line's units (e.g. bags); without a printed pack size nothing is assumed.
+        if matched_prod is not None and norm_unit and try_normalize_unit(norm_unit):
+            prod_unit_id = try_normalize_unit(matched_prod.unit) if matched_prod.unit else None
+            line_unit_id = try_normalize_unit(norm_unit)
+            if prod_unit_id and not are_units_compatible(prod_unit_id, line_unit_id):
+                convertible = bool(costing.conversions) and are_units_compatible(prod_unit_id, costing.pack_unit)
+                if not convertible:
+                    line_validation_issues.append(
+                        f"'{matched_prod.name}' is stocked in {prod_unit_id}, but this line is in {line_unit_id} "
+                        f"and no pack size was read: enter the {prod_unit_id} per {line_unit_id} before adding to stock.")
+                    needs_review = True
         line_suggestions = list(extraction_suggestions) + list(arith.get("suggestions") or [])
         line_suggested_rate = arith.get("suggested_rate")
         if arith_status == "MISMATCH" and pp is not None and prn is not None:
@@ -723,17 +781,15 @@ def _extract_invoice_with_new_pipeline(
                     else None
                 ),
                 pack_size_unit=it.package_size.unit if it.package_size else None,
-                price_basis_quantity=(
-                    float(it.package_size.value)
-                    if (it.package_size and it.package_size.value is not None and float(it.package_size.value) > 0)
-                    else 1.0
-                ),
-                price_basis_unit=it.package_size.unit if (it.package_size and it.package_size.unit) else norm_unit,
-                normalized_purchase_price=(
-                    float(_keep_printed_precision(_dec(pp) / _dec(it.package_size.value)))
-                    if (pp is not None and it.package_size and it.package_size.value and float(it.package_size.value) > 0)
-                    else pp
-                ),
+                # The printed rate is quoted per one purchase unit (or per kg / L when detected so)
+                price_basis_quantity=1.0,
+                price_basis_unit=costing.rate_basis_unit or norm_unit,
+                normalized_purchase_price=_num(costing.cost_per_standard_unit),
+                physical_quantity=_num(physical_d),
+                standard_unit=costing.standard_unit,
+                cost_per_standard_unit=_num(costing.cost_per_standard_unit),
+                rate_basis_unit=costing.rate_basis_unit,
+                pack_conversion=costing.conversion_status,
                 classification_status=(
                     "GROCERY_CONFIDENT"
                     if it.is_grocery and it.review_status == "CONFIRMED"
@@ -1117,11 +1173,36 @@ def confirm_and_update_stock(
             # it never becomes the product's cost (no economic zero cost is assigned to free units)
             free_line = bool(item.is_free_item)
 
+            # Printed pack size (e.g. 25 kg per bag) -> explicit conversion for this line only
+            conv = pack_conversions(item.unit, item.pack_size, item.pack_size_unit) if item.pack_size else []
+            stock_unit = (product.unit if product else (item.stock_unit or item.unit)).strip()
+            if conv and product is None and item.stock_unit:
+                su = try_normalize_unit(item.stock_unit)
+                if su is None or not (are_units_compatible(su, item.unit) or are_units_compatible(su, conv[0].to_unit)):
+                    raise InvoiceValidationError(
+                        f"'{item.name}' can be stocked in {item.unit} or {conv[0].to_unit}, not '{item.stock_unit}'.")
+
             basis_qty = item.price_basis_quantity or (getattr(product, "price_basis_quantity", None) if product else None) or 1.0
-            basis_unit = item.price_basis_unit or (getattr(product, "price_basis_unit", None) if product else None) or (product.unit if product else item.unit.strip())
+            basis_unit = item.price_basis_unit or (getattr(product, "price_basis_unit", None) if product else None) or stock_unit
 
             norm_unit_cost = None
-            if not free_line and item.purchase_price is not None:
+            rate_unit = (item.rate_basis_unit or item.unit).strip()
+            if conv and not free_line and item.purchase_price is not None:
+                # Existing engine: cost per rate unit, then per stock unit through the same conversion
+                try:
+                    cost_res = calculate_purchase_cost(
+                        quantity=qty, requested_unit=item.unit, purchase_price=item.purchase_price,
+                        price_basis_quantity=1, price_basis_unit=rate_unit,
+                        product_conversions=conv, product_name=item.name.strip())
+                    try:  # 1 bag = 25 kg: Rs 2350 per bag / 25 = Rs 94 per kg
+                        per = convert_quantity(Decimal("1"), rate_unit, stock_unit, product_conversions=conv)
+                        norm_unit_cost = round_price(cost_res.unit_cost / per)
+                    except InexactConversionError:
+                        per = convert_quantity(Decimal("1"), stock_unit, rate_unit, product_conversions=conv)
+                        norm_unit_cost = round_price(cost_res.unit_cost * per)
+                except (PricingEngineError, StockError, UnitError) as e:
+                    raise InvoiceValidationError(f"Cost calculation failed for '{item.name}': {e}") from e
+            elif not free_line and item.purchase_price is not None:
                 try:
                     cost_res = calculate_purchase_cost(
                         quantity=qty,
@@ -1146,7 +1227,7 @@ def confirm_and_update_stock(
                 # Converted into the product's stock unit when compatible (250 g into kg -> 0.25); an
                 # incompatible unit is refused. Atomic increase in this transaction (rolled back on error).
                 try:
-                    stock_add = to_stock_quantity(qty, item.unit, product)
+                    stock_add = to_stock_quantity(qty, item.unit, product, product_conversions=conv or None)
                 except (StockError, UnitError) as e:
                     raise InvoiceValidationError(f"Unit error for '{product.name}': {e}") from e
                 add_stock(db, product, stock_add)
@@ -1241,6 +1322,13 @@ def confirm_and_update_stock(
                     except PricingEngineError as pe:
                         raise InvoiceValidationError(str(pe)) from pe
 
+                new_stock = qty
+                if conv and normalize_unit(stock_unit) != normalize_unit(item.unit):
+                    try:
+                        new_stock = validate_quantity_unit(
+                            convert_quantity(qty, item.unit, stock_unit, product_conversions=conv), stock_unit)
+                    except UnitError as e:
+                        raise InvoiceValidationError(f"Unit error for '{item.name}': {e}") from e
                 product = Product(
                     shop_id=shop_id,
                     name=item.name.strip(),
@@ -1248,8 +1336,8 @@ def confirm_and_update_stock(
                     # unknown cost (explicit NULL; the column default would otherwise store 0.0)
                     purchase_price=sa_null() if free_line or norm_unit_cost is None else float(norm_unit_cost),
                     selling_price=item.selling_price,
-                    current_stock=float(qty),
-                    unit=item.unit.strip(),
+                    current_stock=float(new_stock),
+                    unit=stock_unit,
                     reorder_level=10,
                     is_active=True,
                     price_basis_quantity=float(basis_qty),
@@ -1260,6 +1348,12 @@ def confirm_and_update_stock(
                 )
                 db.add(product)
                 created += 1
+            # A printed MRP of a pack line is per purchase unit (e.g. per 25 kg bag)
+            if conv and item.mrp is not None and item.mrp_basis_quantity is None:
+                if are_units_compatible(normalize_unit(product.unit), conv[0].to_unit):
+                    item.mrp_basis_quantity, item.mrp_basis_unit = float(conv[0].factor), conv[0].to_unit
+                else:
+                    item.mrp_basis_quantity, item.mrp_basis_unit = 1.0, normalize_unit(item.unit)
             # A missing MRP never clears a stored one
             if item.mrp is not None:
                 product.mrp = item.mrp
@@ -1292,8 +1386,9 @@ def confirm_and_update_stock(
                 line_amount=line_amount,
                 mrp=item.mrp,
                 mrp_source=mrp_source,
-                price_basis_quantity=float(basis_qty),
-                price_basis_unit=str(basis_unit) if basis_unit else None,
+                # Pack lines record the rate as printed: per one rate unit (usually the purchase unit)
+                price_basis_quantity=1.0 if conv else float(basis_qty),
+                price_basis_unit=rate_unit if conv else (str(basis_unit) if basis_unit else None),
             ))
 
         db_purchase.total_amount = float(_keep_printed_precision(total_amount))

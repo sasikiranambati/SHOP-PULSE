@@ -27,7 +27,10 @@ HEADER_SEMANTIC_PATTERNS: Dict[ColumnRoleType, List[str]] = {
         "qtysold", "qty sold", "billed qty", "quantity", "unit qty", "qnty", "qty.", "qty", "nos", "pcs", "packets"
     ],
     "unit": [
-        "unit of measure", "unit", "uom", "pack", "pkg", "packaging", "u.o.m"
+        "unit of measure", "unit", "uom", "u.o.m"
+    ],
+    "pack_size": [
+        "pack size", "pack", "packing", "packaging", "pkg", "pkg size", "net wt", "net weight", "size", "weight"
     ],
     "rate": [
         "purchase rate", "unit price", "unit rate", "basic rate", "base rate", "basic.rt", "netrate", "net rate",
@@ -73,6 +76,7 @@ HEADER_SEMANTIC_PATTERNS: Dict[ColumnRoleType, List[str]] = {
 CANONICAL_HEADER_LABELS: Dict[ColumnRoleType, str] = {
     "cases": "CASES",
     "units_per_case": "UNITS_PER_CASE",
+    "pack_size": "PACK_SIZE",
     "serial": "SERIAL",
     "product": "PRODUCT",
     "hsn": "HSN",

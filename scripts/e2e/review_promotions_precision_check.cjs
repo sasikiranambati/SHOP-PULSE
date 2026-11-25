@@ -12,6 +12,7 @@ const { chromium, devices } = require('playwright');
 const fs = require('fs');
 const SP = process.argv[2] || '.';
 const { API, HARNESS } = require('./e2e_env.cjs').e2eTarget();
+const { enterSellingPrices } = require('./scanner_helpers.cjs');
 const results = [];
 const check = (n, ok, d = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${d ? ' — ' + d : ''}`); };
 
@@ -73,6 +74,8 @@ const EXTRACTION = {
         (await page.locator('text=12 paid + 1 free = 13 received').count()) === 1
         && (await page.locator('tr:has(input[aria-label="Select E2E Soap 75G"]) >> text=₹420.00').count()) === 1);
     }
+    // A new product needs a selling price typed by the reviewer (none is derived from MRP or cost)
+    await enterSellingPrices(page);
     await page.click('button:has-text("Items to Inventory")');
     await page.waitForTimeout(400);
     check(`${label}: free units need confirmation before posting`, (await page.locator('[data-testid="free-units-confirm"]').count()) === 1 && confirmBodies.length === 0);

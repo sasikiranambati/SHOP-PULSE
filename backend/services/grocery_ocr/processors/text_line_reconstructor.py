@@ -87,9 +87,14 @@ class TextLineReconstructor:
                 c_h = max(1.0, c_y1 - c_y0)
                 c_center_y = cluster_baselines[idx]
 
-                # Prevent vertical cluster snowballing across distinct text rows
+                # Prevent vertical cluster snowballing across distinct text rows: a merge may not make
+                # the line taller than the larger of the two boxes (plus 2 px) once that exceeds the
+                # normal limit. A tall box on the same row (the OCR engine sometimes reports header words
+                # with a box twice the text height) still joins its row instead of becoming a line of its
+                # own, while a word from the next row, which would extend the line, is still refused.
                 potential_new_h = max(c_y1, w_box.y1) - min(c_y0, w_box.y0)
-                if potential_new_h > max(median_h * 1.6, 25.0):
+                growth_limit = max(median_h * 1.6, 25.0, max(c_h, w_h) + 2.0)
+                if potential_new_h > growth_limit:
                     continue
 
                 # 1. Vertical interval overlap

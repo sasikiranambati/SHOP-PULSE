@@ -100,6 +100,29 @@ def name_similarity(a: str, b: str) -> float:
     return round(0.6 * seq + 0.4 * overlap, 4)
 
 
+def _without_pack_size(text: str) -> str:
+    return re.sub(r"\s+", " ", _PACK_RE.sub(" ", text or "")).strip()
+
+
+def inventory_name_similarity(a: str, b: str) -> float:
+    """name_similarity for matching an invoice line to the shop's own products.
+
+    Invoices usually print the pack size in the description ('Tata Salt 1kg') while the shop's
+    product may be named without it ('Tata Salt'). When exactly ONE side carries a pack size and the
+    names are otherwise identical, they are the same product. Different pack sizes still never match,
+    and different names ('Sugar' vs 'Sugar Free') are still compared as before. Not used for external
+    MRP lookups, where a pack-less name must not borrow a packed product's price.
+    """
+    score = name_similarity(a, b)
+    if score >= 1.0 or score == 0.0 and extract_pack_size(a) and extract_pack_size(b):
+        return score
+    if bool(extract_pack_size(a)) != bool(extract_pack_size(b)):
+        na, nb = normalize_name(_without_pack_size(a)), normalize_name(_without_pack_size(b))
+        if na and na == nb:
+            return 1.0
+    return score
+
+
 def _tokens_match(a: str, b: str) -> bool:
     if a == b:
         return True
@@ -122,11 +145,12 @@ def best_name_match(
     name_of: Callable[[T], str],
     min_score: float = FUZZY_MIN_SCORE,
     margin: float = AMBIGUITY_MARGIN,
+    scorer: Callable[[str, str], float] = name_similarity,
 ) -> MatchResult[T]:
     """Picks the single best candidate by name, rejecting weak and ambiguous matches."""
     scored: List[Tuple[float, T]] = []
     for c in candidates:
-        score = name_similarity(query, name_of(c))
+        score = scorer(query, name_of(c))
         if score > 0:
             scored.append((score, c))
     if not scored:

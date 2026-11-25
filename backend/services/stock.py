@@ -21,7 +21,7 @@ Atomic updates:
 from __future__ import annotations
 
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from sqlalchemy import func, update
 from sqlalchemy.orm import Session
@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 from db.models.product import Product
 from services.money import to_decimal
 from services.unit_registry import (
-    UNITS, InexactConversionError, IncompatibleUnitsError, QuantityValidationError, UnitError,
+    UNITS, InexactConversionError, IncompatibleUnitsError, ProductUnitConversion, QuantityValidationError, UnitError,
     clean_unit_text, convert_quantity, try_normalize_unit, validate_quantity_unit,
 )
 
@@ -86,10 +86,13 @@ def validate_stock_value(quantity: Any, unit: Optional[str], *, allow_zero: bool
         raise StockError(f"{label}: {exc}") from None
 
 
-def to_stock_quantity(quantity: Any, given_unit: Optional[str], product: Product) -> Decimal:
+def to_stock_quantity(quantity: Any, given_unit: Optional[str], product: Product,
+                      product_conversions: Optional[Sequence[ProductUnitConversion]] = None) -> Decimal:
     """Quantity in the product's stock unit, validated (> 0, fraction rules, at most 3 decimals).
 
-    ``given_unit`` None means the quantity is already in the product's unit.
+    ``given_unit`` None means the quantity is already in the product's unit. ``product_conversions``
+    are explicit conversions printed for this line (e.g. 1 bag = 25 kg from the invoice's pack size);
+    without one, package units never convert to another family.
     """
     q = to_decimal(quantity)
     if q is None or q <= 0:
@@ -106,7 +109,7 @@ def to_stock_quantity(quantity: Any, given_unit: Optional[str], product: Product
         return q
     source_id = validate_unit_text(given_unit, what=f"Unit for '{product.name}'") if given_unit else product_unit_id
     try:
-        converted = convert_quantity(q, source_id, product_unit_id)
+        converted = convert_quantity(q, source_id, product_unit_id, product_conversions=product_conversions)
         return validate_quantity_unit(converted, product_unit_id)
     except IncompatibleUnitsError as exc:
         raise StockError(f"'{product.name}' is stocked in {UNITS[product_unit_id].label}: {exc}") from None
