@@ -1293,9 +1293,11 @@ export function extractItemsFromClause(
 
         // Pattern 3: Fallback single item without explicit number
         const cleanedFallback = cleanExtractedProductName(sub);
+        const hasLetters = /[a-zA-Z\u0900-\u0D7F]/.test(cleanedFallback);
         const skipFallbackProse =
-          Boolean(catalog && catalog.length > 0 && !pkgSize) &&
-          isConversationalNonProductPhraseClient(cleanedFallback, catalog);
+          !hasLetters ||
+          (Boolean(catalog && catalog.length > 0 && !pkgSize) &&
+            isConversationalNonProductPhraseClient(cleanedFallback, catalog));
         if (!skipFallbackProse) {
           items.push({
             raw: stripContextTagsToDigitsClient(sub),

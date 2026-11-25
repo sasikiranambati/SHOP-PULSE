@@ -21,9 +21,13 @@ class VoiceItemError(ValueError):
     """A spoken line that cannot be sold as said (incompatible unit, fraction of a whole-number unit, ...).
     It is reported as unmatched with this reason; nothing is guessed."""
 
+_RE_SEARCH_CLEAN = re.compile(r"[^a-zA-Z0-9\sऀ-ൿ]")
+_RE_REPEAT_CHARS = re.compile(r"(.)\1+")
+
+
 def normalize_text_for_search(text: str) -> str:
     """Removes punctuation and lowercases text for fuzzy token search while preserving Indic scripts."""
-    cleaned = re.sub(r"[^a-zA-Z0-9\sऀ-ൿ]", " ", text)
+    cleaned = _RE_SEARCH_CLEAN.sub(" ", text)
     return " ".join(cleaned.lower().split())
 
 PRODUCT_CONCEPT_ALIASES = {
@@ -169,6 +173,11 @@ PRODUCT_CONCEPT_ALIASES = {
     ]
 }
 
+_NORMALIZED_CONCEPT_ALIASES = [
+    (concept_name, aliases, [normalize_text_for_search(a) for a in aliases])
+    for concept_name, aliases in PRODUCT_CONCEPT_ALIASES.items()
+]
+
 def to_candidate(p: Any) -> VoiceProductCandidate:
     """Converts a database Product or candidate model/dict to a uniform VoiceProductCandidate."""
     if isinstance(p, VoiceProductCandidate):
@@ -257,12 +266,22 @@ def _phonetic_normalize(tok: str) -> str:
     """Canonical phonetic spelling normalization (e.g. 'maggie' -> 'magi', 'aashirvaad' -> 'ashirvad')."""
     if not tok.isascii():
         return tok
-    s = tok.lower()
-    s = re.sub(r"(.)\1+", r"\1", s)
+    s = _RE_REPEAT_CHARS.sub(r"\1", tok.lower())
     s = s.replace("ie", "i").replace("ee", "i").replace("oo", "u").replace("ph", "f").replace("aa", "a")
     if len(s) > 4 and s.endswith("e"):
         s = s[:-1]
     return s
+
+
+def _token_char_mask(tok: str) -> int:
+    mask = 0
+    for ch in tok:
+        o = ord(ch)
+        if 97 <= o <= 122:
+            mask |= 1 << (o - 97)
+        elif o > 127:
+            mask |= 1 << 26
+    return mask
 
 
 def _levenshtein(a: str, b: str) -> int:
@@ -562,17 +581,15 @@ def match_items_to_inventory(
     precomputed_catalog = []
     for c in candidates_catalog:
         c_norm = normalize_text_for_search(c.name)
-        c_compact = re.sub(r"\s+", "", c_norm)
+        c_compact = c_norm.replace(" ", "")
         c_tokens_all = c_norm.split()
         c_stemmed_all = {stem_token(t) for t in c_tokens_all}
         c_name_stemmed = [stem_token(t) for t in c_tokens_all if t not in WEIGHT_AND_CONTAINER_TOKENS] or [stem_token(t) for t in c_tokens_all]
+        c_name_meta = [(ct, _phonetic_normalize(ct), len(ct), _token_char_mask(ct)) for ct in c_name_stemmed]
         cat_stemmed = [stem_token(t) for t in normalize_text_for_search(str(c.category or "")).split() if len(t) > 2]
-        precomputed_catalog.append((c, c_norm, c_compact, c_stemmed_all, c_name_stemmed, cat_stemmed))
+        precomputed_catalog.append((c, c_norm, c_compact, c_stemmed_all, c_name_stemmed, cat_stemmed, c_name_meta))
 
-    normalized_concept_aliases = [
-        (concept_name, aliases, [normalize_text_for_search(a) for a in aliases])
-        for concept_name, aliases in PRODUCT_CONCEPT_ALIASES.items()
-    ]
+    normalized_concept_aliases = _NORMALIZED_CONCEPT_ALIASES
 
     matched_items: List[MatchedVoiceItem] = []
     ambiguous_items: List[AmbiguousVoiceItem] = []
@@ -700,8 +717,8 @@ def match_items_to_inventory(
 
         # 3. Stemmed Token Containment Search (all query tokens present in candidate stems, Confidence 0.92)
         all_token_matches = []
-        query_compact_full = re.sub(r"\s+", "", query_norm)
-        for c, c_norm, c_compact, c_stemmed, _, _ in precomputed_catalog:
+        query_compact_full = query_norm.replace(" ", "")
+        for c, c_norm, c_compact, c_stemmed, _, _, _ in precomputed_catalog:
             if q_meaningful and all(
                 qt in c_stemmed or any((len(qt) >= 3 and qt in ct and abs(len(qt) - len(ct)) <= 3) for ct in c_stemmed)
                 for qt in q_meaningful
@@ -726,7 +743,26 @@ def match_items_to_inventory(
         # 4. Dynamic Catalog-Aware Phonetic & Fuzzy Similarity with Confidence Tiers
         scored_candidates: List[Tuple[float, float, bool, VoiceProductCandidate]] = []
         q_set = set(q_meaningful)
-        for c, c_norm, _, _, c_name_stemmed, cat_stemmed in precomputed_catalog:
+        q_meta = [(qt, _phonetic_normalize(qt), len(qt), _token_char_mask(qt), qt.isascii() and not qt.isdigit()) for qt in q_meaningful]
+        for c, c_norm, _, c_stemmed_all, c_name_stemmed, cat_stemmed, c_name_meta in precomputed_catalog:
+
+            # Fast bitmask/stem prefilter before full token similarity scan
+            plausible = False
+            for qt, qp, q_len, q_mask, q_ok in q_meta:
+                for ct, cp, c_len, c_mask in c_name_meta:
+                    if qt == ct or (qp and qp == cp and q_len >= 3 and c_len >= 3):
+                        plausible = True
+                        break
+                    if q_ok and q_len >= 4 and c_len >= 4:
+                        max_len = q_len if q_len > c_len else c_len
+                        max_dist = int(max_len * 0.22 + 1e-9)
+                        if max_dist > 0 and abs(q_len - c_len) <= max_dist and (q_mask ^ c_mask).bit_count() <= 2 * max_dist:
+                            plausible = True
+                            break
+                if plausible:
+                    break
+            if not plausible and not cat_stemmed:
+                continue
 
             # Guard distinguishing modifiers in candidate that weren't asked for (e.g. Rice -> Rice Flour)
             extra_cand_mods = (set(c_name_stemmed) - q_set) & DISTINGUISHING_MODIFIERS
@@ -737,8 +773,25 @@ def match_items_to_inventory(
             unmatched_dist_mod = False
             matched_primary = False
 
-            for qt in q_meaningful:
-                best_name_sim = max((_token_similarity(qt, ct) for ct in c_name_stemmed), default=0.0)
+            for qt, qp, q_len, q_mask, q_ok in q_meta:
+                best_name_sim = 0.0
+                for ct, cp, c_len, c_mask in c_name_meta:
+                    if qt == ct:
+                        best_name_sim = 1.0
+                        break
+                    if qp and qp == cp and q_len >= 3 and c_len >= 3:
+                        sim = 0.92
+                    elif q_ok and q_len >= 4 and c_len >= 4:
+                        max_len = q_len if q_len > c_len else c_len
+                        max_dist = int(max_len * 0.22 + 1e-9)
+                        if max_dist > 0 and abs(q_len - c_len) <= max_dist and (q_mask ^ c_mask).bit_count() <= 2 * max_dist:
+                            sim = _token_similarity(qt, ct)
+                        else:
+                            sim = 0.0
+                    else:
+                        sim = 0.0
+                    if sim > best_name_sim:
+                        best_name_sim = sim
                 if best_name_sim >= 0.78:
                     matched_primary = True
                     matched_sims.append(best_name_sim)

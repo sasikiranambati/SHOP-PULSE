@@ -141,3 +141,68 @@ def test_app_starts_on_a_test_database_and_creates_its_schema_there(tmp_path):
         tables = {r[0] for r in con.execute("select name from sqlite_master where type='table'")}
     assert {"products", "purchases", "sales"} <= tables
     assert _fingerprint(DEFAULT_DB_PATH) == before
+
+
+def test_testclient_import_without_database_url_is_refused():
+    """Ad-hoc scripts importing TestClient before main without DATABASE_URL must fail closed."""
+    before = _fingerprint(DEFAULT_DB_PATH)
+    env = {k: v for k, v in os.environ.items() if k not in ("DATABASE_URL", "SHOPPULSE_TEST_MODE")}
+    env["DATABASE_URL"] = ""
+    proc = subprocess.run(
+        [sys.executable, "-c", "from fastapi.testclient import TestClient; import main"],
+        cwd=BACKEND_DIR,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert proc.returncode != 0
+    assert "UnsafeTestDatabaseError" in proc.stderr
+    assert _fingerprint(DEFAULT_DB_PATH) == before
+
+
+def test_isolated_diagnostic_helper_enforces_import_order_and_isolates_db(tmp_path):
+    """prepare_isolated_diagnostic_db refuses late calls and safely isolates early diagnostic runs."""
+    before = _fingerprint(DEFAULT_DB_PATH)
+    env = {k: v for k, v in os.environ.items() if k not in ("DATABASE_URL", "SHOPPULSE_TEST_MODE")}
+    env["DATABASE_URL"] = ""
+
+    # Late call after importing core.config is refused (never silently switches DBs)
+    late_proc = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import os; os.environ['SHOPPULSE_TEST_MODE']='0'; import core.config; from core.db_safety import prepare_isolated_diagnostic_db; prepare_isolated_diagnostic_db()",
+        ],
+        cwd=BACKEND_DIR,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert late_proc.returncode != 0
+    assert "before importing application modules" in late_proc.stderr
+
+    # Early call binds cleanly to isolated temp DB and never touches shoppulse.db
+    diag_db = tmp_path / "diag_isolated.db"
+    ok_proc = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                f"import urllib.parse; from pathlib import Path; from core.db_safety import prepare_isolated_diagnostic_db; "
+                f"url, path = prepare_isolated_diagnostic_db(Path(r'{diag_db}')); "
+                f"import main; from db.session import engine; "
+                f"actual = urllib.parse.unquote(str(engine.url)).replace('\\\\','/'); "
+                f"assert str(path).replace('\\\\','/') in actual, f'{{actual}} != {{path}}'"
+            ),
+        ],
+        cwd=BACKEND_DIR,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert ok_proc.returncode == 0, ok_proc.stderr
+    assert "[db_safety] Isolated diagnostic target:" in ok_proc.stdout
+    assert _fingerprint(DEFAULT_DB_PATH) == before

@@ -34,6 +34,7 @@ const NON_BILL_FOLLOW_WORDS = new Set([
   'counter', 'shop', 'store', 'market', 'home', 'house', 'family', 'people', 'person', 'persons',
   'friend', 'friends', 'customer', 'customers', 'today', 'tomorrow', 'yesterday', 'now', 'here',
   'there', 'please', 'thank', 'thanks', 'sale', 'free', 'work', 'time', 'times', 'way',
+  'minute', 'minutes', 'second', 'seconds', 'hour', 'hours', 'day', 'days', 'week', 'weeks',
 ]);
 
 const INFINITIVE_OR_PREP_PREV_WORDS = new Set([

@@ -545,6 +545,11 @@ _UNIT_WORDS_SET = {u.lower() for u in UNIT_STRING_LIST}
 _NON_PRODUCT_TOKENS = _UNIT_WORDS_SET | _CURRENCY_WORDS | {"of", "for", "at", "@", "per", "each", "apiece", "more", "the", "please"}
 
 
+_RE_CAT_NORM = re.compile(r"[^a-zA-Z0-9\sऀ-ൿ]")
+_RE_WS_CLEAN = re.compile(r"\s+")
+_RE_WEIGHT_SPLIT = re.compile(r"(\d+(?:\.\d+)?)(kg|g|gm|ml|l)\b")
+
+
 def _catalog_phrase_set(catalog: Optional[Sequence[Any]]) -> set[str]:
     """Normalized catalog product names (both spaced and tight weight forms) for segmentation boundary hints."""
     phrases: set[str] = set()
@@ -554,17 +559,19 @@ def _catalog_phrase_set(catalog: Optional[Sequence[Any]]) -> set[str]:
         raw_name = item.get("name", "") if isinstance(item, dict) else getattr(item, "name", "")
         if not raw_name:
             continue
-        norm = " ".join(re.sub(r"[^a-zA-Z0-9\sऀ-ൿ]", " ", raw_name.lower()).split())
+        norm = " ".join(_RE_CAT_NORM.sub(" ", raw_name.lower()).split())
         if norm:
             phrases.add(norm)
-            phrases.add(re.sub(r"\s+", "", norm))
+            phrases.add(_RE_WS_CLEAN.sub("", norm))
             # Split "1kg" <-> "1 kg" so "Tata Salt 1 kg" recognizes "Tata Salt 1kg"
-            spaced = re.sub(r"(\d+(?:\.\d+)?)(kg|g|gm|ml|l)\b", r"\1 \2", norm)
+            spaced = _RE_WEIGHT_SPLIT.sub(r"\1 \2", norm)
             phrases.add(spaced)
     return phrases
 
 
 from services.voice_context import (
+    CONVERSATIONAL_PROSE_NO_PRODUCT_TOKENS,
+    HOMOPHONE_QUANTITY_CANDIDATES,
     build_light_catalog_index,
     is_conversational_non_product_phrase,
     parse_context_qty_tag,
@@ -760,7 +767,24 @@ def extract_items_from_transcript(
 
     normalized = normalize_digits_and_numbers(transcript)
     catalog_phrases = _catalog_phrase_set(catalog)
-    catalog_index = build_light_catalog_index(catalog) if catalog else []
+    _catalog_index_cache: Optional[List[Any]] = None
+    _catalog_index_built = False
+
+    def _get_catalog_index() -> List[Any]:
+        nonlocal _catalog_index_cache, _catalog_index_built
+        if not _catalog_index_built:
+            _catalog_index_cache = build_light_catalog_index(catalog) if catalog else []
+            _catalog_index_built = True
+        return _catalog_index_cache or []
+
+    def _is_non_product_prose(prod_text: str) -> bool:
+        if not catalog:
+            return False
+        # Fast exit without building catalog index unless every token is an ordinary conversational word
+        toks = [t.strip(" ,.;:-").lower() for t in prod_text.split() if t.strip(" ,.;:-")]
+        if not toks or not all((t in CONVERSATIONAL_PROSE_NO_PRODUCT_TOKENS or (len(t) > 3 and t.endswith("s") and t[:-1] in CONVERSATIONAL_PROSE_NO_PRODUCT_TOKENS)) for t in toks):
+            return False
+        return is_conversational_non_product_phrase(prod_text, catalog_index=_get_catalog_index())
 
     # Split mid-utterance action connectors before a new quantity ("5 Maggie also add 2 Colgate")
     normalized = re.sub(r"\s+\b(?:and\s+also|and\s+then|also\s+add|also|then|add)\s+(?=\d+(?:\.\d+)?\b)", ", ", normalized, flags=re.IGNORECASE)
@@ -809,11 +833,11 @@ def extract_items_from_transcript(
             continue
 
         # Context-aware STT homophone disambiguation (e.g. "to Maggie" -> 2 Maggie when catalog supports it)
-        if catalog_index:
+        if catalog and any(re.sub(r"[^a-z0-9\u0900-\u0D7F]", "", t.lower()) in HOMOPHONE_QUANTITY_CANDIDATES for t in s.split()):
             ctx_res = resolve_contextual_homophones(
                 s,
                 catalog,
-                catalog_index=catalog_index,
+                catalog_index=_get_catalog_index(),
                 unit_words=_UNIT_WORDS_SET,
                 stt_confidence=stt_confidence,
                 speech_alternatives=speech_alternatives,
@@ -875,8 +899,8 @@ def extract_items_from_transcript(
                     prod_text = clean_product_name(lead_match.group(3))
 
                     if prod_text and not (
-                        catalog_index and unit_id is None and seg_pkg_size is None
-                        and is_conversational_non_product_phrase(prod_text, catalog_index=catalog_index)
+                        unit_id is None and seg_pkg_size is None
+                        and _is_non_product_prose(prod_text)
                     ):
                         items.append(ExtractedItem(
                             name=prod_text,
@@ -907,8 +931,8 @@ def extract_items_from_transcript(
                     unit_id = canonical_voice_unit(trail_match.group(3))
 
                     if prod_text and not (
-                        catalog_index and unit_id is None and seg_pkg_size is None
-                        and is_conversational_non_product_phrase(prod_text, catalog_index=catalog_index)
+                        unit_id is None and seg_pkg_size is None
+                        and _is_non_product_prose(prod_text)
                     ):
                         items.append(ExtractedItem(
                             name=prod_text,
@@ -927,9 +951,10 @@ def extract_items_from_transcript(
 
                 # Pattern 3: Fallback single item without explicit number (e.g. "Tata Salt", "Remove Colgate")
                 prod_text = clean_product_name(sub)
-                if prod_text and not (
-                    catalog_index and seg_pkg_size is None
-                    and is_conversational_non_product_phrase(prod_text, catalog_index=catalog_index)
+                has_letters = bool(re.search(r"[a-zA-Zऀ-ൿ]", prod_text))
+                if prod_text and has_letters and not (
+                    seg_pkg_size is None
+                    and _is_non_product_prose(prod_text)
                 ):
                     items.append(ExtractedItem(
                         name=prod_text,

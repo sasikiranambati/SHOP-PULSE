@@ -65,7 +65,7 @@ export function setAccessToken(token: string | null): void {
  * Converts a failed HTTP response into an ApiError with a user-readable message.
  * Shared by fetch requests and XHR uploads so both report failures the same way.
  */
-function toApiError(status: number, statusText: string, data: any, endpoint: string): ApiError {
+function toApiError(status: number, statusText: string, data: any, endpoint: string, sentToken?: string | null): ApiError {
   let category = 'SERVER_ERROR';
   let errorMessage = '';
 
@@ -116,10 +116,14 @@ function toApiError(status: number, statusText: string, data: any, endpoint: str
     data,
   });
 
-  // Auto clear expired token on 401 Unauthorized
+  // Clear stored token only if the failing 401 used the currently active token (ignores stale 401s from before a fresh login)
   if (status === 401) {
-    setAccessToken(null);
-    window.dispatchEvent(new CustomEvent('shoppulse_auth_expired'));
+    const activeToken = getAccessToken();
+    const shouldExpire = sentToken === undefined ? Boolean(activeToken) : Boolean(sentToken && sentToken === activeToken);
+    if (shouldExpire) {
+      setAccessToken(null);
+      window.dispatchEvent(new CustomEvent('shoppulse_auth_expired'));
+    }
   }
 
   return new ApiError(errorMessage, status, data, category);
@@ -195,7 +199,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   }
 
   if (!response.ok) {
-    throw toApiError(response.status, response.statusText, data, endpoint);
+    throw toApiError(response.status, response.statusText, data, endpoint, token);
   }
 
   return data as T;

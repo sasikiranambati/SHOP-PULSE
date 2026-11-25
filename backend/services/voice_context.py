@@ -38,6 +38,7 @@ NON_BILL_FOLLOW_WORDS = {
     "counter", "shop", "store", "market", "home", "house", "family", "people", "person", "persons",
     "friend", "friends", "customer", "customers", "today", "tomorrow", "yesterday", "now", "here",
     "there", "please", "thank", "thanks", "sale", "free", "work", "time", "times", "way",
+    "minute", "minutes", "second", "seconds", "hour", "hours", "day", "days", "week", "weeks",
 }
 
 # Preceding verbs/words after which "to" (or "for") almost certainly acts as a preposition/infinitive.
@@ -88,8 +89,12 @@ class ContextualResolutionResult:
     token_metadata: Dict[int, ContextualCorrectionDetail] = field(default_factory=dict)
 
 
+_RE_CLEAN_TOKS = re.compile(r"[^a-z0-9\u0900-\u0D7F]")
+_RE_REPEAT_CHARS = re.compile(r"(.)\1+")
+
+
 def _norm_tok(tok: str) -> str:
-    return re.sub(r"[^a-z0-9\u0900-\u0D7F]", "", tok.lower())
+    return _RE_CLEAN_TOKS.sub("", tok.lower())
 
 
 def _stem(tok: str) -> str:
@@ -101,7 +106,7 @@ def _stem(tok: str) -> str:
 def _phonetic_key(tok: str) -> str:
     if not tok.isascii():
         return tok
-    s = re.sub(r"(.)\1+", r"\1", tok.lower())
+    s = _RE_REPEAT_CHARS.sub(r"\1", tok.lower())
     s = s.replace("ie", "i").replace("ee", "i").replace("oo", "u").replace("ph", "f").replace("aa", "a")
     if len(s) > 4 and s.endswith("e"):
         s = s[:-1]
@@ -141,15 +146,48 @@ def _lev_sim(a: str, b: str, *, pa: Optional[str] = None, pb: Optional[str] = No
 _RE_CLEAN_CHARS = re.compile(r"[^a-zA-Z0-9\s\u0900-\u0D7F]")
 
 
+def _char_mask(tok: str) -> int:
+    mask = 0
+    for ch in tok:
+        o = ord(ch)
+        if 97 <= o <= 122:
+            mask |= 1 << (o - 97)
+        elif o > 127:
+            mask |= 1 << 26
+    return mask
+
+
 @dataclass
 class _IndexedCatalogEntry:
     name: str
     name_norm: str
     name_stems: List[str]
     name_phonetics: List[str]
+    name_meta: List[Tuple[str, str, int, int]]
     all_stems: set[str]
     cat_stems: List[str]
     cat_phonetics: List[str]
+    cat_meta: List[Tuple[str, str, int, int]]
+
+
+class _CatalogIndex(list):
+    """List subclass holding catalog entries plus fast lookup maps for large catalogs."""
+
+    def __init__(
+        self,
+        entries: List[_IndexedCatalogEntry],
+        exact_map: Dict[str, _IndexedCatalogEntry],
+        stem_map: Dict[str, List[_IndexedCatalogEntry]],
+        phonetic_map: Dict[str, List[_IndexedCatalogEntry]],
+        cat_stem_map: Dict[str, List[_IndexedCatalogEntry]],
+        cat_phonetic_map: Dict[str, List[_IndexedCatalogEntry]],
+    ):
+        super().__init__(entries)
+        self.exact_map = exact_map
+        self.stem_map = stem_map
+        self.phonetic_map = phonetic_map
+        self.cat_stem_map = cat_stem_map
+        self.cat_phonetic_map = cat_phonetic_map
 
 
 def build_light_catalog_index(catalog: Optional[Sequence[Any]]) -> List[_IndexedCatalogEntry]:
@@ -157,6 +195,12 @@ def build_light_catalog_index(catalog: Optional[Sequence[Any]]) -> List[_Indexed
     if not catalog:
         return []
     out: List[_IndexedCatalogEntry] = []
+    exact_map: Dict[str, _IndexedCatalogEntry] = {}
+    stem_map: Dict[str, List[_IndexedCatalogEntry]] = {}
+    phonetic_map: Dict[str, List[_IndexedCatalogEntry]] = {}
+    cat_stem_map: Dict[str, List[_IndexedCatalogEntry]] = {}
+    cat_phonetic_map: Dict[str, List[_IndexedCatalogEntry]] = {}
+
     for item in catalog:
         name = item.get("name", "") if isinstance(item, dict) else getattr(item, "name", "")
         category = item.get("category", "") if isinstance(item, dict) else getattr(item, "category", "")
@@ -166,22 +210,54 @@ def build_light_catalog_index(catalog: Optional[Sequence[Any]]) -> List[_Indexed
         toks = [t for t in name_norm.split() if len(t) > 1 or t.isdigit()]
         stems = [_stem(t) for t in toks]
         phonetics = [_phonetic_key(s) for s in stems]
+        name_meta = [(s, p, len(s), _char_mask(s)) for s, p in zip(stems, phonetics)]
         cat_norm = " ".join(_RE_CLEAN_CHARS.sub(" ", str(category or "").lower()).split())
         cat_stems = [_stem(t) for t in cat_norm.split() if len(t) > 2]
         cat_phonetics = [_phonetic_key(s) for s in cat_stems]
-        out.append(_IndexedCatalogEntry(
+        cat_meta = [(s, p, len(s), _char_mask(s)) for s, p in zip(cat_stems, cat_phonetics)]
+        entry = _IndexedCatalogEntry(
             name=str(name),
             name_norm=name_norm,
             name_stems=stems,
             name_phonetics=phonetics,
+            name_meta=name_meta,
             all_stems=set(stems),
             cat_stems=cat_stems,
             cat_phonetics=cat_phonetics,
-        ))
-    return out
+            cat_meta=cat_meta,
+        )
+        out.append(entry)
+        exact_map.setdefault(name_norm, entry)
+        for s, p, _, _ in name_meta:
+            stem_map.setdefault(s, []).append(entry)
+            if p and len(s) >= 3:
+                phonetic_map.setdefault(p, []).append(entry)
+        for cs, cp, _, _ in cat_meta:
+            cat_stem_map.setdefault(cs, []).append(entry)
+            if cp and len(cs) >= 3:
+                cat_phonetic_map.setdefault(cp, []).append(entry)
+
+    return _CatalogIndex(out, exact_map, stem_map, phonetic_map, cat_stem_map, cat_phonetic_map)
 
 
 _DISTINGUISHING_MODS = {"flour", "powder", "free", "brown", "black", "essential"}
+
+
+def _fast_tok_sim(qt: str, qp: str, q_len: int, q_mask: int, q_ascii_alpha: bool, meta: Tuple[str, str, int, int]) -> float:
+    ct, cp, c_len, c_mask = meta
+    if qt == ct:
+        return 1.0
+    if not q_ascii_alpha or not ct.isascii() or ct.isdigit():
+        return 0.0
+    if qp and qp == cp and q_len >= 3 and c_len >= 3:
+        return 0.92
+    min_len = q_len if q_len < c_len else c_len
+    if min_len < 4 or abs(q_len - c_len) > 3:
+        return 0.0
+    # Strict necessary condition for similarity >= 0.78: max edit distance <= floor(0.22 * max_len)
+    if (q_mask ^ c_mask).bit_count() > 6:
+        return 0.0
+    return _lev_sim(qt, ct, pa=qp, pb=cp)
 
 
 def score_catalog_probe(probe_tokens: List[str], catalog_index: List[_IndexedCatalogEntry]) -> Tuple[float, Optional[str], bool]:
@@ -195,14 +271,75 @@ def score_catalog_probe(probe_tokens: List[str], catalog_index: List[_IndexedCat
     if not q_stems:
         return 0.0, None, False
     q_phonetics = [_phonetic_key(q) for q in q_stems]
+    q_meta = [(q, qp, len(q), _char_mask(q), q.isascii() and not q.isdigit()) for q, qp in zip(q_stems, q_phonetics)]
     q_set = set(q_stems)
     q_joined = " ".join(q_stems)
+
+    if isinstance(catalog_index, _CatalogIndex):
+        exact_hit = catalog_index.exact_map.get(q_joined)
+        if exact_hit is not None:
+            return 1.0, exact_hit.name, (q_stems[0] in exact_hit.all_stems)
 
     best_score = 0.0
     best_name: Optional[str] = None
     contains_first = False
 
-    for entry in catalog_index:
+    # Fast candidate narrowing on large catalogs using inverted stem/phonetic hits + bitmask fallback
+    has_direct_buckets = isinstance(catalog_index, _CatalogIndex) and len(catalog_index) > 32
+    seen_ids: set[int] = set()
+    entries_to_score: List[_IndexedCatalogEntry] = []
+    if has_direct_buckets:
+        for q, qp, q_len, q_mask, q_ok in q_meta:
+            for e in catalog_index.stem_map.get(q, ()):
+                eid = id(e)
+                if eid not in seen_ids:
+                    seen_ids.add(eid)
+                    entries_to_score.append(e)
+            if qp:
+                for e in catalog_index.phonetic_map.get(qp, ()):
+                    eid = id(e)
+                    if eid not in seen_ids:
+                        seen_ids.add(eid)
+                        entries_to_score.append(e)
+            if q not in _DISTINGUISHING_MODS:
+                for e in catalog_index.cat_stem_map.get(q, ()):
+                    eid = id(e)
+                    if eid not in seen_ids:
+                        seen_ids.add(eid)
+                        entries_to_score.append(e)
+                if qp:
+                    for e in catalog_index.cat_phonetic_map.get(qp, ()):
+                        eid = id(e)
+                        if eid not in seen_ids:
+                            seen_ids.add(eid)
+                            entries_to_score.append(e)
+        # Only fall back to linear bitmask fuzzy scan if exact/phonetic buckets returned no candidates
+        if not entries_to_score:
+            for q, qp, q_len, q_mask, q_ok in q_meta:
+                if q_ok and q_len >= 4:
+                    max_len_diff = 3 if q_len >= 9 else (2 if q_len >= 5 else 1)
+                    max_mask_diff = max_len_diff * 2
+                    for e in catalog_index:
+                        eid = id(e)
+                        if eid in seen_ids:
+                            continue
+                        hit = False
+                        for _, _, c_len, c_mask in e.name_meta:
+                            if c_len >= 4 and abs(q_len - c_len) <= max_len_diff and (q_mask ^ c_mask).bit_count() <= max_mask_diff:
+                                hit = True
+                                break
+                        if not hit and q not in _DISTINGUISHING_MODS and e.cat_meta:
+                            for _, _, c_len, c_mask in e.cat_meta:
+                                if c_len >= 4 and abs(q_len - c_len) <= max_len_diff and (q_mask ^ c_mask).bit_count() <= max_mask_diff:
+                                    hit = True
+                                    break
+                        if hit:
+                            seen_ids.add(eid)
+                            entries_to_score.append(e)
+    else:
+        entries_to_score = catalog_index
+
+    for entry in entries_to_score:
         if entry.name_norm == q_joined:
             return 1.0, entry.name, (q_stems[0] in entry.all_stems)
 
@@ -212,18 +349,21 @@ def score_catalog_probe(probe_tokens: List[str], catalog_index: List[_IndexedCat
 
         sims: List[float] = []
         primary_hit = False
-        for idx_q, qt in enumerate(q_stems):
-            qp = q_phonetics[idx_q]
+        for qt, qp, q_len, q_mask, q_ok in q_meta:
             best_tok_sim = 0.0
-            for ct, cp in zip(entry.name_stems, entry.name_phonetics):
-                sim = _lev_sim(qt, ct, pa=qp, pb=cp)
+            for meta in entry.name_meta:
+                sim = _fast_tok_sim(qt, qp, q_len, q_mask, q_ok, meta)
                 if sim > best_tok_sim:
                     best_tok_sim = sim
             if best_tok_sim >= 0.78:
                 primary_hit = True
                 sims.append(best_tok_sim)
-            elif qt not in _DISTINGUISHING_MODS and entry.cat_stems:
-                cat_sim = max((_lev_sim(qt, ct, pa=qp, pb=cp) for ct, cp in zip(entry.cat_stems, entry.cat_phonetics)), default=0.0)
+            elif qt not in _DISTINGUISHING_MODS and entry.cat_meta:
+                cat_sim = 0.0
+                for meta in entry.cat_meta:
+                    cs = _fast_tok_sim(qt, qp, q_len, q_mask, q_ok, meta)
+                    if cs > cat_sim:
+                        cat_sim = cs
                 if cat_sim >= 0.85:
                     primary_hit = True
                     sims.append(0.86)

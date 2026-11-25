@@ -37,6 +37,8 @@ export interface MatchedVoiceItem {
   unit_price_exact?: number | null;
   /** 'spoken': the price came from the speech and must be kept; 'catalogue': the selling price. */
   price_source?: 'spoken' | 'catalogue' | 'edited';
+  /** Authoritative catalog line total for reference when a spoken/edited price differs. */
+  catalog_line_total?: number | null;
   /** What was said when it differs from the stock quantity (e.g. "500 g" sold as 0.5 kg). */
   spoken_quantity?: string | null;
   /** Extraction command action ('add' | 'update' | 'remove'). */

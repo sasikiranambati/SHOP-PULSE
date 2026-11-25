@@ -5,7 +5,7 @@
  */
 
 import type { Product, ProductInput, StockStatus, ProductQueryFilters } from '../types/product';
-import { productsApi, type ProductBackend } from '../api/products';
+import { productsApi, type ProductBackend, type ProductUpdateInput } from '../api/products';
 
 export function calculateStockStatus(stock: number, reorderLevel: number): StockStatus {
   if (stock <= 0) return 'Out of Stock';
@@ -190,17 +190,65 @@ export async function addProduct(input: ProductInput): Promise<Product> {
  * Update an existing product.
  */
 export async function updateProduct(id: string, updates: Partial<ProductInput>): Promise<void> {
-  await productsApi.updateProduct(id, {
-    name: updates.name?.trim(),
-    category: updates.category,
-    selling_price: updates.sellingPrice ?? updates.price,
-    purchase_price: updates.purchasePrice,
-    ...(typeof updates.mrp === 'number' && updates.mrp > 0 ? { mrp: updates.mrp } : {}),
-    current_stock: updates.stock,
-    reorder_level: updates.reorderLevel ?? updates.minStock,
-    unit: updates.unit,
-    sku: updates.barcode || updates.sku,
-  });
+  const payload: ProductUpdateInput = {};
+
+  if (updates.name !== undefined) payload.name = updates.name.trim();
+  if (updates.category !== undefined) payload.category = updates.category;
+
+  const sellingPrice = updates.sellingPrice ?? updates.price;
+  if (typeof sellingPrice === 'number' && Number.isFinite(sellingPrice)) {
+    payload.selling_price = sellingPrice;
+  }
+
+  if (typeof updates.purchasePrice === 'number' && Number.isFinite(updates.purchasePrice)) {
+    payload.purchase_price = updates.purchasePrice;
+  }
+
+  if (typeof updates.mrp === 'number' && Number.isFinite(updates.mrp) && updates.mrp >= 0) {
+    payload.mrp = updates.mrp;
+  }
+
+  if (typeof updates.stock === 'number' && Number.isFinite(updates.stock)) {
+    payload.current_stock = updates.stock;
+  }
+
+  const reorderLevel = updates.reorderLevel ?? updates.minStock;
+  if (typeof reorderLevel === 'number' && Number.isFinite(reorderLevel)) {
+    payload.reorder_level = reorderLevel;
+  }
+
+  if (typeof updates.unit === 'string' && updates.unit.trim().length > 0) {
+    payload.unit = updates.unit.trim();
+  }
+
+  if (
+    typeof updates.priceBasisQuantity === 'number' &&
+    Number.isFinite(updates.priceBasisQuantity) &&
+    updates.priceBasisQuantity > 0
+  ) {
+    payload.price_basis_quantity = updates.priceBasisQuantity;
+  }
+
+  if (typeof updates.priceBasisUnit === 'string' && updates.priceBasisUnit.trim().length > 0) {
+    payload.price_basis_unit = updates.priceBasisUnit.trim();
+  }
+
+  if (
+    typeof updates.mrpBasisQuantity === 'number' &&
+    Number.isFinite(updates.mrpBasisQuantity) &&
+    updates.mrpBasisQuantity > 0
+  ) {
+    payload.mrp_basis_quantity = updates.mrpBasisQuantity;
+  }
+
+  if (typeof updates.mrpBasisUnit === 'string' && updates.mrpBasisUnit.trim().length > 0) {
+    payload.mrp_basis_unit = updates.mrpBasisUnit.trim();
+  }
+
+  const sku = updates.barcode ?? updates.sku;
+  if (sku !== undefined) payload.sku = sku;
+
+  await productsApi.updateProduct(id, payload);
 
   notifyInventoryChanged();
 }

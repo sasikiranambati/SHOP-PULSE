@@ -152,6 +152,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
 
   // Audio recording refs
   const speechRecognitionRef = useRef<any>(null);
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<any>(null);
   const silenceTimeoutRef = useRef<any>(null);
   const debouncedPreviewTimerRef = useRef<any>(null);
@@ -160,6 +161,31 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
   const sttConfidenceRef = useRef<number | null>(null);
   const speechAlternativesRef = useRef<string[]>([]);
   const lastFinalChunkRef = useRef<string>('');
+  const buttonResetTimerRef = useRef<any>(null);
+  const isStartingRef = useRef<boolean>(false);
+  const isProcessingRef = useRef<boolean>(false);
+  const activeRequestSeqRef = useRef<number>(0);
+
+  const transitionButtonState = useCallback((nextState: VoiceButtonState, autoResetMs?: number) => {
+    if (buttonResetTimerRef.current) {
+      clearTimeout(buttonResetTimerRef.current);
+      buttonResetTimerRef.current = null;
+    }
+    setButtonState(nextState);
+    if (autoResetMs && autoResetMs > 0) {
+      buttonResetTimerRef.current = setTimeout(() => {
+        buttonResetTimerRef.current = null;
+        setButtonState('IDLE');
+      }, autoResetMs);
+    }
+  }, []);
+
+  // Keep error alert scrolled into view whenever an error occurs while scrolled down
+  useEffect(() => {
+    if (errorMessage && bodyScrollRef.current) {
+      bodyScrollRef.current.scrollTop = 0;
+    }
+  }, [errorMessage]);
 
   const stopRecording = useCallback(() => {
     // Stop Web Speech API recognition session
@@ -187,9 +213,16 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
       debouncedPreviewTimerRef.current = null;
     }
 
+    isStartingRef.current = false;
     setIsRecording(false);
     setButtonState(prev => (prev === 'LISTENING' ? 'IDLE' : prev));
   }, []);
+
+  const handleModalClose = useCallback(() => {
+    if (isProcessingRef.current || isProcessing) return;
+    stopRecording();
+    onClose();
+  }, [isProcessing, onClose, stopRecording]);
 
   // Check backend voice status on open
   useEffect(() => {
@@ -205,16 +238,13 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
 
     return () => {
       stopRecording();
-      setButtonState('IDLE');
+      transitionButtonState('IDLE');
     };
-  }, [isOpen, stopRecording]);
+  }, [isOpen, stopRecording, transitionButtonState]);
 
   const panelRef = useDialog<HTMLDivElement>({
     isOpen,
-    onClose: () => {
-      stopRecording();
-      onClose();
-    },
+    onClose: handleModalClose,
     closeOnEscape: !isRecording && !isProcessing,
   });
 
@@ -248,11 +278,14 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
     textToProcess: string,
     options: { replaceLast?: boolean; sttConfidence?: number | null; speechAlternatives?: string[] } = {},
   ) => {
+    if (isProcessingRef.current) {
+      return;
+    }
+
     const cleanedText = textToProcess.trim();
     if (!cleanedText) {
       setErrorMessage("No speech detected. Please speak clearly or enter items to simulate.");
-      setButtonState('ERROR');
-      setTimeout(() => setButtonState('IDLE'), 2500);
+      transitionButtonState('ERROR', 2500);
       return;
     }
 
@@ -265,6 +298,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
     const seq = isReprocess && lastUtteranceSeqRef.current !== null
       ? lastUtteranceSeqRef.current
       : ++utteranceSeqRef.current;
+    activeRequestSeqRef.current = seq;
     lastUtteranceSeqRef.current = seq;
     lastUtteranceTextRef.current = cleanedText;
 
@@ -274,7 +308,8 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
     setInterimTranscript('');
     setLivePreviewItems([]);
     setErrorMessage(null);
-    setButtonState('PROCESSING');
+    transitionButtonState('PROCESSING');
+    isProcessingRef.current = true;
     setIsProcessing(true);
 
     const parseCtxOptions = {
@@ -297,7 +332,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
       error: null
     }));
 
-    // STEP 1: Instant zero-latency (<1ms) client-side parsing for immediate responsive feedback
+    // STEP 1: Instant zero-latency (<1ms) client-side preview while keeping button in PROCESSING until backend settles
     let instantSuccess = false;
     try {
       const localResult = parseMultilingualVoiceBill(cleanedText, products, 'english', parseCtxOptions);
@@ -310,8 +345,6 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
           }),
         );
         instantSuccess = true;
-        setButtonState('SUCCESS');
-        setTimeout(() => setButtonState('IDLE'), 2800);
       }
     } catch (e) {
       console.warn("Client instant parser notice:", e);
@@ -326,6 +359,10 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         stt_confidence: options.sttConfidence ?? undefined,
         speech_alternatives: options.speechAlternatives?.length ? options.speechAlternatives : undefined,
       });
+
+      if (activeRequestSeqRef.current !== seq) {
+        return;
+      }
 
       setDebugInfo(prev => ({
         ...prev,
@@ -342,8 +379,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
             entries: prev.entries.filter(e => e.seq !== seq),
           }));
           setErrorMessage("Could not detect items. Please try speaking item name and quantity clearly.");
-          setButtonState('ERROR');
-          setTimeout(() => setButtonState('IDLE'), 3000);
+          transitionButtonState('ERROR', 3000);
           return;
         }
         setTranscript(response.transcript || cleanedText);
@@ -369,22 +405,35 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
           inventoryMatches: response.matched_items
         }));
 
-        setButtonState('SUCCESS');
-        setTimeout(() => setButtonState('IDLE'), 2800);
+        transitionButtonState('SUCCESS', 2800);
         return;
       }
     } catch (backendErr: any) {
+      if (backendErr?.category === 'AUTHENTICATION_ERROR' || backendErr?.status === 401) {
+        const authErrMsg = 'Your session expired. Sign in again — any active POS bill draft has been saved.';
+        setDraft(prev => ({
+          ...prev,
+          entries: prev.entries.filter(e => e.seq !== seq),
+        }));
+        setErrorMessage(authErrMsg);
+        setDebugInfo(prev => ({ ...prev, error: authErrMsg, recognitionState: 'ERROR' }));
+        transitionButtonState('ERROR', 4000);
+        return;
+      }
       console.warn("Backend voice processing unavailable, relying on client-side parser:", backendErr);
       setDebugInfo(prev => ({
         ...prev,
         apiResponse: `Backend offline/fallback (${backendErr.message || 'Network'}), using local parser`
       }));
     } finally {
+      isProcessingRef.current = false;
       setIsProcessing(false);
     }
 
     // STEP 3: Fallback handling if backend failed and instant preview had nothing yet
-    if (!instantSuccess) {
+    if (instantSuccess) {
+      transitionButtonState('SUCCESS', 2800);
+    } else {
       try {
         const fallbackResult = parseMultilingualVoiceBill(cleanedText, products, 'english', parseCtxOptions);
         setDraft(prev =>
@@ -395,23 +444,20 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         );
 
         if (fallbackResult.matched_items.length > 0) {
-          setButtonState('SUCCESS');
-          setTimeout(() => setButtonState('IDLE'), 2800);
+          transitionButtonState('SUCCESS', 2800);
         } else if (fallbackResult.unmatched_items.length > 0 || fallbackResult.ambiguous_items.length > 0) {
-          setButtonState('IDLE');
+          transitionButtonState('IDLE');
         } else {
-          setButtonState('ERROR');
           const err = "Could not detect items. Please try speaking item name and quantity clearly.";
           setErrorMessage(err);
           setDebugInfo(prev => ({ ...prev, error: err, recognitionState: 'ERROR' }));
-          setTimeout(() => setButtonState('IDLE'), 3000);
+          transitionButtonState('ERROR', 3000);
         }
       } catch (err: any) {
-        setButtonState('ERROR');
         const errStr = err.message || "Failed to process voice bill.";
         setErrorMessage(errStr);
         setDebugInfo(prev => ({ ...prev, error: errStr, recognitionState: 'ERROR' }));
-        setTimeout(() => setButtonState('IDLE'), 3000);
+        transitionButtonState('ERROR', 3000);
       }
     }
   };
@@ -420,8 +466,8 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
   // Microphone Capture (Fixed English Speech Recognition)
   // ---------------------------------------------------------------------------
   const startRecording = () => {
-    // Prevent repeated or simultaneous sessions
-    if (isRecording || isProcessing || buttonState === 'PROCESSING') {
+    // Prevent repeated or simultaneous sessions (including synchronous double-taps before onstart fires)
+    if (isStartingRef.current || isRecording || isProcessing || isProcessingRef.current || buttonState === 'PROCESSING') {
       return;
     }
 
@@ -435,6 +481,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
       speechRecognitionRef.current = null;
     }
 
+    isStartingRef.current = true;
     setErrorMessage(null);
     accumulatedFinalRef.current = '';
     interimOnlyRef.current = '';
@@ -448,8 +495,8 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
+      isStartingRef.current = false;
       const msg = "Speech recognition is not supported in this browser. Please use a supported browser or enable the required speech service.";
-      setButtonState('ERROR');
       setErrorMessage(msg);
       setDebugInfo(prev => ({
         ...prev,
@@ -457,7 +504,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         recognitionState: 'UNSUPPORTED',
         error: msg
       }));
-      setTimeout(() => setButtonState('IDLE'), 4000);
+      transitionButtonState('ERROR', 4000);
       return;
     }
 
@@ -486,8 +533,10 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
       }));
 
       recognition.onstart = () => {
+        if (speechRecognitionRef.current !== recognition) return;
+        isStartingRef.current = false;
         setIsRecording(true);
-        setButtonState('LISTENING');
+        transitionButtonState('LISTENING');
         setRecordingSeconds(0);
         if (timerRef.current) clearInterval(timerRef.current);
         timerRef.current = setInterval(() => {
@@ -496,6 +545,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
       };
 
       recognition.onresult = (event: any) => {
+        if (speechRecognitionRef.current !== recognition) return;
         let interimText = '';
         let newFinalChunk = '';
         const collectedAlts: string[] = [];
@@ -586,6 +636,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         }
         if (fullCurrentTranscript) {
           silenceTimeoutRef.current = setTimeout(() => {
+            if (speechRecognitionRef.current !== recognition) return;
             const finalText = (accumulatedFinalRef.current + ' ' + interimOnlyRef.current).trim();
             const capturedConf = sttConfidenceRef.current;
             const capturedAlts = [...speechAlternativesRef.current];
@@ -606,6 +657,13 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
       };
 
       recognition.onerror = (event: any) => {
+        if (speechRecognitionRef.current !== recognition) return;
+        isStartingRef.current = false;
+        accumulatedFinalRef.current = '';
+        interimOnlyRef.current = '';
+        sttConfidenceRef.current = null;
+        speechAlternativesRef.current = [];
+        lastFinalChunkRef.current = '';
         stopRecording();
         const errType = event.error;
         let msg = `Speech recognition error: ${errType || 'Unknown error'}`;
@@ -619,33 +677,48 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         } else if (errType === 'network') {
           msg = "Speech recognition could not connect. Please check your connection and try again.";
         } else if (errType === 'aborted') {
-          setButtonState('IDLE');
+          transitionButtonState('IDLE');
           return;
         }
 
-        setButtonState('ERROR');
         setErrorMessage(msg);
         setDebugInfo(prev => ({
           ...prev,
           recognitionState: 'ERROR',
           error: msg
         }));
-        setTimeout(() => setButtonState('IDLE'), 4000);
+        transitionButtonState('ERROR', 4000);
       };
 
       recognition.onend = () => {
+        if (speechRecognitionRef.current !== recognition) return;
+        isStartingRef.current = false;
+        const pendingText = (accumulatedFinalRef.current + ' ' + interimOnlyRef.current).trim();
+        const capturedConf = sttConfidenceRef.current;
+        const capturedAlts = [...speechAlternativesRef.current];
+        accumulatedFinalRef.current = '';
+        interimOnlyRef.current = '';
+        sttConfidenceRef.current = null;
+        speechAlternativesRef.current = [];
+        lastFinalChunkRef.current = '';
         stopRecording();
+        if (pendingText) {
+          handleProcessTranscript(pendingText, {
+            sttConfidence: capturedConf,
+            speechAlternatives: capturedAlts,
+          });
+        }
       };
 
       recognition.start();
     } catch (e: any) {
+      isStartingRef.current = false;
       console.warn("SpeechRecognition start failed:", e);
       stopRecording();
-      setButtonState('ERROR');
       const msg = e.message || "Failed to start speech recognition.";
       setErrorMessage(msg);
       setDebugInfo(prev => ({ ...prev, error: msg, recognitionState: 'ERROR' }));
-      setTimeout(() => setButtonState('IDLE'), 4000);
+      transitionButtonState('ERROR', 4000);
     }
   };
 
@@ -898,8 +971,8 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
 
           <button
             type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-white hover:bg-[#F3EFE3] text-[#5E6C64] hover:text-[#252D29] flex items-center justify-center transition-colors cursor-pointer border border-[#DDE9DF]"
+            onClick={handleModalClose}
+            className="w-8 h-8 rounded-lg bg-white hover:bg-[#F3EFE3] text-[#5E6C64] hover:text-[#252D29] flex items-center justify-center transition-colors cursor-pointer border border-[#DDE9DF] shrink-0"
             aria-label="Close Voice-to-Bill"
           >
             <X className="w-4 h-4" />
@@ -907,7 +980,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         </div>
 
         {/* Modal Scrollable Body */}
-        <div className="p-4 sm:p-5 overflow-y-auto space-y-4 sm:space-y-5 flex-1 bg-white">
+        <div ref={bodyScrollRef} className="p-3.5 sm:p-5 overflow-y-auto overflow-x-hidden space-y-4 sm:space-y-5 flex-1 bg-white">
 
           {/* Error Banner */}
           {errorMessage && (
@@ -1086,12 +1159,12 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
               </div>
 
               {isEditingTranscript ? (
-                <div className="flex gap-2">
+                <div className="flex flex-wrap sm:flex-nowrap gap-2 min-w-0">
                   <input
                     type="text"
                     value={editedTranscript}
                     onChange={(e) => setEditedTranscript(e.target.value)}
-                    className="flex-1 px-3 py-1.5 text-xs rounded-lg border border-[#DDE9DF] focus:outline-none focus:ring-2 focus:ring-[#153D32]/20 focus:border-[#153D32] font-medium bg-white text-[#252D29]"
+                    className="flex-1 min-w-0 px-3 py-1.5 text-xs rounded-lg border border-[#DDE9DF] focus:outline-none focus:ring-2 focus:ring-[#153D32]/20 focus:border-[#153D32] font-medium bg-white text-[#252D29]"
                   />
                   <Button
                     size="sm"
@@ -1211,8 +1284,8 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
               </div>
               <div className="space-y-1.5">
                 {unmatchedItems.map((un, unIdx) => (
-                  <div key={unIdx} className="flex items-center justify-between text-xs bg-white px-3 py-2 rounded-lg border border-[#EF806D]/30">
-                    <span className="font-bold text-[#252D29]">
+                  <div key={unIdx} className="flex flex-wrap items-center justify-between gap-2 text-xs bg-white px-3 py-2 rounded-lg border border-[#EF806D]/30 min-w-0">
+                    <span className="font-bold text-[#252D29] break-words">
                       {un.quantity}x {un.queried_name}
                     </span>
                     <div className="flex items-center gap-2.5">
@@ -1280,6 +1353,14 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                             Catalog price
                           </span>
                         )}
+                        {item.price_source &&
+                          item.price_source !== 'catalogue' &&
+                          typeof item.catalog_line_total === 'number' &&
+                          Math.abs(item.total_price - item.catalog_line_total) > 0.01 && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-[#FEF9EB] text-[#8A6118] border border-[#D6AE62]/40">
+                              Catalog ₹{item.catalog_line_total}
+                            </span>
+                          )}
                         {item.spoken_quantity && (
                           <span className="text-[10px] font-medium text-[#5E6C64]">
                             said {item.spoken_quantity}
@@ -1343,7 +1424,15 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                           min="0"
                           step="0.01"
                           defaultValue={item.total_price}
-                          onBlur={(e) => handleEditLineTotal(idx, e.target.value)}
+                          onBlur={(e) => {
+                            const raw = e.currentTarget.value;
+                            const parsed = Number(raw);
+                            if (raw.trim() === '' || !Number.isFinite(parsed) || parsed < 0) {
+                              e.currentTarget.value = String(item.total_price);
+                              return;
+                            }
+                            handleEditLineTotal(idx, raw);
+                          }}
                           onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                           aria-label={`Line total for ${item.name}`}
                           className="w-16 text-right bg-transparent border-b border-dashed border-[#23866A]/60 focus:outline-none focus:border-[#153D32] tabular-nums"
@@ -1423,7 +1512,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                   ))}
                 </div>
 
-                <div className="flex gap-2 pt-1">
+                <div className="flex flex-wrap sm:flex-nowrap gap-2 pt-1 min-w-0">
                   <input
                     type="text"
                     placeholder="Type an English voice sentence to simulate..."
@@ -1434,7 +1523,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                         handleProcessTranscript(simulatedInput);
                       }
                     }}
-                    className="flex-1 px-3 py-2 text-xs rounded-lg border border-[#DDE9DF] focus:outline-none focus:ring-2 focus:ring-[#153D32]/15 focus:border-[#153D32] font-medium bg-white text-[#252D29]"
+                    className="flex-1 min-w-[160px] px-3 py-2 text-xs rounded-lg border border-[#DDE9DF] focus:outline-none focus:ring-2 focus:ring-[#153D32]/15 focus:border-[#153D32] font-medium bg-white text-[#252D29]"
                   />
                   <Button
                     size="sm"
@@ -1571,7 +1660,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
           <div className="flex items-center gap-2 text-xs text-[#5E6C64]">
             <Info className="w-4 h-4 text-[#153D32] shrink-0" />
             <span>
-              {matchedItems.length} items ready to transfer to billing
+              {matchedItems.length} {matchedItems.length === 1 ? 'item' : 'items'} ready to transfer to billing
             </span>
           </div>
 
@@ -1579,7 +1668,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
             <Button
               variant="outline"
               size="md"
-              onClick={onClose}
+              onClick={handleModalClose}
               className="col-span-2 sm:col-span-1 sm:flex-initial rounded-lg text-xs font-bold cursor-pointer border-[#DDE9DF] text-[#252D29] hover:bg-[#FAF8F2] min-h-[44px]"
             >
               Cancel

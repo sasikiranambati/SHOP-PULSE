@@ -6,6 +6,7 @@ import { useInventory } from './hooks/useInventory';
 import { useShopRole } from './hooks/useShopRole';
 import { ProtectedRoute, PublicOnlyRoute } from './components/ProtectedRoute';
 import { UnauthorizedAccessBanner } from './components/UnauthorizedAccessBanner';
+import { clearSessionExpiredNotice, readSessionExpiredNotice } from './utils/posDraftStorage';
 
 // Layouts
 import { DashboardLayout } from './layouts/DashboardLayout';
@@ -113,10 +114,23 @@ export function App() {
     if (loading) return;
 
     if (firebaseUser) {
-      // Logged in: redirect auth forms to permitted default page
+      // Logged in: redirect auth forms back to expired page (if permitted) or permitted default page
       if (activePage === 'login' || activePage === 'signup') {
-        const defaultPage: PageRoute = isCashier ? 'sales' : 'dashboard';
+        const expiredNotice = readSessionExpiredNotice();
+        const returnPage = expiredNotice?.returnPage;
+        const permittedReturn =
+          returnPage &&
+          ['dashboard', 'inventory', 'sales', 'insights', 'scanner', 'settings'].includes(returnPage) &&
+          canAccessPage(returnPage)
+            ? returnPage
+            : null;
+        if (expiredNotice) {
+          clearSessionExpiredNotice();
+        }
+        const defaultPage: PageRoute = permittedReturn || (isCashier ? 'sales' : 'dashboard');
         setActivePage(defaultPage);
+      } else {
+        clearSessionExpiredNotice();
       }
     } else {
       // Not logged in: protect internal dashboard pages
@@ -125,7 +139,7 @@ export function App() {
         setActivePage('login');
       }
     }
-  }, [firebaseUser, loading, activePage, isCashier]);
+  }, [firebaseUser, loading, activePage, isCashier, canAccessPage]);
 
   // Errors are re-thrown so callers (product form, invoice scanner) never report a failed save as success.
   const handleAddProduct = async (newProd: Omit<Product, 'id'>) => {
@@ -178,9 +192,19 @@ export function App() {
     return <Landing setActivePage={setActivePage} />;
   }
 
+  const expiredReturn = readSessionExpiredNotice()?.returnPage;
+  const postAuthTarget: PageRoute =
+    expiredReturn &&
+    ['dashboard', 'inventory', 'sales', 'insights', 'scanner', 'settings'].includes(expiredReturn) &&
+    canAccessPage(expiredReturn)
+      ? expiredReturn
+      : isCashier
+        ? 'sales'
+        : 'dashboard';
+
   if (activePage === 'login') {
     return (
-      <PublicOnlyRoute setActivePage={setActivePage} targetPage="dashboard">
+      <PublicOnlyRoute setActivePage={setActivePage} targetPage={postAuthTarget}>
         <RouteErrorBoundary>
           <Suspense fallback={<PageFallback />}>
             <Login
@@ -197,7 +221,7 @@ export function App() {
 
   if (activePage === 'signup') {
     return (
-      <PublicOnlyRoute setActivePage={setActivePage} targetPage="dashboard">
+      <PublicOnlyRoute setActivePage={setActivePage} targetPage={postAuthTarget}>
         <RouteErrorBoundary>
           <Suspense fallback={<PageFallback />}>
             <Signup
