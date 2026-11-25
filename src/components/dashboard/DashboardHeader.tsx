@@ -16,7 +16,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   const { t } = useLanguage();
 
   return (
-    <div className="bg-white rounded-2xl border border-[#DDE9DF] p-5 sm:p-6 shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all min-w-0">
+    <div className="bg-white rounded-2xl border border-[#DDE9DF] p-5 sm:p-6 shadow-card flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all min-w-0">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#153D32] bg-[#FAF8F2] px-3 py-1 rounded-xl border border-[#DDE9DF] max-w-full">
@@ -41,7 +41,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
         </p>
       </div>
 
-      <div className="flex items-center gap-2.5 shrink-0 w-full sm:w-auto pt-1 sm:pt-0">
+      <div className="flex flex-wrap items-center gap-2.5 shrink-0 w-full lg:w-auto pt-1 lg:pt-0">
         <button
           type="button"
           onClick={() => setActivePage('scanner')}

@@ -360,7 +360,7 @@ export const Sales: React.FC<SalesProps> = ({
   }, [filteredHistorySales]);
 
   return (
-    <div className="space-y-4 max-w-5xl mx-auto min-w-0">
+    <div className="w-full space-y-4 max-w-5xl mx-auto min-w-0">
       
       {/* Page Header */}
       <PageHeader
@@ -494,8 +494,8 @@ export const Sales: React.FC<SalesProps> = ({
 
           {/* Search & Category Filter Bar */}
           <div className="bg-white rounded-xl border border-[#E3E5DE] p-3.5 shadow-xs space-y-3">
-            <div className="flex gap-2 items-center">
-              <div className="relative flex-1">
+            <div className="flex gap-2 items-center min-w-0">
+              <div className="relative flex-1 min-w-0">
                 <Search className="w-5 h-5 absolute left-3.5 top-3 text-[#69736C]" />
                 <input
                   type="text"
@@ -546,7 +546,7 @@ export const Sales: React.FC<SalesProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             
             {/* Left Col (2/3): Touch Product Cards Grid */}
-            <div className="lg:col-span-2 space-y-3">
+            <div className="lg:col-span-2 space-y-3 min-w-0">
               <div className="flex items-center justify-between px-1">
                 <h2 className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">
                   {t('sales.tapToBuild')}
