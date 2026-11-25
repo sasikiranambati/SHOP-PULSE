@@ -1,5 +1,5 @@
 import re
-from typing import List, Tuple, Optional, Union
+from typing import Any, List, Sequence, Tuple, Optional, Union
 from pydantic import BaseModel
 
 class ExtractedItem(BaseModel):
@@ -15,13 +15,13 @@ class ExtractedItem(BaseModel):
     price_unit: Optional[str] = None
     # Action intent: "add", "remove", "update"
     action: Optional[str] = "add"
+    explicit_quantity: bool = True
+    raw_text: Optional[str] = None
+    package_size: Optional[str] = None
 
 # Comprehensive mapping of spoken numbers to integer digits across English and Indian languages
 NUMBER_WORDS = {
     # English
-    "zero": 0,
-    "a": 1,
-    "an": 1,
     "one": 1,
     "two": 2,
     "three": 3,
@@ -42,10 +42,13 @@ NUMBER_WORDS = {
     "eighteen": 18,
     "nineteen": 19,
     "twenty": 20,
-    "twenty five": 25,
     "thirty": 30,
     "forty": 40,
     "fifty": 50,
+    "sixty": 60,
+    "seventy": 70,
+    "eighty": 80,
+    "ninety": 90,
     "hundred": 100,
     # Fractions & Spoken quantities
     "half": 0.5,
@@ -233,14 +236,18 @@ NUMBER_WORDS = {
 }
 
 # Unit qualifiers that follow or precede numbers
-PACKAGING_UNITS_REGEX = r"\b(?:కిలోల?|కేజీల?|లీటర్ల?|ప్యాకెట్ల?|బాటిల్|సంచులు|किलो|लीटर|पैकेट|बोतल|पॉकेट|கிலோ|லிட்டர்|பாக்கெட்|ಕಿಲೋ|ಲೀಟರ್|ಕിലോ|ലിറ്റർ|কেজি|packets?|pkts?|pouches?|pouch|boxes?|box|dabba|dappe|pieces?|pcs?|pc|bottles?|btls?|cans?|bags?|trays?|bori|basta|units?|liters?|litres?|ltrs?|ltr|kg|kgs|kilo|kilos|kilograms?|grams?|gms?|gm)\b(?:\s+of\b)?"
+PACKAGING_UNITS_REGEX = r"\b(?:కిలోల?|కేజీల?|లీటర్ల?|ప్యాకెట్ల?|బాటిల్|సంచులు|किलो|लीटर|पैकेट|बोतल|पॉकेट|கிலோ|லிட்டர்|பாக்கெட்|ಕಿಲೋ|ಲೀಟರ್|ಕിലോ|ലിറ്റർ|কেজি|packets?|pkts?|pouches?|pouch|boxes?|box|dabba|dappe|pieces?|pcs?|pc|bottles?|btls?|cans?|bags?|cartons?|ctns?|tubes?|bars?|tins?|jars?|sachets?|strips?|rolls?|trays?|bori|basta|units?|milliliters?|millilitres?|mls?|liters?|litres?|ltrs?|ltr|kg|kgs|kilo|kilos|kilograms?|grams?|gms?|gm)\b(?:\s+of\b)?"
 
 UNIT_STRING_LIST = [
     "kilogram", "kilograms", "kg", "kgs", "kilo", "kilos", "gram", "grams", "g", "gm", "gms",
-    "liter", "liters", "litre", "litres", "l", "ltr", "ltrs", "ml",
+    "milliliter", "milliliters", "millilitre", "millilitres", "ml", "mls",
+    "liter", "liters", "litre", "litres", "l", "ltr", "ltrs",
     "packet", "packets", "pack", "packs", "pkt", "pkts", "pouch", "pouches",
     "piece", "pieces", "pc", "pcs", "unit", "units",
     "box", "boxes", "bottle", "bottles", "btl", "btls", "bag", "bags",
+    "carton", "cartons", "ctn", "tube", "tubes", "bar", "bars",
+    "tin", "tins", "can", "cans", "jar", "jars", "sachet", "sachets",
+    "strip", "strips", "roll", "rolls", "tray", "trays",
     "కిలో", "కిలోలు", "కిలోల", "కేజీ", "కేజీలు", "కేజీల", "లీటర్", "లీటర్లు", "లీటర్ల", "ప్యాకెట్", "ప్యాకెట్లు", "ప్యాకెట్ల",
     "किलो", "किलों", "लीटर", "लीटरों", "पैकेट", "पैकेटों", "बोतल",
     "கிலோ", "லிட்டர்", "பாக்கெட்",
@@ -276,10 +283,58 @@ CURRENCY_REGEX = r"(?:రూపాయలు|రూ|రూ\.|రూపాయ|ర
 
 # Conversational fillers at start or end of phrases
 CONVERSATIONAL_FILLERS = [
-    r"^(?:please\s+)?(?:give\s+me|give\s+us|i\s+want|we\s+need|add|bill|put|take|pack|remove|delete|cancel|change|update|make|bhejo|dena|daal\s+do|likho|chahiye|ivvandi|kaavali|తీసివేయి|తీసేయి|హటాओ|निकालो)\s+",
+    r"^(?:please\s+)?(?:could\s+you\s+|can\s+you\s+|can\s+i\s+get\s+|could\s+i\s+get\s+|i\s+would\s+like\s+|i'd\s+like\s+|give\s+me|give\s+us|get\s+me|i\s+want|we\s+want|i\s+need|we\s+need|need|want|please|add|bill|put\s+down|put|take|pack|remove|delete|cancel|change|update|make|also\s+add|also|then|bhejo|dena|daal\s+do|likho|chahiye|ivvandi|kaavali|తీసివేయి|తీసేయి|హటాओ|निकालो)\s+",
     r"\s+(?:chahiye|dena|daal\s+do|likho|bhejo|ivvandi|kaavali|please)$",
     r" (?:kripya|bhai|bhaiya|ji|andi|ayya) ",
 ]
+
+_ENGLISH_TENS = {
+    "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+    "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+}
+_ENGLISH_UNITS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9,
+}
+_ENGLISH_SUB_HUNDRED = {
+    **_ENGLISH_UNITS,
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+    **_ENGLISH_TENS,
+}
+
+def _replace_english_compounds(text: str) -> str:
+    """Normalizes compound English numbers (e.g. 'twenty five' -> '25', 'one hundred twenty' -> '120')."""
+    tens_pat = "|".join(_ENGLISH_TENS.keys())
+    units_pat = "|".join(_ENGLISH_UNITS.keys())
+    sub_pat = "|".join(sorted(_ENGLISH_SUB_HUNDRED.keys(), key=len, reverse=True))
+
+    def _hundred_repl(m: re.Match) -> str:
+        base = _ENGLISH_UNITS[m.group(1).lower()] * 100
+        rest_t = m.group(2)
+        rest_u = m.group(3)
+        if rest_t and rest_u:
+            return f" {base + _ENGLISH_TENS[rest_t.lower()] + _ENGLISH_UNITS[rest_u.lower()]} "
+        if rest_t:
+            return f" {base + _ENGLISH_SUB_HUNDRED[rest_t.lower()]} "
+        return f" {base} "
+
+    text = re.sub(
+        rf"\b({units_pat})\s+hundred(?:\s+and)?(?:\s+({sub_pat})(?:[-\s]+({units_pat}))?)?\b",
+        _hundred_repl,
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    def _tens_repl(m: re.Match) -> str:
+        return f" {_ENGLISH_TENS[m.group(1).lower()] + _ENGLISH_UNITS[m.group(2).lower()]} "
+
+    return re.sub(
+        rf"\b({tens_pat})[-\s]+({units_pat})\b",
+        _tens_repl,
+        text,
+        flags=re.IGNORECASE,
+    )
 
 def normalize_digits_and_numbers(text: str) -> str:
     """
@@ -345,6 +400,17 @@ def normalize_digits_and_numbers(text: str) -> str:
     s = re.sub(r"\b(?:one\s+dozen|1\s+dozen|dozen|darjan)\b", " 12 ", s, flags=re.IGNORECASE)
     s = re.sub(r"\b(?:two\s+dozen|2\s+dozen)\b", " 24 ", s, flags=re.IGNORECASE)
 
+    # Compound English numbers before single-word replacement
+    s = _replace_english_compounds(s)
+
+    # Contextual "a"/"an" only when directly preceding a unit or dozen (never corrupting product names)
+    s = re.sub(
+        r"\b(?:a|an)\s+(?=(?:kg|kgs|kilo|kilos|kilogram|kilograms|gram|grams|gm|gms|liter|liters|litre|litres|ltr|ltrs|ml|mls|milliliter|milliliters|millilitre|millilitres|packet|packets|pack|packs|pkt|pkts|bottle|bottles|btl|btls|bag|bags|box|boxes|carton|cartons|pouch|pouches|piece|pieces|pc|pcs|tube|tubes|bar|bars|tin|tins|jar|jars|can|cans|dozen)\b)",
+        " 1 ",
+        s,
+        flags=re.IGNORECASE,
+    )
+
     # Word-boundary replacement for single number words
     for word, val in sorted(NUMBER_WORDS.items(), key=lambda x: -len(x[0])):
         if word.isascii():
@@ -352,39 +418,8 @@ def normalize_digits_and_numbers(text: str) -> str:
         else:
             pattern = rf"(?<![ऀ-ൿ\w]){re.escape(word)}(?![ऀ-ൿ\w])"
         s = re.sub(pattern, f" {val} ", s, flags=re.IGNORECASE)
-    s = re.sub(r"(?:two\s+and\s+a\s+half|two\s+and\s+half|2\s+and\s+a\s+half|2\s+and\s+half)", " 2.5 ", s, flags=re.IGNORECASE)
-    s = re.sub(r"(?:half\s+a\s+kg|half\s+kg|half\s+kilo|half\s+liter|half\s+litre|half\s+ltr)", " 0.5 ", s, flags=re.IGNORECASE)
-    s = re.sub(r"(?:quarter\s+kg|quarter\s+kilo|quarter\s+liter)", " 0.25 ", s, flags=re.IGNORECASE)
-    s = re.sub(r"(?:1\/2|½)", " 0.5 ", s, flags=re.IGNORECASE)
-    s = re.sub(r"(?:1\/4|¼)", " 0.25 ", s, flags=re.IGNORECASE)
-    s = re.sub(r"(?:3\/4|¾)", " 0.75 ", s, flags=re.IGNORECASE)
 
-    # Telugu spoken fractions
-    s = re.sub(r"(?:ఒకటిన్నర)", " 1.5 ", s, flags=re.IGNORECASE)
-    s = re.sub(r"(?:రెండున్నర)", " 2.5 ", s, flags=re.IGNORECASE)
-    s = re.sub(r"(?:అర\s+కిలో|అర\s+కేజీ|అర\s+లీటర్)", " 0.5 ", s, flags=re.IGNORECASE)
-    s = re.sub(r"(?:పావు\s+కిలో|పావు\s+కేజీ)", " 0.25 ", s, flags=re.IGNORECASE)
-
-    # Hindi spoken fractions
-    s = re.sub(r"(?:डेढ़\s+किलो|डेढ़|डेढ)", " 1.5 ", s, flags=re.IGNORECASE)
-    s = re.sub(r"(?:ढाई\s+किलो|ढाई)", " 2.5 ", s, flags=re.IGNORECASE)
-    s = re.sub(r"(?:आधा\s+किलो|आधा\s+लीटर)", " 0.5 ", s, flags=re.IGNORECASE)
-    s = re.sub(r"(?:पाव\s+किलो|पाव)", " 0.25 ", s, flags=re.IGNORECASE)
-
-    # Composite dozen expressions
-    s = re.sub(r"(?:half\s+dozen|aadha\s+dozen|aadha\s+darjan|adha\s+dozen)", " 6 ", s, flags=re.IGNORECASE)
-    s = re.sub(r"(?:one\s+dozen|1\s+dozen|dozen|darjan)", " 12 ", s, flags=re.IGNORECASE)
-    s = re.sub(r"(?:two\s+dozen|2\s+dozen)", " 24 ", s, flags=re.IGNORECASE)
-
-    # Word-boundary replacement for single number words
-    for word, val in sorted(NUMBER_WORDS.items(), key=lambda x: -len(x[0])):
-        if word.isascii():
-            pattern = r"" + re.escape(word) + r""
-        else:
-            pattern = rf"(?<=\s){re.escape(word)}(?=\s)"
-        s = re.sub(pattern, f" {val} ", s, flags=re.IGNORECASE)
-
-    return s.strip()
+    return re.sub(r"\s+", " ", s).strip()
 
 # Price connector words left in the product text once the price itself is removed ("tea for", "soap at")
 _PRICE_CONNECTORS = r"(?:for|at|@|each|apiece|rate|ka|ki|ke)"
@@ -452,18 +487,29 @@ def clean_product_name(raw_name: str) -> str:
     name = re.sub(r"^(?:" + PACKAGING_UNITS_REGEX + r")\s*", "", name, flags=re.IGNORECASE).strip()
     name = re.sub(r"^\s*of\s+", "", name, flags=re.IGNORECASE).strip()
 
-    # Remove trailing isolated packaging unit if not part of a size like 1kg
-    name = re.sub(r"\s+(?:" + PACKAGING_UNITS_REGEX + r")$", "", name, flags=re.IGNORECASE).strip()
-
     # Normalize whitespace
     name = re.sub(r"\s+", " ", name).strip(" ,.-;")
 
-    # Remove simple plural 's' at the end of word if appropriate
+    # Preserve spoken trailing package sizes ("Tata Salt 1 kg" -> "Tata Salt 1kg") rather than stripping the unit
+    name = re.sub(
+        r"\b(\d+(?:\.\d+)?)\s+(kg|kgs|g|gm|gms|grams?|ml|mls|l|ltr|litre|litres|liter|liters)\b",
+        lambda m: f"{m.group(1)}{canonical_voice_unit(m.group(2)) or m.group(2).lower()}",
+        name,
+        flags=re.IGNORECASE,
+    )
+
+    # Remove trailing isolated packaging unit if not part of a size like 1kg (already compacted above)
+    name = re.sub(r"\s+(?:" + PACKAGING_UNITS_REGEX + r")$", "", name, flags=re.IGNORECASE).strip()
+
+    # Strip leading modifier noise left after quantity ("add 2 more Maggie" -> "more Maggie" -> "Maggie")
+    name = re.sub(r"^more\s+", "", name, flags=re.IGNORECASE).strip()
+
+    # Remove simple plural 's' at the end of common count/commodity words if appropriate
     words = name.split()
     cleaned_words = []
     for w in words:
         lower_w = w.lower()
-        if lower_w in ["salts", "attas", "milks", "breads", "butters", "rices", "sugars", "oils", "biscuits"]:
+        if lower_w in ["salts", "attas", "milks", "breads", "butters", "rices", "sugars", "oils", "biscuits", "soaps", "shampoos", "chocolates", "tubes", "bars"]:
             cleaned_words.append(w[:-1])
         else:
             cleaned_words.append(w)
@@ -485,15 +531,207 @@ def clean_product_name(raw_name: str) -> str:
 
     return name.strip()
 
-def extract_items_from_transcript(transcript: str) -> List[ExtractedItem]:
+
+_CURRENCY_WORDS = {
+    "rupees", "rupee", "rs", "rs.", "inr",
+    "రూపాయలు", "రూ", "రూపాయ", "रुपये", "रुपया", "रु", "रूपए",
+    "ரூபாய்", "ರೂಪಾಯಿ", "രൂപ", "টাকা", "રૂપિયા", "ਰੁਪਏ", "ଟଙ୍କਾ", "টকা",
+}
+_UNIT_WORDS_SET = {u.lower() for u in UNIT_STRING_LIST}
+_NON_PRODUCT_TOKENS = _UNIT_WORDS_SET | _CURRENCY_WORDS | {"of", "for", "at", "@", "per", "each", "apiece", "more", "the", "please"}
+
+
+def _catalog_phrase_set(catalog: Optional[Sequence[Any]]) -> set[str]:
+    """Normalized catalog product names (both spaced and tight weight forms) for segmentation boundary hints."""
+    phrases: set[str] = set()
+    if not catalog:
+        return phrases
+    for item in catalog:
+        raw_name = item.get("name", "") if isinstance(item, dict) else getattr(item, "name", "")
+        if not raw_name:
+            continue
+        norm = " ".join(re.sub(r"[^a-zA-Z0-9\sऀ-ൿ]", " ", raw_name.lower()).split())
+        if norm:
+            phrases.add(norm)
+            phrases.add(re.sub(r"\s+", "", norm))
+            # Split "1kg" <-> "1 kg" so "Tata Salt 1 kg" recognizes "Tata Salt 1kg"
+            spaced = re.sub(r"(\d+(?:\.\d+)?)(kg|g|gm|ml|l)\b", r"\1 \2", norm)
+            phrases.add(spaced)
+    return phrases
+
+
+def _is_numeric_token(tok: str) -> bool:
+    return bool(re.fullmatch(r"\d+(?:\.\d+)?", tok))
+
+
+def _is_product_word(tok: str) -> bool:
+    low = tok.lower().strip(",.;:-")
+    if not low or _is_numeric_token(low) or low.startswith("__pkg_"):
+        return False
+    if low in _NON_PRODUCT_TOKENS:
+        return False
+    return bool(re.search(r"[a-zA-Zऀ-ൿ]", low))
+
+
+def _number_belongs_to_catalog_product(
+    cur_tokens: List[str], tokens: List[str], idx: int, catalog_phrases: set[str]
+) -> bool:
+    """True when numeric token at idx (e.g. '1 kg', '5 Star', '2 Min') extends a catalog product name rather than starting a new item."""
+    if not catalog_phrases:
+        return False
+    num_tok = tokens[idx].lower()
+    next_tok = tokens[idx + 1].lower() if idx + 1 < len(tokens) else ""
+    next2_tok = tokens[idx + 2].lower() if idx + 2 < len(tokens) else ""
+
+    # Look at last 1-3 product words before the number (excluding leading qty tokens)
+    raw_tail = [re.sub(r"[^a-zA-Z0-9ऀ-ൿ]", "", t.lower()) for t in cur_tokens[-4:]]
+    prod_words = [w for w in raw_tail if w and not _is_numeric_token(w) and w not in _NON_PRODUCT_TOKENS]
+    if not prod_words:
+        return False
+
+    probes = []
+    for k in range(1, min(3, len(prod_words)) + 1):
+        sub_prefix = prod_words[-k:]
+        if next_tok in _UNIT_WORDS_SET:
+            probes.append(" ".join(sub_prefix + [num_tok, next_tok]))
+            probes.append(" ".join(sub_prefix + [f"{num_tok}{next_tok}"]))
+        if next_tok:
+            probes.append(" ".join(sub_prefix + [num_tok, next_tok]))
+            if next2_tok:
+                probes.append(" ".join(sub_prefix + [num_tok, next_tok, next2_tok]))
+
+    for probe in probes:
+        if any(probe in cp for cp in catalog_phrases):
+            return True
+    return False
+
+
+def _segment_continuous_clause(clause: str, catalog_phrases: set[str]) -> List[str]:
+    """
+    Splits an unpunctuated spoken clause into per-item sub-clauses using numeric boundaries,
+    unit positions, currency endings, and dynamic catalog phrase awareness.
+    """
+    tokens = clause.split()
+    if len(tokens) <= 2:
+        return [clause]
+
+    slices: List[str] = []
+    n = len(tokens)
+    start = 0
+
+    while start < n:
+        has_leading_qty = _is_numeric_token(tokens[start])
+        has_prod = False
+        i = start
+        if has_leading_qty:
+            i += 1
+            # Skip immediate leading unit ("2 kg of rice" -> advance past "kg", "of")
+            if i < n and tokens[i].lower() in _UNIT_WORDS_SET:
+                i += 1
+                if i < n and tokens[i].lower() == "of":
+                    i += 1
+
+        split_at: Optional[int] = None
+        while i < n:
+            tok = tokens[i]
+            low = tok.lower()
+
+            if _is_product_word(tok):
+                has_prod = True
+                i += 1
+                continue
+
+            # Split right AFTER a completed currency phrase if more item tokens follow ("90 rupees 3 soap")
+            if low in _CURRENCY_WORDS and i + 1 < n and not tokens[i + 1].lower() in {"each", "apiece", "per"}:
+                if has_prod and (_is_numeric_token(tokens[i + 1]) or _is_product_word(tokens[i + 1])):
+                    split_at = i + 1
+                    break
+
+            if _is_numeric_token(tok) and has_prod:
+                prev_low = tokens[i - 1].lower() if i > start else ""
+                next_low = tokens[i + 1].lower() if i + 1 < n else ""
+
+                # Keep numbers forming part of a price or explicit unit price or package size ("of 70 g")
+                if prev_low in {"for", "at", "@", "rs", "rs.", "inr"} or "₹" in prev_low:
+                    i += 1
+                    continue
+                if prev_low == "of" and next_low in {"g", "gm", "gms", "gram", "grams", "kg", "kgs", "ml", "mls", "l", "ltr", "litre", "litres", "liter", "liters"}:
+                    i += 1
+                    continue
+                if next_low in _CURRENCY_WORDS | {"each", "apiece", "per"}:
+                    i += 1
+                    continue
+
+                # Keep catalog-embedded product numbers/sizes ("Tata Salt 1 kg", "Maggi 2 Min")
+                if _number_belongs_to_catalog_product(tokens[start:i], tokens, i, catalog_phrases):
+                    i += 1
+                    continue
+
+                if has_leading_qty:
+                    # "5 Maggie 2 Colgate" -> split right before "2"
+                    if i + 1 < n:
+                        split_at = i
+                        break
+                else:
+                    # Reverse order: "Maggie 5 packets Colgate 2" -> consume qty + optional unit, then split after
+                    end_idx = i + 1
+                    if end_idx < n and tokens[end_idx].lower() in _UNIT_WORDS_SET:
+                        end_idx += 1
+                    # Keep trailing price on this item if immediately present
+                    if end_idx < n and (
+                        tokens[end_idx].lower() in {"for", "at", "@"}
+                        or (_is_numeric_token(tokens[end_idx]) and end_idx + 1 < n and tokens[end_idx + 1].lower() in _CURRENCY_WORDS | {"each", "apiece", "per"})
+                    ):
+                        i = end_idx
+                        continue
+                    if end_idx < n:
+                        split_at = end_idx
+                        break
+
+            i += 1
+
+        if split_at is not None and split_at > start:
+            slices.append(" ".join(tokens[start:split_at]).strip())
+            start = split_at
+        else:
+            slices.append(" ".join(tokens[start:]).strip())
+            break
+
+    return [sl for sl in slices if sl]
+
+
+def _extract_package_size(text: str) -> Tuple[str, Optional[str]]:
+    """Extracts nested per-pack size like 'of 70 g' in '2 Maggie packets of 70 g' without altering purchase qty."""
+    m = re.search(
+        r"\bof\s+(\d+(?:\.\d+)?)\s*(kg|kgs|g|gm|gms|gram|grams|ml|mls|l|ltr|litre|litres|liter|liters)\b(?:\s+(?:each|packs?|packets?))?",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not m:
+        return text, None
+    canon_u = canonical_voice_unit(m.group(2)) or m.group(2).lower()
+    size_str = f"{m.group(1)}{canon_u}"
+    cleaned = (text[:m.start()] + " " + text[m.end():]).strip()
+    return re.sub(r"\s+", " ", cleaned), size_str
+
+
+def extract_items_from_transcript(
+    transcript: str,
+    catalog: Optional[Sequence[Any]] = None,
+) -> List[ExtractedItem]:
     """
     Parses natural language transcript into structured list of ExtractedItem.
-    Supports continuous multi-items, forward & reverse order, spoken prices, and fractions.
+    Supports continuous multi-items, catalog-aware segmentation, forward & reverse order,
+    spoken prices, package-size annotations, update/remove commands, and fractions.
     """
     if not transcript or not transcript.strip():
         return []
 
     normalized = normalize_digits_and_numbers(transcript)
+    catalog_phrases = _catalog_phrase_set(catalog)
+
+    # Split mid-utterance action connectors before a new quantity ("5 Maggie also add 2 Colgate")
+    normalized = re.sub(r"\s+\b(?:and\s+also|and\s+then|also\s+add|also|then|add)\s+(?=\d+(?:\.\d+)?\b)", ", ", normalized, flags=re.IGNORECASE)
 
     # Split into item clauses by common spoken sentence connectors
     delimiters = r"[,;\n\+]|\b(?:and|aur|plus|mariyu|matrum|evam|tatha)\b|&"
@@ -504,96 +742,130 @@ def extract_items_from_transcript(transcript: str) -> List[ExtractedItem]:
     for raw_seg in raw_segments:
         s = raw_seg.strip()
 
-        # Detect change or removal command
+        # Detect update or removal command intent
         item_action = "add"
-        ch_match = re.match(
-            r"^(?:change|update|modify|make|badlo|marchu)\s+(.+?)(?:\s+(?:quantity|qty))?\s+to\s+(\d+(?:\.\d+)?.*)$",
+        explicit_qty = True
+
+        # "Make it 5 Maggie instead of 3" / "change it to 5 Maggie instead of 3"
+        make_it_match = re.match(
+            r"^(?:make|change|update|set)\s+(?:it\s+(?:to\s+)?|to\s+)?(\d+(?:\.\d+)?.*)$",
             s,
             flags=re.IGNORECASE,
         )
-        if ch_match:
+        ch_match = re.match(
+            r"^(?:change|update|modify|make|set|increase|decrease|reduce|badlo|marchu)\s+(.+?)(?:\s+(?:quantity|qty))?(?:\s+to|\s+(?:quantity|qty))\s+(\d+(?:\.\d+)?.*)$",
+            s,
+            flags=re.IGNORECASE,
+        )
+        if make_it_match:
+            s = re.sub(r"\s+instead\s+of\s+\d+(?:\.\d+)?(?:\s+\w+)?$", "", make_it_match.group(1).rstrip('.!? '), flags=re.IGNORECASE).strip()
+            item_action = "update"
+        elif ch_match:
             s = f"{ch_match.group(2).rstrip('.!? ')} {ch_match.group(1).rstrip('.!? ')}".strip()
             item_action = "update"
         elif re.search(r"^(?:remove|delete|cancel|drop|hatao|nikalo|theesey|తీసివేయి|తీసేయి)\s+", s, flags=re.IGNORECASE):
             s = re.sub(r"^(?:remove|delete|cancel|drop|hatao|nikalo|theesey|తీసివేయి|తీసేయి)\s+", "", s, flags=re.IGNORECASE).strip()
             item_action = "remove"
+            explicit_qty = bool(re.search(r"\b\d+(?:\.\d+)?\b", s))
 
-        for pattern in CONVERSATIONAL_FILLERS:
-            s = re.sub(pattern, "", s, flags=re.IGNORECASE).strip()
+        # Strip conversational fillers at boundaries (repeat once if layered, e.g. "please give me ...")
+        for _ in range(2):
+            for pattern in CONVERSATIONAL_FILLERS:
+                s = re.sub(pattern, "", s, flags=re.IGNORECASE).strip()
 
         if not s:
             continue
 
-        while len(s) > 0:
-            s = s.strip()
-            if not s:
+        sub_clauses = _segment_continuous_clause(s, catalog_phrases)
+
+        for sub in sub_clauses:
+            sub = sub.strip()
+            if not sub:
+                continue
+
+            # Extract nested package sizes per segmented item ("2 Maggie packets of 70 g" -> qty 2, size 70g)
+            sub, seg_pkg_size = _extract_package_size(sub)
+
+            while len(sub) > 0:
+                sub = sub.strip()
+                if not sub:
+                    break
+
+                raw_slice = sub
+                # Extract a spoken price if present: a line total, or a unit price ("each", "per kg")
+                sub, extracted_price, unit_price, price_unit = _extract_price(sub)
+                price_fields = dict(spoken_price=extracted_price, spoken_unit_price=unit_price, price_unit=price_unit)
+
+                # Pattern 1: Leading quantity (already segmented per item by _segment_continuous_clause)
+                lead_regex = re.compile(
+                    rf"^(\d+(?:\.\d+)?)\s*(?:({SORTED_UNITS_PATTERN})(?:\s+of)?)?\s+(.+)$",
+                    flags=re.IGNORECASE,
+                )
+                lead_match = lead_regex.match(sub)
+
+                if lead_match:
+                    raw_qty = float(lead_match.group(1))
+                    qty_val = int(raw_qty) if raw_qty.is_integer() else raw_qty
+                    # "2 kg rice" (unit before the name) or "3 tea packets" (unit after the name)
+                    unit_id = canonical_voice_unit(lead_match.group(2)) or _trailing_unit(lead_match.group(3))
+                    prod_text = clean_product_name(lead_match.group(3))
+
+                    if prod_text:
+                        items.append(ExtractedItem(
+                            name=prod_text,
+                            quantity=qty_val if qty_val > 0 else 1,
+                            unit=unit_id,
+                            action=item_action,
+                            explicit_quantity=explicit_qty,
+                            raw_text=lead_match.group(0).strip(),
+                            package_size=seg_pkg_size,
+                            **price_fields,
+                        ))
+
+                    sub = sub[lead_match.end():].strip()
+                    continue
+
+                # Pattern 2: Trailing quantity (e.g. "Rice 2 kg", "Maggie 5 packets", "Parle-G 3")
+                trail_regex = re.compile(
+                    rf"^([a-zA-Zऀ-ൿ0-9\s\-\(\)]+?)\s+(\d+(?:\.\d+)?)(?:\s+({SORTED_UNITS_PATTERN}))?(?=(?:\s+\d+)|\s+[a-zA-Zऀ-ൿ].*?\s+\d+|$)",
+                    flags=re.IGNORECASE,
+                )
+                trail_match = trail_regex.match(sub)
+
+                if trail_match:
+                    prod_text = clean_product_name(trail_match.group(1))
+                    raw_qty = float(trail_match.group(2))
+                    qty_val = int(raw_qty) if raw_qty.is_integer() else raw_qty
+                    unit_id = canonical_voice_unit(trail_match.group(3))
+
+                    if prod_text:
+                        items.append(ExtractedItem(
+                            name=prod_text,
+                            quantity=qty_val if qty_val > 0 else 1,
+                            unit=unit_id,
+                            action=item_action,
+                            explicit_quantity=explicit_qty,
+                            raw_text=trail_match.group(0).strip(),
+                            package_size=seg_pkg_size,
+                            **price_fields,
+                        ))
+
+                    sub = sub[trail_match.end():].strip()
+                    continue
+
+                # Pattern 3: Fallback single item without explicit number (e.g. "Tata Salt", "Remove Colgate")
+                prod_text = clean_product_name(sub)
+                if prod_text:
+                    items.append(ExtractedItem(
+                        name=prod_text,
+                        quantity=1,
+                        unit=None,
+                        action=item_action,
+                        explicit_quantity=False if item_action == "remove" else False,
+                        raw_text=raw_slice,
+                        package_size=seg_pkg_size,
+                        **price_fields,
+                    ))
                 break
-
-            # Extract a spoken price if present: a line total, or a unit price ("each", "per kg")
-            s, extracted_price, unit_price, price_unit = _extract_price(s)
-            price_fields = dict(spoken_price=extracted_price, spoken_unit_price=unit_price, price_unit=price_unit)
-
-            # Pattern 1: Leading quantity (e.g. "2 kg rice", "2 Tata Salt", "2 Tata Salt 1kg", "0.5 kg sugar")
-            lead_regex = re.compile(
-                rf"^(\d+(?:\.\d+)?)\s*(?:({SORTED_UNITS_PATTERN})(?:\s+of)?)?\s+(.+?)(?=(?:\s+\d+(?:\.\d+)?(?:\s+(?:{SORTED_UNITS_PATTERN}))?\s+[a-zA-Zऀ-ൿ])|$)",
-                flags=re.IGNORECASE
-            )
-            lead_match = lead_regex.match(s)
-
-            if lead_match:
-                raw_qty = float(lead_match.group(1))
-                qty_val = int(raw_qty) if raw_qty.is_integer() else raw_qty
-                # "2 kg rice" (unit before the name) or "3 tea packets" (unit after the name)
-                unit_id = canonical_voice_unit(lead_match.group(2)) or _trailing_unit(lead_match.group(3))
-                prod_text = clean_product_name(lead_match.group(3))
-
-                if prod_text:
-                    items.append(ExtractedItem(
-                        name=prod_text,
-                        quantity=qty_val if qty_val > 0 else 1,
-                        unit=unit_id,
-                        action=item_action,
-                        **price_fields,
-                    ))
-
-                s = s[lead_match.end():].strip()
-                continue
-
-            # Pattern 2: Trailing quantity (e.g. "Rice 2 kg", "Sugar 1 kg", "Tata Salt 2 packets", "Parle-G 3")
-            trail_regex = re.compile(
-                rf"^([a-zA-Zऀ-ൿ0-9\s\-\(\)]+?)\s+(\d+(?:\.\d+)?)(?:\s+({SORTED_UNITS_PATTERN}))?(?=(?:\s+\d+)|\s+[a-zA-Zऀ-ൿ].*?\s+\d+|$)",
-                flags=re.IGNORECASE
-            )
-            trail_match = trail_regex.match(s)
-
-            if trail_match:
-                prod_text = clean_product_name(trail_match.group(1))
-                raw_qty = float(trail_match.group(2))
-                qty_val = int(raw_qty) if raw_qty.is_integer() else raw_qty
-                unit_id = canonical_voice_unit(trail_match.group(3))
-
-                if prod_text:
-                    items.append(ExtractedItem(
-                        name=prod_text,
-                        quantity=qty_val if qty_val > 0 else 1,
-                        unit=unit_id,
-                        action=item_action,
-                        **price_fields,
-                    ))
-
-                s = s[trail_match.end():].strip()
-                continue
-
-            # Pattern 3: Fallback single item without explicit number (e.g. "Tata Salt", "Aashirvaad Atta")
-            prod_text = clean_product_name(s)
-            if prod_text:
-                items.append(ExtractedItem(
-                    name=prod_text,
-                    quantity=1,
-                    unit=None,
-                    action=item_action,
-                    **price_fields,
-                ))
-            break
 
     return items

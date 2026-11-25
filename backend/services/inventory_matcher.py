@@ -8,6 +8,7 @@ from schemas.voice import (
     MatchedVoiceItem,
     AmbiguousVoiceItem,
     UnmatchedVoiceItem,
+    StructuredVoiceItem,
 )
 from services.voice_parser import ExtractedItem, canonical_voice_unit
 from services.money import bill_total, quantize_half_up, round_currency, round_price, sale_line_amount, to_decimal, to_number
@@ -230,7 +231,7 @@ WEIGHT_AND_CONTAINER_TOKENS = {
     "loose", "bag", "bags"
 }
 
-DISTINGUISHING_MODIFIERS = {"flour", "powder", "free", "brown", "black", "essential", "cream", "hair"}
+DISTINGUISHING_MODIFIERS = {"flour", "powder", "free", "brown", "black", "essential"}
 
 PRODUCT_CONCEPT_COMMODITY_TOKENS = {
     "Rice": {"rice"},
@@ -250,6 +251,60 @@ def stem_token(t: str) -> str:
     if len(t) > 3 and t.endswith("s") and not t.endswith("ss"):
         return t[:-1]
     return t
+
+
+def _phonetic_normalize(tok: str) -> str:
+    """Canonical phonetic spelling normalization (e.g. 'maggie' -> 'magi', 'aashirvaad' -> 'ashirvad')."""
+    if not tok.isascii():
+        return tok
+    s = tok.lower()
+    s = re.sub(r"(.)\1+", r"\1", s)
+    s = s.replace("ie", "i").replace("ee", "i").replace("oo", "u").replace("ph", "f").replace("aa", "a")
+    if len(s) > 4 and s.endswith("e"):
+        s = s[:-1]
+    return s
+
+
+def _levenshtein(a: str, b: str) -> int:
+    if a == b:
+        return 0
+    if len(a) < len(b):
+        a, b = b, a
+    if not b:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        curr = [i]
+        for j, cb in enumerate(b, 1):
+            curr.append(min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + (0 if ca == cb else 1)))
+        prev = curr
+    return prev[-1]
+
+
+def _token_similarity(a: str, b: str) -> float:
+    """Dynamic token similarity combining exact/stemmed match, phonetic equivalence, and bounded edit distance."""
+    sa, sb = stem_token(a), stem_token(b)
+    if sa == sb:
+        return 1.0
+    if not sa or not sb:
+        return 0.0
+    if not (sa.isascii() and sb.isascii()):
+        return 0.0
+    if sa.isdigit() or sb.isdigit():
+        return 1.0 if sa == sb else 0.0
+    if abs(len(sa) - len(sb)) > 3 or min(len(sa), len(sb)) < 3:
+        return 0.0
+    # Fast shared character check prunes completely unrelated catalog tokens before DP edit distance
+    if not (set(sa) & set(sb)):
+        return 0.0
+    pa, pb = _phonetic_normalize(sa), _phonetic_normalize(sb)
+    if pa and pa == pb and min(len(sa), len(sb)) >= 3:
+        return 0.92
+    if min(len(sa), len(sb)) < 4:
+        return 0.0
+    dist = _levenshtein(sa, sb)
+    max_len = max(len(sa), len(sb))
+    return max(0.0, 1.0 - (dist / max_len))
 
 def query_matches_alias(query_norm: str, alias_norm: str) -> bool:
     """Matches a spoken query against an alias using token awareness to prevent substring bleed."""
@@ -349,7 +404,11 @@ def _quantity_for_price(item: ExtractedItem, prod: VoiceProductCandidate) -> Dec
         raise VoiceItemError(f"'{prod.name}': the price is per {UNITS[per].label}, but {exc}") from None
 
 
-def make_matched_item(prod: VoiceProductCandidate, item: ExtractedItem) -> MatchedVoiceItem:
+def make_matched_item(
+    prod: VoiceProductCandidate,
+    item: ExtractedItem,
+    match_confidence: Optional[float] = None,
+) -> MatchedVoiceItem:
     """The sale line for a spoken item. Resolves price and stock deduction authoritatively via PricingEngine.
     A spoken price agreement is kept with price_source='spoken' and validated against statutory MRP.
 
@@ -459,7 +518,30 @@ def make_matched_item(prod: VoiceProductCandidate, item: ExtractedItem) -> Match
         pricing_status=status,
         mrp=to_number(pricing_result.line_mrp_total) if pricing_result.line_mrp_total is not None else (float(prod.mrp) if prod.mrp is not None else None),
         catalog_line_total=to_number(catalog_line_total),
+        action=getattr(item, "action", None) or "add",
+        explicit_quantity=bool(getattr(item, "explicit_quantity", True)),
+        match_confidence=match_confidence,
+        raw_text=getattr(item, "raw_text", None),
+        package_size=getattr(item, "package_size", None),
     )
+
+
+def _filter_by_weights(cands: List[VoiceProductCandidate], query_weights: List[str], pkg_size: Optional[str]) -> List[VoiceProductCandidate]:
+    """Filters candidate variants when the user specified a pack size or weight (e.g. '1kg' or 'of 70g')."""
+    probes = list(query_weights)
+    if pkg_size:
+        probes.append(pkg_size.lower())
+        spaced = re.sub(r"(\d+(?:\.\d+)?)([a-zA-Z]+)", r"\1 \2", pkg_size.lower())
+        probes.append(spaced)
+    if not probes:
+        return cands
+    filtered = []
+    for c in cands:
+        cnorm = normalize_text_for_search(c.name)
+        ccompact = re.sub(r"\s+", "", cnorm)
+        if any(p in cnorm or re.sub(r"\s+", "", p) in ccompact for p in probes):
+            filtered.append(c)
+    return filtered if filtered else cands
 
 
 def match_items_to_inventory(
@@ -467,18 +549,35 @@ def match_items_to_inventory(
     catalog: List[Any],
 ) -> Tuple[List[MatchedVoiceItem], List[AmbiguousVoiceItem], List[UnmatchedVoiceItem], float, float, float]:
     """
-    Matches extracted natural language items against inventory products.
+    Matches extracted natural language items against inventory products using catalog-aware
+    exact, alias, stemmed token, and dynamic phonetic/fuzzy scoring with confidence tiers.
     Returns: (matched_items, ambiguous_items, unmatched_items, subtotal, tax, total).
     """
     candidates_catalog = [to_candidate(p) for p in catalog]
+
+    # Pre-normalize catalog entries once per call to avoid O(items * catalog) regex re-computation
+    precomputed_catalog = []
+    for c in candidates_catalog:
+        c_norm = normalize_text_for_search(c.name)
+        c_compact = re.sub(r"\s+", "", c_norm)
+        c_tokens_all = c_norm.split()
+        c_stemmed_all = {stem_token(t) for t in c_tokens_all}
+        c_name_stemmed = [stem_token(t) for t in c_tokens_all if t not in WEIGHT_AND_CONTAINER_TOKENS] or [stem_token(t) for t in c_tokens_all]
+        cat_stemmed = [stem_token(t) for t in normalize_text_for_search(str(c.category or "")).split() if len(t) > 2]
+        precomputed_catalog.append((c, c_norm, c_compact, c_stemmed_all, c_name_stemmed, cat_stemmed))
+
+    normalized_concept_aliases = [
+        (concept_name, aliases, [normalize_text_for_search(a) for a in aliases])
+        for concept_name, aliases in PRODUCT_CONCEPT_ALIASES.items()
+    ]
 
     matched_items: List[MatchedVoiceItem] = []
     ambiguous_items: List[AmbiguousVoiceItem] = []
     unmatched_items: List[UnmatchedVoiceItem] = []
 
-    def add_match(prod: VoiceProductCandidate, item: ExtractedItem) -> None:
+    def add_match(prod: VoiceProductCandidate, item: ExtractedItem, confidence: float = 1.0) -> None:
         try:
-            matched_items.append(make_matched_item(prod, item))
+            matched_items.append(make_matched_item(prod, item, match_confidence=round(confidence, 3)))
         except VoiceItemError as exc:
             # Cannot be sold as said: shown for correction, never turned into a different sale
             unmatched_items.append(UnmatchedVoiceItem(queried_name=item.name, quantity=item.quantity, reason=str(exc)))
@@ -487,7 +586,7 @@ def match_items_to_inventory(
         options = []
         for cand in cands:
             try:
-                options.append(make_matched_item(cand, item))
+                options.append(make_matched_item(cand, item, match_confidence=0.75))
             except VoiceItemError:
                 pass  # this candidate cannot be sold as said; the others stay selectable
         spoken = to_decimal(getattr(item, "spoken_price", None))
@@ -497,41 +596,39 @@ def match_items_to_inventory(
             options=options,
         ))
 
-    weights = ["1kg", "500g", "200g", "5kg", "100g", "400g", "1l", "2l"]
+    weights = ["1kg", "500g", "200g", "5kg", "100g", "400g", "70g", "140g", "1l", "2l"]
 
     for item in extracted_items:
         query_norm = normalize_text_for_search(item.name)
         if not query_norm:
             continue
 
-        q_tokens = [w for w in query_norm.split() if len(w) > 1]
-        query_weights = [w for w in weights if w in query_norm]
-        
-        # 1. Exact Catalog Match (Highest Priority)
-        exact_matches = [
-            c for c in candidates_catalog 
-            if normalize_text_for_search(c.name) == query_norm
-        ]
+        pkg_size = getattr(item, "package_size", None)
+        q_tokens = [w for w in query_norm.split() if len(w) > 1 or w.isdigit()]
+        q_meaningful = [stem_token(t) for t in q_tokens if t not in WEIGHT_AND_CONTAINER_TOKENS]
+        if not q_meaningful:
+            q_meaningful = [stem_token(t) for t in q_tokens]
+        query_weights = [w for w in weights if w in query_norm or w in re.sub(r"\s+", "", query_norm)]
+
+        # 1. Exact Catalog Match (Confidence 1.0)
+        exact_matches = [c for c, c_norm, *_ in precomputed_catalog if c_norm == query_norm]
 
         if len(exact_matches) == 1:
-            add_match(exact_matches[0], item)
+            add_match(exact_matches[0], item, confidence=1.0)
             continue
         elif len(exact_matches) > 1:
-            if query_weights:
-                variant_filtered = [
-                    c for c in exact_matches
-                    if any(w in normalize_text_for_search(c.name) for w in query_weights)
-                ]
-                if len(variant_filtered) == 1:
-                    add_match(variant_filtered[0], item)
-                    continue
-            add_ambiguous(item, exact_matches)
+            filtered = _filter_by_weights(exact_matches, query_weights, pkg_size)
+            if len(filtered) == 1:
+                add_match(filtered[0], item, confidence=1.0)
+                continue
+            add_ambiguous(item, filtered)
             continue
 
-        # 2. Multilingual Concept Alias Search (Token-Aware)
+        # 2. Multilingual Concept Alias Search (Token-Aware, Confidence 0.95)
         alias_matched_prod = None
-        for concept_name, aliases in PRODUCT_CONCEPT_ALIASES.items():
-            if any(query_matches_alias(query_norm, normalize_text_for_search(a)) for a in aliases):
+        alias_handled = False
+        for concept_name, aliases, norm_aliases in normalized_concept_aliases:
+            if any(query_matches_alias(query_norm, na) for na in norm_aliases):
                 c_matches = [
                     c for c in candidates_catalog
                     if candidate_matches_concept(c, concept_name, aliases)
@@ -540,10 +637,9 @@ def match_items_to_inventory(
                     alias_matched_prod = c_matches[0]
                     break
                 elif len(c_matches) > 1:
-                    q_meaningful = [stem_token(t) for t in q_tokens if t not in WEIGHT_AND_CONTAINER_TOKENS]
                     if len(q_meaningful) > 1:
                         specific_matches = [
-                            c for c in c_matches 
+                            c for c in c_matches
                             if set(q_meaningful).issubset({stem_token(t) for t in normalize_text_for_search(c.name).split() if t not in WEIGHT_AND_CONTAINER_TOKENS})
                         ]
                         if len(specific_matches) == 1:
@@ -551,92 +647,120 @@ def match_items_to_inventory(
                             break
                         elif len(specific_matches) > 1:
                             c_matches = specific_matches
-                    if query_weights:
-                        weight_match = next((c for c in c_matches if any(w in normalize_text_for_search(c.name) and w in query_weights for w in query_weights)), None)
-                        if weight_match:
-                            alias_matched_prod = weight_match
-                            break
-                    add_ambiguous(item, c_matches)
-                    alias_matched_prod = "AMBIGUOUS"
+                    filtered = _filter_by_weights(c_matches, query_weights, pkg_size)
+                    if len(filtered) == 1 and filtered is not c_matches:
+                        alias_matched_prod = filtered[0]
+                        break
+                    add_ambiguous(item, filtered)
+                    alias_handled = True
                     break
 
-        if alias_matched_prod == "AMBIGUOUS":
+        if alias_handled:
             continue
         elif alias_matched_prod:
-            add_match(alias_matched_prod, item)
+            add_match(alias_matched_prod, item, confidence=0.95)
             continue
 
-        # 3. Token containment search (all tokens of query must be present in candidate)
+        # 3. Stemmed Token Containment Search (all query tokens present in candidate stems, Confidence 0.92)
         all_token_matches = []
-        for c in candidates_catalog:
-            c_norm = normalize_text_for_search(c.name)
-            c_tokens = set(c_norm.split())
-            if all(token in c_tokens or any(token in ct for ct in c_tokens) for token in q_tokens):
+        query_compact_full = re.sub(r"\s+", "", query_norm)
+        for c, c_norm, c_compact, c_stemmed, _, _ in precomputed_catalog:
+            if q_meaningful and all(
+                qt in c_stemmed or any((len(qt) >= 3 and qt in ct and abs(len(qt) - len(ct)) <= 3) for ct in c_stemmed)
+                for qt in q_meaningful
+            ):
+                # Do not silently bleed onto a product with an unrequested distinguishing modifier (e.g. Rice Flour, Essential Oil)
+                extra_mods = (c_stemmed - set(q_meaningful)) & DISTINGUISHING_MODIFIERS
+                if not extra_mods or set(q_meaningful) & DISTINGUISHING_MODIFIERS:
+                    all_token_matches.append(c)
+            elif len(q_meaningful) >= 1 and len(query_compact_full) >= 4 and query_compact_full == c_compact:
                 all_token_matches.append(c)
 
-        if len(all_token_matches) > 1 and query_weights:
-            variant_filtered = [
-                c for c in all_token_matches
-                if any(w in normalize_text_for_search(c.name) for w in query_weights)
-            ]
-            if len(variant_filtered) == 1:
-                all_token_matches = variant_filtered
+        if len(all_token_matches) > 1:
+            all_token_matches = _filter_by_weights(all_token_matches, query_weights, pkg_size)
 
         if len(all_token_matches) == 1:
-            add_match(all_token_matches[0], item)
+            add_match(all_token_matches[0], item, confidence=0.92)
             continue
         elif len(all_token_matches) > 1:
             add_ambiguous(item, all_token_matches)
             continue
 
-        # 4. Partial overlap search with safety check
-        scored_matches = []
-        for c in candidates_catalog:
-            c_norm = normalize_text_for_search(c.name)
-            c_tokens = set(c_norm.split())
-            match_count = sum(1 for token in q_tokens if token in c_tokens or any(token in ct for ct in c_tokens))
-            if match_count > 0:
-                scored_matches.append((match_count, c))
+        # 4. Dynamic Catalog-Aware Phonetic & Fuzzy Similarity with Confidence Tiers
+        scored_candidates: List[Tuple[float, float, bool, VoiceProductCandidate]] = []
+        q_set = set(q_meaningful)
+        for c, c_norm, _, _, c_name_stemmed, cat_stemmed in precomputed_catalog:
 
-        if scored_matches:
-            scored_matches.sort(key=lambda x: -x[0])
-            max_score = scored_matches[0][0]
-            # Must match at least 60% of query tokens
-            best_candidates = [
-                c for score, c in scored_matches 
-                if score == max_score and score >= len(q_tokens) * 0.6
-            ]
+            # Guard distinguishing modifiers in candidate that weren't asked for (e.g. Rice -> Rice Flour)
+            extra_cand_mods = (set(c_name_stemmed) - q_set) & DISTINGUISHING_MODIFIERS
+            if extra_cand_mods:
+                continue
 
-            if len(best_candidates) > 1 and query_weights:
-                variant_filtered = [
-                    c for c in best_candidates
-                    if any(w in normalize_text_for_search(c.name) for w in query_weights)
-                ]
-                if len(variant_filtered) == 1:
-                    best_candidates = variant_filtered
+            matched_sims: List[float] = []
+            unmatched_dist_mod = False
+            matched_primary = False
 
-            if len(best_candidates) == 1:
-                # If query has un-matched descriptive tokens (e.g. brown, free, black, essential), mark ambiguous rather than silent match
-                c_norm = normalize_text_for_search(best_candidates[0].name)
-                c_tokens = set(c_norm.split())
-                unmatched_q_tokens = [
-                    t for t in q_tokens 
-                    if t not in c_tokens and not any(t in ct for ct in c_tokens) and t not in WEIGHT_AND_CONTAINER_TOKENS
-                ]
-                if unmatched_q_tokens:
-                    add_ambiguous(item, best_candidates)
+            for qt in q_meaningful:
+                best_name_sim = max((_token_similarity(qt, ct) for ct in c_name_stemmed), default=0.0)
+                if best_name_sim >= 0.78:
+                    matched_primary = True
+                    matched_sims.append(best_name_sim)
+                elif qt not in DISTINGUISHING_MODIFIERS and cat_stemmed:
+                    best_cat_sim = max((_token_similarity(qt, ct) for ct in cat_stemmed), default=0.0)
+                    if best_cat_sim >= 0.85:
+                        matched_primary = True
+                        matched_sims.append(0.86)
+                        continue
+                    matched_sims.append(0.0)
                 else:
-                    add_match(best_candidates[0], item)
-            elif len(best_candidates) > 1:
-                add_ambiguous(item, best_candidates)
-            else:
-                unmatched_items.append(
-                    UnmatchedVoiceItem(
+                    if qt in DISTINGUISHING_MODIFIERS:
+                        unmatched_dist_mod = True
+                    matched_sims.append(0.0)
+
+            if not matched_primary or not q_meaningful:
+                continue
+
+            matched_count = sum(1 for sim in matched_sims if sim >= 0.78)
+            coverage = matched_count / len(q_meaningful)
+            avg_sim = sum(matched_sims) / len(q_meaningful)
+
+            # Check whole compact similarity for joined words like "surfexel" vs "surf excel"
+            q_compact = re.sub(r"\s+", "", "".join(q_meaningful))
+            c_compact = re.sub(r"\s+", "", "".join(c_name_stemmed))
+            if len(q_compact) >= 4 and len(c_compact) >= 4:
+                compact_sim = _token_similarity(q_compact, c_compact)
+                if compact_sim > avg_sim:
+                    avg_sim = compact_sim
+                    coverage = max(coverage, 1.0 if compact_sim >= 0.80 else coverage)
+
+            confidence = min(0.94, 0.55 * coverage + 0.45 * avg_sim)
+            if coverage >= 0.60 and confidence >= 0.60:
+                scored_candidates.append((confidence, coverage, unmatched_dist_mod, c))
+
+        if scored_candidates:
+            scored_candidates.sort(key=lambda x: (-x[0], -x[1]))
+            top_conf, top_cov, _, _ = scored_candidates[0]
+            top_group = [entry for entry in scored_candidates if entry[0] >= top_conf - 0.05]
+            best_cands = [entry[3] for entry in top_group]
+
+            if len(best_cands) > 1:
+                best_cands = _filter_by_weights(best_cands, query_weights, pkg_size)
+
+            if len(best_cands) == 1:
+                chosen_entry = next(e for e in top_group if e[3].id == best_cands[0].id)
+                chosen_conf, chosen_cov, has_unmatched_mod, chosen_cand = chosen_entry
+                if chosen_conf >= 0.85 and chosen_cov >= 0.99 and not has_unmatched_mod:
+                    add_match(chosen_cand, item, confidence=chosen_conf)
+                elif chosen_conf >= 0.60:
+                    add_ambiguous(item, [chosen_cand])
+                else:
+                    unmatched_items.append(UnmatchedVoiceItem(
                         queried_name=item.name,
                         quantity=item.quantity,
                         reason="Product not found in shop inventory",
-                    )
-                )
+                    ))
+            else:
+                add_ambiguous(item, best_cands)
         else:
             unmatched_items.append(
                 UnmatchedVoiceItem(
@@ -652,3 +776,77 @@ def match_items_to_inventory(
     subtotal, tax, total = to_number(subtotal_d), to_number(tax_d), to_number(round_currency(subtotal_d + tax_d))
 
     return matched_items, ambiguous_items, unmatched_items, subtotal, tax, total
+
+
+def build_structured_voice_items(
+    extracted_items: List[ExtractedItem],
+    matched_items: List[MatchedVoiceItem],
+    ambiguous_items: List[AmbiguousVoiceItem],
+    unmatched_items: List[UnmatchedVoiceItem],
+) -> List[StructuredVoiceItem]:
+    """Builds Phase 6 per-item structured extraction + matching telemetry without altering tuple contracts."""
+    structured: List[StructuredVoiceItem] = []
+    matched_pool = list(matched_items)
+    amb_pool = list(ambiguous_items)
+    un_pool = list(unmatched_items)
+
+    for ext in extracted_items:
+        raw_txt = getattr(ext, "raw_text", None) or ext.name
+        act = getattr(ext, "action", None) or "add"
+        exp_qty = bool(getattr(ext, "explicit_quantity", True))
+        pkg = getattr(ext, "package_size", None)
+
+        m_idx = next((i for i, m in enumerate(matched_pool) if (m.raw_text == ext.raw_text or m.name.lower() == ext.name.lower() or ext.name.lower() in m.name.lower())), None)
+        if m_idx is not None:
+            m = matched_pool.pop(m_idx)
+            structured.append(StructuredVoiceItem(
+                raw_text=raw_txt,
+                product_name=m.name,
+                quantity=m.quantity,
+                unit=m.unit,
+                package_size=pkg,
+                action=act,
+                explicit_quantity=exp_qty,
+                matched_product_id=m.product_id,
+                match_confidence=m.match_confidence or 1.0,
+                status="MATCHED",
+            ))
+            continue
+
+        a_idx = next((i for i, a in enumerate(amb_pool) if a.queried_name.lower() == ext.name.lower()), None)
+        if a_idx is not None:
+            a_pool_item = amb_pool.pop(a_idx)
+            structured.append(StructuredVoiceItem(
+                raw_text=raw_txt,
+                product_name=ext.name,
+                quantity=ext.quantity,
+                unit=ext.unit,
+                package_size=pkg,
+                action=act,
+                explicit_quantity=exp_qty,
+                matched_product_id=a_pool_item.candidates[0].id if a_pool_item.candidates else None,
+                match_confidence=0.75,
+                status="AMBIGUOUS",
+                reason=f"Multiple candidates ({len(a_pool_item.candidates)}) found",
+            ))
+            continue
+
+        u_idx = next((i for i, u in enumerate(un_pool) if u.queried_name.lower() == ext.name.lower()), None)
+        if u_idx is not None:
+            u = un_pool.pop(u_idx)
+            is_invalid = any(k in u.reason.lower() for k in ("review", "incomplete", "wholesale", "mrp", "converted", "whole"))
+            structured.append(StructuredVoiceItem(
+                raw_text=raw_txt,
+                product_name=u.queried_name,
+                quantity=u.quantity,
+                unit=ext.unit,
+                package_size=pkg,
+                action=act,
+                explicit_quantity=exp_qty,
+                matched_product_id=None,
+                match_confidence=0.0,
+                status="INVALID" if is_invalid else "UNMATCHED",
+                reason=u.reason,
+            ))
+
+    return structured

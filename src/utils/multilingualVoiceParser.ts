@@ -204,9 +204,6 @@ const COMPOUND_NUMBER_PHRASES: Array<[RegExp, number]> = [
  */
 const SINGLE_NUMBER_WORDS: Record<string, number> = {
   // English
-  zero: 0,
-  a: 1,
-  an: 1,
   half: 0.5,
   quarter: 0.25,
   one: 1,
@@ -221,12 +218,21 @@ const SINGLE_NUMBER_WORDS: Record<string, number> = {
   ten: 10,
   eleven: 11,
   twelve: 12,
+  thirteen: 13,
+  fourteen: 14,
   fifteen: 15,
+  sixteen: 16,
+  seventeen: 17,
+  eighteen: 18,
+  nineteen: 19,
   twenty: 20,
   thirty: 30,
   forty: 40,
   fifty: 50,
   sixty: 60,
+  seventy: 70,
+  eighty: 80,
+  ninety: 90,
   hundred: 100,
 
   // Telugu
@@ -433,10 +439,48 @@ const CURRENCY_REGEX =
  * Conversational filler words at beginning or ending of voice commands.
  */
 const CONVERSATIONAL_FILLERS = [
-  /^(?:please\s+)?(?:give\s+me|give\s+us|i\s+want|we\s+need|add|bill|put|take|pack|remove|delete|cancel|change|update|make|bhejo|dena|daal\s+do|likho|chahiye|ivvandi|kaavali|veeyandi|thanga|kodu|tha|venum)\s+/i,
+  /^(?:please\s+)?(?:could\s+you\s+|can\s+you\s+|can\s+i\s+get\s+|could\s+i\s+get\s+|i\s+would\s+like\s+|i'd\s+like\s+|give\s+me|give\s+us|get\s+me|i\s+want|we\s+want|i\s+need|we\s+need|need|want|please|add|bill|put\s+down|put|take|pack|remove|delete|cancel|change|update|make|also\s+add|also|then|bhejo|dena|daal\s+do|likho|chahiye|ivvandi|kaavali|veeyandi|thanga|kodu|tha|venum)\s+/i,
   /\s+(?:chahiye|dena|daal\s+do|likho|bhejo|ivvandi|kaavali|veeyandi|thanga|kodu|tha|venum|please)$/i,
   /\b(?:kripya|bhai|bhaiya|ji|andi|ayya|anna)\b/gi,
 ];
+
+const ENGLISH_TENS: Record<string, number> = {
+  twenty: 20, thirty: 30, forty: 40, fifty: 50,
+  sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+};
+const ENGLISH_UNITS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5,
+  six: 6, seven: 7, eight: 8, nine: 9,
+};
+const ENGLISH_SUB_HUNDRED: Record<string, number> = {
+  ...ENGLISH_UNITS,
+  ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14,
+  fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
+  ...ENGLISH_TENS,
+};
+
+function replaceEnglishCompounds(input: string): string {
+  const tensPat = Object.keys(ENGLISH_TENS).join('|');
+  const unitsPat = Object.keys(ENGLISH_UNITS).join('|');
+  const subPat = Object.keys(ENGLISH_SUB_HUNDRED).sort((a, b) => b.length - a.length).join('|');
+
+  let out = input.replace(
+    new RegExp(`\\b(${unitsPat})\\s+hundred(?:\\s+and)?(?:\\s+(${subPat})(?:[-\\s]+(${unitsPat}))?)?\\b`, 'gi'),
+    (_m, h: string, t?: string, u?: string) => {
+      const base = ENGLISH_UNITS[h.toLowerCase()] * 100;
+      if (t && u) return ` ${base + ENGLISH_TENS[t.toLowerCase()] + ENGLISH_UNITS[u.toLowerCase()]} `;
+      if (t) return ` ${base + ENGLISH_SUB_HUNDRED[t.toLowerCase()]} `;
+      return ` ${base} `;
+    },
+  );
+
+  out = out.replace(
+    new RegExp(`\\b(${tensPat})[-\\s]+(${unitsPat})\\b`, 'gi'),
+    (_m, t: string, u: string) => ` ${ENGLISH_TENS[t.toLowerCase()] + ENGLISH_UNITS[u.toLowerCase()]} `,
+  );
+
+  return out;
+}
 
 /**
  * Normalizes digits and number words in any supported Indian script/language.
@@ -451,10 +495,17 @@ export function normalizeIndianSpeechNumbers(text: string): string {
     }
   }
 
-  // 2. Replace compound spoken number phrases
+  // 2. Replace compound spoken number phrases & English compound numbers
   for (const [regex, val] of COMPOUND_NUMBER_PHRASES) {
     s = s.replace(regex, ` ${val} `);
   }
+  s = replaceEnglishCompounds(s);
+
+  // Contextual "a"/"an" only when directly preceding a measure/package unit
+  s = s.replace(
+    /\b(?:a|an)\s+(?=(?:kg|kgs|kilo|kilos|kilogram|kilograms|gram|grams|gm|gms|liter|liters|litre|litres|ltr|ltrs|ml|mls|milliliter|milliliters|millilitre|millilitres|packet|packets|pack|packs|pkt|pkts|bottle|bottles|btl|btls|bag|bags|box|boxes|carton|cartons|pouch|pouches|piece|pieces|pc|pcs|tube|tubes|bar|bars|tin|tins|jar|jars|can|cans|dozen)\b)/gi,
+    ' 1 ',
+  );
 
   // 3. Replace single spoken number words
   const sortedWords = Object.keys(SINGLE_NUMBER_WORDS).sort((a, b) => b.length - a.length);
@@ -520,20 +571,32 @@ export function cleanExtractedProductName(raw: string): string {
     name = name.replace(filler, ' ').trim();
   }
 
-  // Remove leading unit qualifiers in English and Indic scripts (e.g. "kg rice" -> "rice")
+  // Strip leading unit qualifiers in English and Indic scripts
   name = name.replace(
-    /^(?:కిలోల?|కేజీ|లీటర్ల?|ప్యాకెట్ల?|బాటిల్|సంచులు|किलो|लीटर|पैकेट|बोतल|थैला|बोरी|पॉकेट|கிலோ|லிட்டர்|பாக்கெட்|பாட்டில்|பைகள்|ಕಿಲೋ|ಲೀಟರ್|ಪ್ಯಾಕೆಟ್|ಬಾಟಲ್|കിലോ|ലിറ്റർ|പാക്കറ്റ്|കുപ്പി|पाकीट|बाटली|কেজি|প্যাকেট|પેકેટ|પૅકેટ|પੈકેટ|ବୋତଲ|পেকেট|packets?|pkts?|pouches?|pouch|boxes?|box|pieces?|pcs?|pc|bottles?|btls?|cans?|bags?|trays?|units?|liters?|litres?|ltrs?|ltr|kg|kgs|kilo|kilos|kilograms?|grams?|gms?|g|gm)(?:\s+of)?(?:\s+|$)/gi,
+    /^(?:కిలోల?|కేజీ|లీటర్ల?|ప్యాకెట్ల?|బాటిల్|సంచులు|किलो|लीटर|पैकेट|बोतल|थैला|बोरी|पॉकेट|கிலோ|லிட்டர்|பாக்கெட்|பாட்டில்|பைகள்|ಕಿಲೋ|ಲೀಟರ್|ಪ್ಯಾಕೆಟ್|ಬಾಟಲ್|കിലോ|ലിറ്റർ|പാക്കറ്റ്|കുപ്പി|पाकीट|बाटली|কেজি|প্যাকেট|પેકેટ|પૅકેટ|પੈકેટ|ବୋତଲ|পেকেট|packets?|pkts?|pouches?|pouch|boxes?|box|pieces?|pcs?|pc|bottles?|btls?|cartons?|ctns?|tubes?|bars?|tins?|jars?|cans?|bags?|trays?|units?|milliliters?|millilitres?|mls?|liters?|litres?|ltrs?|ltr|kg|kgs|kilo|kilos|kilograms?|grams?|gms?|g|gm)(?:\s+of)?(?:\s+|$)/gi,
     ''
   ).trim();
 
-  // Remove trailing isolated unit qualifier if not part of a size like 1kg/500g (e.g. "rice kg" -> "rice")
+  // Remove trailing isolated unit qualifier if not part of a size like 1kg/500g
   name = name.replace(
-    /(?<=\s)(?:కిలోల?|కేజీ|లీటర్ల?|ప్యాకెట్ల?|బాటిల్|సంచులు|किलो|लीटर|पैकेट|बोतल|थैला|बोरी|पॉकेट|கிலோ|லிட்டர்|பாக்கெட்|பாட்டில்|பைகள்|ಕಿಲೋ|ಲೀಟರ್|ಪ್ಯಾಕೆಟ್|ಬಾಟಲ್|കിലോ|ലിറ്റർ|പാക്കറ്റ്|കുപ്പി|पाकीट|बाटली|কেজি|প্যাকেট|પેકેટ|પૅકેટ|પੈકેટ|ବୋତଲ|পেকেট|packets?|pkts?|pouches?|pouch|boxes?|box|pieces?|pcs?|pc|bottles?|btls?|cans?|bags?|trays?|units?|liters?|litres?|ltrs?|ltr|kg|kgs|kilo|kilos|kilograms?|grams?|gms?|g|gm)$/gi,
+    /(?<=\s)(?:కిలోల?|కేజీ|లీటర్ల?|ప్యాకెట్ల?|బాటిల్|సంచులు|किलो|लीटर|पैकेट|बोतल|थैला|बोरी|पॉकेट|கிலோ|லிட்டர்|பாக்கெட்|பாட்டில்|பைகள்|ಕಿಲೋ|ಲೀಟರ್|ಪ್ಯಾಕೆಟ್|ಬಾಟಲ್|കിലോ|ലിറ്റർ|പാക്കറ്റ്|കുപ്പി|पाकीट|बाटली|কেজি|প্যাকেট|પેકેટ|પૅકેટ|પੈકેટ|ବୋତଲ|পেকেট|packets?|pkts?|pouches?|pouch|boxes?|box|pieces?|pcs?|pc|bottles?|btls?|cartons?|ctns?|tubes?|bars?|tins?|jars?|cans?|bags?|trays?|units?|milliliters?|millilitres?|mls?|liters?|litres?|ltrs?|ltr|kg|kgs|kilo|kilos|kilograms?|grams?|gms?|g|gm)$/gi,
     ''
   ).trim();
 
-  // Remove "of" prefixes or leftovers
-  name = name.replace(/^\s*of\s+/i, '').replace(/\s+of\s*$/i, '').trim();
+  // Remove "of" / "more" prefixes or leftovers
+  name = name.replace(/^\s*(?:of|more)\s+/i, '').replace(/\s+of\s*$/i, '').trim();
+
+  // Singularize safe retail commodity plurals
+  name = name
+    .split(/\s+/)
+    .map((w) => {
+      const lw = w.toLowerCase();
+      if (['salts', 'attas', 'milks', 'breads', 'butters', 'rices', 'sugars', 'oils', 'biscuits', 'soaps', 'shampoos', 'chocolates', 'tubes', 'bars'].includes(lw)) {
+        return w.slice(0, -1);
+      }
+      return w;
+    })
+    .join(' ');
 
   // Standardize common brand aliases
   const lower = name.toLowerCase().replace(/[-_.]/g, ' ').trim();
@@ -580,133 +643,208 @@ export function cleanExtractedProductName(raw: string): string {
   return name.replace(/\s+/g, ' ').trim();
 }
 
+const DISTINGUISHING_MODIFIERS = new Set(['flour', 'powder', 'free', 'brown', 'black', 'essential']);
+const WEIGHT_AND_CONTAINER_TOKENS = new Set([
+  '1kg', '2kg', '5kg', '10kg', '500g', '250g', '200g', '100g', '70g', '140g', '50g',
+  '1l', '2l', '5l', '500ml', '250ml', '200ml', '100ml',
+  'kg', 'g', 'gm', 'gms', 'l', 'ltr', 'liter', 'liters', 'litre', 'litres', 'ml',
+  'packet', 'packets', 'pkt', 'pkts', 'pack', 'packs', 'pcs', 'piece', 'pieces',
+  'bottle', 'bottles', 'can', 'cans', 'box', 'boxes', 'tin', 'tins', 'pouch', 'pouches',
+  'carton', 'cartons', 'tube', 'tubes', 'bar', 'bars', 'loose', 'bag', 'bags',
+]);
+
+function stemTokenClient(t: string): string {
+  if (t.length > 3 && t.endsWith('s') && !t.endsWith('ss')) {
+    return t.slice(0, -1);
+  }
+  return t;
+}
+
+function phoneticNormalizeClient(tok: string): string {
+  if (!/^[\x00-\x7F]+$/.test(tok)) return tok;
+  let s = tok.toLowerCase().replace(/(.)\1+/g, '$1');
+  s = s.replace(/ie/g, 'i').replace(/ee/g, 'i').replace(/oo/g, 'u').replace(/ph/g, 'f').replace(/aa/g, 'a');
+  if (s.length > 4 && s.endsWith('e')) s = s.slice(0, -1);
+  return s;
+}
+
+function levenshteinClient(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length < b.length) [a, b] = [b, a];
+  if (!b.length) return a.length;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const curr = [i];
+    for (let j = 1; j <= b.length; j++) {
+      curr.push(Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)));
+    }
+    prev = curr;
+  }
+  return prev[b.length];
+}
+
+function tokenSimilarityClient(a: string, b: string): number {
+  const sa = stemTokenClient(a);
+  const sb = stemTokenClient(b);
+  if (sa === sb) return 1.0;
+  if (!sa || !sb || !/^[\x00-\x7F]+$/.test(sa) || !/^[\x00-\x7F]+$/.test(sb)) return 0.0;
+  if (/^\d+$/.test(sa) || /^\d+$/.test(sb)) return sa === sb ? 1.0 : 0.0;
+  const pa = phoneticNormalizeClient(sa);
+  const pb = phoneticNormalizeClient(sb);
+  if (pa && pa === pb && Math.min(sa.length, sb.length) >= 3) return 0.92;
+  if (Math.abs(sa.length - sb.length) > 3 || Math.min(sa.length, sb.length) < 4) return 0.0;
+  const maxLen = Math.max(sa.length, sb.length);
+  return Math.max(0.0, 1.0 - levenshteinClient(sa, sb) / maxLen);
+}
+
+/**
+ * Dynamic catalog-aware matcher returning matched candidates + confidence level for high/medium/low gating.
+ */
+export function matchCatalogCandidates(
+  query: string,
+  catalog: Product[],
+  packageSize?: string | null,
+): { candidates: Product[]; confidence: number } {
+  const clean = normalizeForMatch(query);
+  if (!clean || catalog.length === 0) return { candidates: [], confidence: 0 };
+
+  const qTokens = clean.split(/\s+/).filter((w) => w.length > 1 || /^\d+$/.test(w));
+  const qMeaningful = qTokens.filter((t) => !WEIGHT_AND_CONTAINER_TOKENS.has(t)).map(stemTokenClient);
+  const effectiveQ = qMeaningful.length > 0 ? qMeaningful : qTokens.map(stemTokenClient);
+
+  const filterByPkg = (list: Product[]): Product[] => {
+    if (!packageSize || list.length <= 1) return list;
+    const compactPkg = packageSize.toLowerCase().replace(/\s+/g, '');
+    const spacedPkg = compactPkg.replace(/(\d+(?:\.\d+)?)([a-z]+)/, '$1 $2');
+    const hits = list.filter((p) => {
+      const pn = normalizeForMatch(p.name);
+      return pn.includes(spacedPkg) || pn.replace(/\s+/g, '').includes(compactPkg);
+    });
+    return hits.length > 0 ? hits : list;
+  };
+
+  // 1. Exact match
+  const exacts = catalog.filter((p) => normalizeForMatch(p.name) === clean);
+  if (exacts.length > 0) return { candidates: filterByPkg(exacts), confidence: 1.0 };
+
+  // 2. PRODUCT_ALIASES concept match (if query explicitly equals/tokens an alias)
+  for (const aliasConfig of PRODUCT_ALIASES) {
+    const canonicalNorm = normalizeForMatch(aliasConfig.canonicalName);
+    const allAliases = Object.values(aliasConfig.aliases).flat().filter(Boolean) as string[];
+    const matchesAlias = allAliases.some((a) => normalizeForMatch(a) === clean) || clean === canonicalNorm;
+    if (matchesAlias) {
+      const hits = catalog.filter((p) => {
+        const pn = normalizeForMatch(p.name);
+        const pStems = pn.split(/\s+/).map(stemTokenClient);
+        const cStems = canonicalNorm.split(/\s+/).map(stemTokenClient);
+        const extraMod = pStems.some((t) => !cStems.includes(t) && DISTINGUISHING_MODIFIERS.has(t));
+        if (extraMod) return false;
+        return pn.includes(canonicalNorm) || allAliases.some((a) => normalizeForMatch(a) === pn);
+      });
+      if (hits.length > 0) return { candidates: filterByPkg(hits), confidence: 0.95 };
+    }
+  }
+
+  // 3. ITEM_TRANSLATIONS exact Indic/English dictionary match
+  for (const [canonicalKey, translations] of Object.entries(ITEM_TRANSLATIONS)) {
+    const isTransMatch = Object.values(translations).some((trans) => trans && normalizeForMatch(trans) === clean);
+    if (isTransMatch) {
+      const cKeyNorm = normalizeForMatch(canonicalKey);
+      const hits = catalog.filter((p) => {
+        const pn = normalizeForMatch(p.name);
+        const pStems = pn.split(/\s+/).map(stemTokenClient);
+        if (pStems.some((t) => DISTINGUISHING_MODIFIERS.has(t) && !cKeyNorm.includes(t))) return false;
+        return pn.includes(cKeyNorm);
+      });
+      if (hits.length > 0) return { candidates: filterByPkg(hits), confidence: 0.94 };
+    }
+  }
+
+  // 4. Dynamic token + phonetic scoring across the live catalog
+  const scored: Array<{ conf: number; cov: number; unmatchedMod: boolean; product: Product }> = [];
+  const qSet = new Set(effectiveQ);
+
+  for (const p of catalog) {
+    const pNorm = normalizeForMatch(p.name);
+    const pStemsRaw = pNorm.split(/\s+/).filter((t) => !WEIGHT_AND_CONTAINER_TOKENS.has(t));
+    const pStems = (pStemsRaw.length > 0 ? pStemsRaw : pNorm.split(/\s+/)).map(stemTokenClient);
+    const catStems = normalizeForMatch(String(p.category || '')).split(/\s+/).filter((t) => t.length > 2).map(stemTokenClient);
+
+    // Block bleed onto products with unrequested distinguishing modifiers (e.g. Sugar -> Sugar-Free Gold, Oil -> Essential Oil)
+    const extraCandMod = pStems.some((t) => !qSet.has(t) && DISTINGUISHING_MODIFIERS.has(t));
+    if (extraCandMod) continue;
+
+    let matchedPrimary = false;
+    let unmatchedMod = false;
+    const sims: number[] = [];
+
+    for (const qt of effectiveQ) {
+      let bestSim = 0;
+      for (const ct of pStems) {
+        bestSim = Math.max(bestSim, tokenSimilarityClient(qt, ct));
+      }
+      if (bestSim >= 0.78) {
+        matchedPrimary = true;
+        sims.push(bestSim);
+      } else if (!DISTINGUISHING_MODIFIERS.has(qt) && catStems.length > 0) {
+        const catSim = Math.max(...catStems.map((ct) => tokenSimilarityClient(qt, ct)), 0);
+        if (catSim >= 0.85) {
+          matchedPrimary = true;
+          sims.push(0.86);
+        } else {
+          sims.push(0);
+        }
+      } else {
+        if (DISTINGUISHING_MODIFIERS.has(qt)) unmatchedMod = true;
+        sims.push(0);
+      }
+    }
+
+    if (!matchedPrimary || effectiveQ.length === 0) continue;
+
+    const matchedCount = sims.filter((v) => v >= 0.78).length;
+    let coverage = matchedCount / effectiveQ.length;
+    let avgSim = sims.reduce((a, b) => a + b, 0) / effectiveQ.length;
+
+    const qCompact = effectiveQ.join('').replace(/\s+/g, '');
+    const pCompact = pStems.join('').replace(/\s+/g, '');
+    if (qCompact.length >= 4 && pCompact.length >= 4) {
+      const compactSim = tokenSimilarityClient(qCompact, pCompact);
+      if (compactSim > avgSim) {
+        avgSim = compactSim;
+        if (compactSim >= 0.80) coverage = Math.max(coverage, 1.0);
+      }
+    }
+
+    const conf = Math.min(0.94, 0.55 * coverage + 0.45 * avgSim);
+    if (coverage >= 0.60 && conf >= 0.60) {
+      scored.push({ conf, cov: coverage, unmatchedMod, product: p });
+    }
+  }
+
+  if (scored.length === 0) return { candidates: [], confidence: 0 };
+
+  scored.sort((a, b) => b.conf - a.conf || b.cov - a.cov);
+  const topConf = scored[0].conf;
+  const topGroup = scored.filter((s) => s.conf >= topConf - 0.05);
+  const topCands = filterByPkg(topGroup.map((s) => s.product));
+
+  if (topCands.length === 1) {
+    const chosen = topGroup.find((g) => g.product.id === topCands[0].id) || topGroup[0];
+    if (chosen.unmatchedMod) return { candidates: topCands, confidence: Math.min(chosen.conf, 0.75) };
+    return { candidates: topCands, confidence: chosen.conf };
+  }
+  return { candidates: topCands, confidence: Math.min(topConf, 0.78) };
+}
+
 /**
  * Finds the best matching catalog product using canonical English names,
  * brand aliases, native Indian language item keywords, and fuzzy similarity.
  */
 export function matchCatalogProduct(query: string, catalog: Product[]): Product | null {
-  const clean = normalizeForMatch(query);
-  if (!clean || catalog.length === 0) return null;
-
-  // 1. Direct name match (normalized comparison)
-  const exact = catalog.find((p) => {
-    const pNorm = normalizeForMatch(p.name);
-    return pNorm === clean || pNorm.includes(clean) || clean.includes(pNorm);
-  });
-  if (exact) return exact;
-
-  // 2. PRODUCT_ALIASES match across all 12 Indian languages
-  for (const aliasConfig of PRODUCT_ALIASES) {
-    const canonicalNorm = normalizeForMatch(aliasConfig.canonicalName);
-
-    // Check if query matches any alias in any language
-    const isAliasMatch = Object.values(aliasConfig.aliases).some((aliasList) => {
-      if (!aliasList) return false;
-      return aliasList.some((alias) => {
-        const aNorm = normalizeForMatch(alias);
-        return clean === aNorm || clean.includes(aNorm) || aNorm.includes(clean);
-      });
-    });
-
-    if (isAliasMatch || clean.includes(canonicalNorm) || canonicalNorm.includes(clean)) {
-      // Find matching product in catalog
-      const matchedProd = catalog.find((p) => {
-        const pNorm = normalizeForMatch(p.name);
-        return pNorm.includes(canonicalNorm) || canonicalNorm.includes(pNorm);
-      });
-      if (matchedProd) return matchedProd;
-
-      // Special fallback per canonical concept
-      if (aliasConfig.canonicalName === 'Rice') {
-        const riceProd = catalog.find((p) => normalizeForMatch(p.name).includes('rice'));
-        if (riceProd) return riceProd;
-      }
-      if (aliasConfig.canonicalName === 'Tata Salt') {
-        const saltProd = catalog.find((p) => normalizeForMatch(p.name).includes('salt'));
-        if (saltProd) return saltProd;
-      }
-      if (aliasConfig.canonicalName === 'Toned Milk') {
-        const milkProd = catalog.find((p) => normalizeForMatch(p.name).includes('milk'));
-        if (milkProd) return milkProd;
-      }
-      if (aliasConfig.canonicalName === 'Fresh White Bread') {
-        const breadProd = catalog.find((p) => normalizeForMatch(p.name).includes('bread'));
-        if (breadProd) return breadProd;
-      }
-      if (aliasConfig.canonicalName === 'Refined Sugar') {
-        const sugarProd = catalog.find((p) => normalizeForMatch(p.name).includes('sugar'));
-        if (sugarProd) return sugarProd;
-      }
-      if (aliasConfig.canonicalName === 'Sunflower Cooking Oil') {
-        const oilProd = catalog.find((p) => normalizeForMatch(p.name).includes('oil'));
-        if (oilProd) return oilProd;
-      }
-      if (aliasConfig.canonicalName === 'Premium Assam Tea') {
-        const teaProd = catalog.find((p) => normalizeForMatch(p.name).includes('tea'));
-        if (teaProd) return teaProd;
-      }
-    }
-  }
-
-  // 3. Multilingual dictionary match via ITEM_TRANSLATIONS
-  for (const [canonicalKey, translations] of Object.entries(ITEM_TRANSLATIONS)) {
-    const isMatch = Object.values(translations).some((trans) => {
-      if (!trans) return false;
-      const transNorm = normalizeForMatch(trans);
-      return clean === transNorm || clean.includes(transNorm) || transNorm.includes(clean);
-    });
-
-    if (isMatch) {
-      const canonicalNorm = normalizeForMatch(canonicalKey);
-      const matchedProd = catalog.find((p) => {
-        const pNorm = normalizeForMatch(p.name);
-        const catNorm = normalizeForMatch(p.category);
-        return pNorm.includes(canonicalNorm) || catNorm.includes(canonicalNorm);
-      });
-      if (matchedProd) return matchedProd;
-    }
-  }
-
-  // 4. Token containment match on product name
-  const queryTokens = clean.split(/\s+/).filter((w) => w.length > 2);
-  if (queryTokens.length > 0) {
-    let bestProduct: Product | null = null;
-    let maxMatch = 0;
-
-    for (const p of catalog) {
-      const pNorm = normalizeForMatch(p.name);
-      let matchCount = 0;
-      for (const token of queryTokens) {
-        if (pNorm.includes(token)) matchCount++;
-      }
-      if (matchCount > maxMatch) {
-        maxMatch = matchCount;
-        bestProduct = p;
-      }
-    }
-
-    if (bestProduct && maxMatch > 0) {
-      return bestProduct;
-    }
-  }
-
-  // 5. Fuzzy phonetic/spelling similarity match (handles speech recognition variants)
-  let bestFuzzyProd: Product | null = null;
-  let highestSim = 0;
-  for (const p of catalog) {
-    const pNorm = normalizeForMatch(p.name);
-    const sim = stringSimilarity(clean, pNorm);
-    if (sim > highestSim && sim >= 0.70) {
-      highestSim = sim;
-      bestFuzzyProd = p;
-    }
-  }
-  if (bestFuzzyProd) return bestFuzzyProd;
-
-  // 6. Category fallback (e.g. "Dairy" for milk, "Staples" for rice/salt)
-  const catMatch = catalog.find((p) => normalizeForMatch(p.category).includes(clean));
-  if (catMatch) return catMatch;
-
+  const { candidates, confidence } = matchCatalogCandidates(query, catalog);
+  if (candidates.length === 1 && confidence >= 0.85) return candidates[0];
+  if (candidates.length > 0 && confidence >= 0.90) return candidates[0];
   return null;
 }
 
@@ -716,121 +854,379 @@ export interface ExtractedVoiceClause {
   unit: CanonicalUnit | null;
   productName: string;
   price: number | null;
+  action?: 'add' | 'update' | 'remove';
+  explicit_quantity?: boolean;
+  package_size?: string | null;
 }
 
-const SORTED_UNIT_TOKENS = Object.keys(UNIT_NORMALIZATION_MAP)
+const EXTRA_PACKAGE_UNIT_MAP: Record<string, CanonicalUnit> = {
+  carton: 'box', cartons: 'box', ctn: 'box',
+  tube: 'piece', tubes: 'piece',
+  bar: 'piece', bars: 'piece',
+  tin: 'box', tins: 'box',
+  can: 'bottle', cans: 'bottle',
+  jar: 'bottle', jars: 'bottle',
+  sachet: 'packet', sachets: 'packet',
+  strip: 'packet', strips: 'packet',
+  roll: 'piece', rolls: 'piece',
+  tray: 'box', trays: 'box',
+  milliliter: 'ml', milliliters: 'ml', millilitre: 'ml', millilitres: 'ml',
+};
+
+const ALL_CLIENT_UNITS_MAP: Record<string, CanonicalUnit> = {
+  ...UNIT_NORMALIZATION_MAP,
+  ...EXTRA_PACKAGE_UNIT_MAP,
+};
+
+const CLIENT_CURRENCY_WORDS = new Set([
+  'rupees', 'rupee', 'rs', 'rs.', 'inr',
+  'రూపాయలు', 'రూ', 'రూపాయ', 'रुपये', 'रुपया', 'रु', 'रूपए',
+  'ரூபாய்', 'ರೂಪಾಯಿ', 'രൂപ', 'টাকা', 'રૂપિયા', 'ਰੁਪਏ', 'ଟଙ୍କਾ', 'টকা',
+]);
+
+const CLIENT_NON_PRODUCT_WORDS = new Set([
+  ...Object.keys(ALL_CLIENT_UNITS_MAP),
+  ...CLIENT_CURRENCY_WORDS,
+  'of', 'for', 'at', '@', 'per', 'each', 'apiece', 'more', 'the', 'please',
+]);
+
+const SORTED_UNIT_TOKENS = Object.keys(ALL_CLIENT_UNITS_MAP)
   .sort((a, b) => b.length - a.length)
   .map((u) => u.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
   .join('|');
 
+function buildClientCatalogPhraseSet(catalog?: Product[]): Set<string> {
+  const phrases = new Set<string>();
+  if (!catalog) return phrases;
+  for (const p of catalog) {
+    if (!p?.name) continue;
+    const norm = normalizeForMatch(p.name);
+    if (!norm) continue;
+    phrases.add(norm);
+    phrases.add(norm.replace(/\s+/g, ''));
+    phrases.add(norm.replace(/(\d+(?:\.\d+)?)(kg|g|gm|ml|l)\b/g, '$1 $2'));
+  }
+  return phrases;
+}
+
+function isNumericTok(tok: string): boolean {
+  return /^\d+(?:\.\d+)?$/.test(tok);
+}
+
+function isProdWordTok(tok: string): boolean {
+  const low = tok.toLowerCase().replace(/^[,.;:-]+|[,.;:-]+$/g, '');
+  if (!low || isNumericTok(low)) return false;
+  if (CLIENT_NON_PRODUCT_WORDS.has(low)) return false;
+  return /[a-zA-Z\u0900-\u0D7F]/.test(low);
+}
+
+function numberBelongsToCatalogProduct(
+  curTokens: string[],
+  tokens: string[],
+  idx: number,
+  catalogPhrases: Set<string>,
+): boolean {
+  if (catalogPhrases.size === 0) return false;
+  const numTok = tokens[idx].toLowerCase();
+  const nextTok = idx + 1 < tokens.length ? tokens[idx + 1].toLowerCase() : '';
+  const next2Tok = idx + 2 < tokens.length ? tokens[idx + 2].toLowerCase() : '';
+
+  const rawTail = curTokens
+    .slice(-4)
+    .map((t) => t.toLowerCase().replace(/[^a-z0-9\u0900-\u0D7F]/g, ''));
+  const prefixWords = rawTail.filter((w) => w && !isNumericTok(w) && !CLIENT_NON_PRODUCT_WORDS.has(w));
+
+  if (prefixWords.length === 0) return false;
+
+  const probes: string[] = [];
+  for (let k = 1; k <= Math.min(3, prefixWords.length); k++) {
+    const subPrefix = prefixWords.slice(-k);
+    if (nextTok in ALL_CLIENT_UNITS_MAP) {
+      probes.push([...subPrefix, numTok, nextTok].join(' '));
+      probes.push([...subPrefix, `${numTok}${nextTok}`].join(' '));
+    }
+    if (nextTok) {
+      probes.push([...subPrefix, numTok, nextTok].join(' '));
+      if (next2Tok) {
+        probes.push([...subPrefix, numTok, nextTok, next2Tok].join(' '));
+      }
+    }
+  }
+
+  for (const probe of probes) {
+    for (const cp of catalogPhrases) {
+      if (cp.includes(probe)) return true;
+    }
+  }
+  return false;
+}
+
+function segmentContinuousClauseClient(clause: string, catalogPhrases: Set<string>): string[] {
+  const tokens = clause.split(/\s+/).filter(Boolean);
+  if (tokens.length <= 2) return [clause];
+
+  const slices: string[] = [];
+  const n = tokens.length;
+  let start = 0;
+  const measureUnits = new Set(['g', 'gm', 'gms', 'gram', 'grams', 'kg', 'kgs', 'ml', 'mls', 'l', 'ltr', 'litre', 'litres', 'liter', 'liters']);
+
+  while (start < n) {
+    const hasLeadingQty = isNumericTok(tokens[start]);
+    let hasProd = false;
+    let i = start;
+    if (hasLeadingQty) {
+      i += 1;
+      if (i < n && tokens[i].toLowerCase() in ALL_CLIENT_UNITS_MAP) {
+        i += 1;
+        if (i < n && tokens[i].toLowerCase() === 'of') {
+          i += 1;
+        }
+      }
+    }
+
+    let splitAt: number | null = null;
+    while (i < n) {
+      const tok = tokens[i];
+      const low = tok.toLowerCase();
+
+      if (isProdWordTok(tok)) {
+        hasProd = true;
+        i += 1;
+        continue;
+      }
+
+      if (
+        CLIENT_CURRENCY_WORDS.has(low) &&
+        i + 1 < n &&
+        !['each', 'apiece', 'per'].includes(tokens[i + 1].toLowerCase()) &&
+        hasProd &&
+        (isNumericTok(tokens[i + 1]) || isProdWordTok(tokens[i + 1]))
+      ) {
+        splitAt = i + 1;
+        break;
+      }
+
+      if (isNumericTok(tok) && hasProd) {
+        const prevLow = i > start ? tokens[i - 1].toLowerCase() : '';
+        const nextLow = i + 1 < n ? tokens[i + 1].toLowerCase() : '';
+
+        if (['for', 'at', '@', 'rs', 'rs.', 'inr'].includes(prevLow) || prevLow.includes('₹')) {
+          i += 1;
+          continue;
+        }
+        if (prevLow === 'of' && measureUnits.has(nextLow)) {
+          i += 1;
+          continue;
+        }
+        if (CLIENT_CURRENCY_WORDS.has(nextLow) || ['each', 'apiece', 'per'].includes(nextLow)) {
+          i += 1;
+          continue;
+        }
+        if (numberBelongsToCatalogProduct(tokens.slice(start, i), tokens, i, catalogPhrases)) {
+          i += 1;
+          continue;
+        }
+
+        if (hasLeadingQty) {
+          if (i + 1 < n) {
+            splitAt = i;
+            break;
+          }
+        } else {
+          let endIdx = i + 1;
+          if (endIdx < n && tokens[endIdx].toLowerCase() in ALL_CLIENT_UNITS_MAP) {
+            endIdx += 1;
+          }
+          if (
+            endIdx < n &&
+            (['for', 'at', '@'].includes(tokens[endIdx].toLowerCase()) ||
+              (isNumericTok(tokens[endIdx]) &&
+                endIdx + 1 < n &&
+                (CLIENT_CURRENCY_WORDS.has(tokens[endIdx + 1].toLowerCase()) ||
+                  ['each', 'apiece', 'per'].includes(tokens[endIdx + 1].toLowerCase()))))
+          ) {
+            i = endIdx;
+            continue;
+          }
+          if (endIdx < n) {
+            splitAt = endIdx;
+            break;
+          }
+        }
+      }
+
+      i += 1;
+    }
+
+    if (splitAt !== null && splitAt > start) {
+      slices.push(tokens.slice(start, splitAt).join(' ').trim());
+      start = splitAt;
+    } else {
+      slices.push(tokens.slice(start).join(' ').trim());
+      break;
+    }
+  }
+
+  return slices.filter(Boolean);
+}
+
+function extractPackageSizeClient(text: string): { cleaned: string; pkgSize: string | null } {
+  const m = text.match(
+    /\bof\s+(\d+(?:\.\d+)?)\s*(kg|kgs|g|gm|gms|gram|grams|ml|mls|l|ltr|litre|litres|liter|liters)\b(?:\s+(?:each|packs?|packets?))?/i,
+  );
+  if (!m) return { cleaned: text, pkgSize: null };
+  const canonU = ALL_CLIENT_UNITS_MAP[m[2].toLowerCase()] || m[2].toLowerCase();
+  const pkgSize = `${m[1]}${canonU}`;
+  const cleaned = (text.slice(0, m.index) + ' ' + text.slice((m.index || 0) + m[0].length)).replace(/\s+/g, ' ').trim();
+  return { cleaned, pkgSize };
+}
+
 /**
  * Extracts multiple item clauses from natural spoken speech clauses.
- * Supports forward order, reverse order, units, and spoken currency prices.
+ * Supports continuous multi-items, catalog-aware segmentation, forward & reverse order,
+ * package-size preservation, update/remove commands, and spoken currency prices.
  */
-export function extractItemsFromClause(clause: string): ExtractedVoiceClause[] {
-  let text = clause.trim();
+export function extractItemsFromClause(clause: string, catalog?: Product[]): ExtractedVoiceClause[] {
+  const text = clause.trim();
   if (!text) return [];
 
+  const catalogPhrases = buildClientCatalogPhraseSet(catalog);
   const items: ExtractedVoiceClause[] = [];
 
-  // Split on clause conjunctions first: and, aur, mariyu, matrum, commas, semicolons, +, &, newlines
-  const subChunks = text
+  const preSplit = text.replace(/\s+\b(?:and\s+also|and\s+then|also\s+add|also|then|add)\s+(?=\d+(?:\.\d+)?\b)/gi, ', ');
+
+  const subChunks = preSplit
     .split(/[,;\n+]|\b(?:and|aur|mariyu|matrum|mattu|tatha|evam|plus)\b|&/gi)
-    .map((s) => s.trim())
+    .map((s) => s.trim().replace(/[.!?]+$/, ''))
     .filter(Boolean);
 
   for (const chunk of subChunks) {
     let s = chunk.trim();
+    let itemAction: 'add' | 'update' | 'remove' = 'add';
+    let explicitQty = true;
 
-    // Handle change or removal command expressions
-    const chMatch = s.match(/^(?:change|update|modify|make)\s+(.+?)(?:\s+(?:quantity|qty))?\s+to\s+(\d+(?:\.\d+)?.*)$/i);
-    if (chMatch) {
+    const makeItMatch = s.match(/^(?:make|change|update|set)\s+(?:it\s+(?:to\s+)?|to\s+)?(\d+(?:\.\d+)?.*)$/i);
+    const chMatch = s.match(/^(?:change|update|modify|make|set|increase|decrease|reduce)\s+(.+?)(?:\s+(?:quantity|qty))?(?:\s+to|\s+(?:quantity|qty))\s+(\d+(?:\.\d+)?.*)$/i);
+    if (makeItMatch) {
+      s = makeItMatch[1].replace(/\s+instead\s+of\s+\d+(?:\.\d+)?(?:\s+\w+)?$/i, '').replace(/[.!?]+$/, '').trim();
+      itemAction = 'update';
+    } else if (chMatch) {
       s = `${chMatch[2].replace(/[.!?]+$/, '')} ${chMatch[1].replace(/[.!?]+$/, '')}`.trim();
-    } else {
+      itemAction = 'update';
+    } else if (/^(?:remove|delete|cancel|drop)\s+/i.test(s)) {
       s = s.replace(/^(?:remove|delete|cancel|drop)\s+/i, '').trim();
+      itemAction = 'remove';
+      explicitQty = /\b\d+(?:\.\d+)?\b/.test(s);
     }
 
-    // Strip leading and trailing conversational fillers before item/quantity extraction
-    for (const filler of CONVERSATIONAL_FILLERS) {
-      s = s.replace(filler, ' ').trim();
+    for (let pass = 0; pass < 2; pass++) {
+      for (const filler of CONVERSATIONAL_FILLERS) {
+        s = s.replace(filler, ' ').trim();
+      }
     }
 
-    while (s.length > 0) {
-      s = s.trim();
-      if (!s) break;
+    if (!s) continue;
 
-      // Extract spoken price if present
-      let extractedPrice: number | null = null;
-      const priceBeforeMatch = s.match(new RegExp(`(?:${CURRENCY_REGEX.source})\\s*(\\d+(?:\\.\\d+)?)`, 'i'));
-      const priceAfterMatch = s.match(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(?:${CURRENCY_REGEX.source})`, 'i'));
+    const segmented = segmentContinuousClauseClient(s, catalogPhrases);
 
-      if (priceAfterMatch) {
-        extractedPrice = parseFloat(priceAfterMatch[1]);
-        s = s.replace(priceAfterMatch[0], ' ').trim();
-      } else if (priceBeforeMatch) {
-        extractedPrice = parseFloat(priceBeforeMatch[1]);
-        s = s.replace(priceBeforeMatch[0], ' ').trim();
-      }
+    for (const seg of segmented) {
+      const { cleaned: subInitial, pkgSize } = extractPackageSizeClient(seg);
+      let sub = subInitial;
 
-      // Pattern 1: Leading quantity (e.g. "2 kg rice", "2 Tata Salt", "2 Tata Salt 1kg", "0.5 kg sugar")
-      const leadRegex = new RegExp(
-        `^(\\d+(?:\\.\\d+)?)\\s*(?:(${SORTED_UNIT_TOKENS})(?:\\s+of)?)?\\s+(.+?)(?=(?:\\s+\\d+(?:\\.\\d+)?(?:\\s+(?:${SORTED_UNIT_TOKENS}))?\\s+[a-zA-Z\\u0900-\\u0D7F])|$)`,
-        'i'
-      );
-      const leadMatch = s.match(leadRegex);
+      while (sub.length > 0) {
+        sub = sub.trim();
+        if (!sub) break;
 
-      if (leadMatch) {
-        const qty = parseFloat(leadMatch[1]);
-        const unitWord = leadMatch[2]?.toLowerCase();
-        const prod = leadMatch[3].trim();
-        const matchedUnit = unitWord ? UNIT_NORMALIZATION_MAP[unitWord] || null : null;
+        let extractedPrice: number | null = null;
+        const priceBeforeMatch = sub.match(new RegExp(`(?:${CURRENCY_REGEX.source})\\s*(\\d+(?:\\.\\d+)?)`, 'i'));
+        const priceAfterMatch = sub.match(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(?:${CURRENCY_REGEX.source})`, 'i'));
 
+        if (priceAfterMatch) {
+          extractedPrice = parseFloat(priceAfterMatch[1]);
+          sub = sub.replace(priceAfterMatch[0], ' ').trim();
+        } else if (priceBeforeMatch) {
+          extractedPrice = parseFloat(priceBeforeMatch[1]);
+          sub = sub.replace(priceBeforeMatch[0], ' ').trim();
+        }
+
+        // Pattern 1: Leading quantity (already segmented per item)
+        const leadRegex = new RegExp(
+          `^(\\d+(?:\\.\\d+)?)\\s*(?:(${SORTED_UNIT_TOKENS})(?:\\s+of)?)?\\s+(.+)$`,
+          'i'
+        );
+        const leadMatch = sub.match(leadRegex);
+
+        if (leadMatch) {
+          const qty = parseFloat(leadMatch[1]);
+          const unitWord = leadMatch[2]?.toLowerCase();
+          let matchedUnit: CanonicalUnit | null = unitWord ? ALL_CLIENT_UNITS_MAP[unitWord] || null : null;
+          if (!matchedUnit) {
+            const trailUnitMatch = leadMatch[3].trim().match(new RegExp(`(?:^|\\s)(${SORTED_UNIT_TOKENS})$`, 'i'));
+            if (trailUnitMatch) {
+              const candUnit = ALL_CLIENT_UNITS_MAP[trailUnitMatch[1].toLowerCase()] || null;
+              if (candUnit && !['kg', 'g', 'L', 'ml'].includes(candUnit)) {
+                matchedUnit = candUnit;
+              }
+            }
+          }
+          const prod = leadMatch[3].trim();
+
+          items.push({
+            raw: leadMatch[0].trim(),
+            quantity: qty > 0 ? qty : 1,
+            unit: matchedUnit,
+            productName: prod,
+            price: extractedPrice,
+            action: itemAction,
+            explicit_quantity: explicitQty,
+            package_size: pkgSize,
+          });
+
+          sub = sub.slice(leadMatch[0].length).trim();
+          continue;
+        }
+
+        // Pattern 2: Trailing quantity
+        const trailRegex = new RegExp(
+          `^([a-zA-Z\\u0900-\u0D7F0-9\\s\\-\\(\\)]+?)\\s+(\\d+(?:\\.\\d+)?)(?:\\s+(${SORTED_UNIT_TOKENS}))?(?=(?:\\s+\\d+)|\\s+[a-zA-Z\\u0900-\\u0D7F].*?\\s+\\d+|$)`,
+          'i'
+        );
+        const trailMatch = sub.match(trailRegex);
+
+        if (trailMatch) {
+          const prod = trailMatch[1].trim();
+          const qty = parseFloat(trailMatch[2]);
+          const unitWord = trailMatch[3]?.toLowerCase();
+          const matchedUnit = unitWord ? ALL_CLIENT_UNITS_MAP[unitWord] || null : null;
+
+          items.push({
+            raw: trailMatch[0].trim(),
+            quantity: qty > 0 ? qty : 1,
+            unit: matchedUnit,
+            productName: prod,
+            price: extractedPrice,
+            action: itemAction,
+            explicit_quantity: explicitQty,
+            package_size: pkgSize,
+          });
+
+          sub = sub.slice(trailMatch[0].length).trim();
+          continue;
+        }
+
+        // Pattern 3: Fallback single item without explicit number
         items.push({
-          raw: leadMatch[0].trim(),
-          quantity: qty > 0 ? qty : 1,
-          unit: matchedUnit,
-          productName: prod,
+          raw: sub,
+          quantity: 1,
+          unit: null,
+          productName: sub,
           price: extractedPrice,
+          action: itemAction,
+          explicit_quantity: false,
+          package_size: pkgSize,
         });
-
-        s = s.slice(leadMatch[0].length).trim();
-        continue;
+        break;
       }
-
-      // Pattern 2: Trailing quantity (e.g. "Rice 2 kg", "Sugar 1 kg", "Tata Salt 2 packets", "Parle-G 3")
-      const trailRegex = new RegExp(
-        `^([a-zA-Z\\u0900-\u0D7F0-9\\s\\-\\(\\)]+?)\\s+(\\d+(?:\\.\\d+)?)(?:\\s+(${SORTED_UNIT_TOKENS}))?(?=(?:\\s+\\d+)|\\s+[a-zA-Z\\u0900-\\u0D7F].*?\\s+\\d+|$)`,
-        'i'
-      );
-      const trailMatch = s.match(trailRegex);
-
-      if (trailMatch) {
-        const prod = trailMatch[1].trim();
-        const qty = parseFloat(trailMatch[2]);
-        const unitWord = trailMatch[3]?.toLowerCase();
-        const matchedUnit = unitWord ? UNIT_NORMALIZATION_MAP[unitWord] || null : null;
-
-        items.push({
-          raw: trailMatch[0].trim(),
-          quantity: qty > 0 ? qty : 1,
-          unit: matchedUnit,
-          productName: prod,
-          price: extractedPrice,
-        });
-
-        s = s.slice(trailMatch[0].length).trim();
-        continue;
-      }
-
-      // Pattern 3: Fallback single item without explicit number (e.g. "Tata Salt", "Aashirvaad Atta")
-      items.push({
-        raw: s,
-        quantity: 1,
-        unit: null,
-        productName: s,
-        price: extractedPrice,
-      });
-      break;
     }
   }
 
@@ -848,7 +1244,7 @@ export interface MultilingualParseResult {
 }
 
 /**
- * End-to-end high-efficiency multilingual voice parsing pipeline.
+ * End-to-end high-efficiency voice parsing pipeline.
  * Extracts items, quantities, packaging units, and spoken prices (e.g. "₹120 rupees").
  */
 export function parseMultilingualVoiceBill(
@@ -868,11 +1264,11 @@ export function parseMultilingualVoiceBill(
     };
   }
 
-  // 1. Normalize numbers and fractions across all supported Indian languages
+  // 1. Normalize numbers and fractions
   const normalized = normalizeIndianSpeechNumbers(transcript);
 
-  // 2. High-efficiency sequential item extraction
-  const extractedClauses = extractItemsFromClause(normalized);
+  // 2. High-efficiency catalog-aware sequential item extraction
+  const extractedClauses = extractItemsFromClause(normalized, catalog);
 
   const matchedItems: MatchedVoiceItem[] = [];
   const ambiguousItems: AmbiguousVoiceItem[] = [];
@@ -886,41 +1282,31 @@ export function parseMultilingualVoiceBill(
     const spokenPrice = itemClause.price;
     const detectedUnit = itemClause.unit;
 
-    // Match against catalog products
-    const matchedProduct = matchCatalogProduct(cleanName, catalog);
+    // Match against catalog products using dynamic confidence tiers
+    const { candidates, confidence } = matchCatalogCandidates(cleanName, catalog, itemClause.package_size);
 
-    if (matchedProduct) {
-      // Check for ambiguity (e.g. Tata Salt 1kg vs Tata Salt 500g)
-      const potentialCandidates = catalog.filter((p) =>
-        normalizeForMatch(p.name).includes(normalizeForMatch(matchedProduct.name).split(' ')[0])
-      );
-
-      if (
-        potentialCandidates.length > 1 &&
-        !cleanName.toLowerCase().includes('1kg') &&
-        !cleanName.toLowerCase().includes('500g') &&
-        !cleanName.toLowerCase().includes('400g') &&
-        !cleanName.toLowerCase().includes('5kg')
-      ) {
-        const candidatesList: VoiceProductCandidate[] = potentialCandidates.map((c) => ({
-          id: c.id,
-          name: c.name,
-          selling_price: c.sellingPrice ?? c.price ?? 0,
-          current_stock: c.stock ?? 0,
-          unit: c.unit || detectedUnit || 'pcs',
-          category: c.category,
-        }));
-
-        ambiguousItems.push({
+    if (candidates.length === 1 && confidence >= 0.85) {
+      const matchedProduct = candidates[0];
+      const pricingStatus = String((matchedProduct as any).pricingStatus ?? (matchedProduct as any).pricing_status ?? 'VERIFIED').toUpperCase();
+      if (pricingStatus === 'NEEDS_REVIEW') {
+        unmatchedItems.push({
           queried_name: cleanName,
           quantity,
-          candidates: candidatesList,
+          reason: `Product '${matchedProduct.name}' requires manager pricing review before checkout.`,
+        });
+        continue;
+      }
+      if (pricingStatus === 'INCOMPLETE') {
+        unmatchedItems.push({
+          queried_name: cleanName,
+          quantity,
+          reason: `Product '${matchedProduct.name}' has incomplete pricing (₹0.00). Cannot be sold.`,
         });
         continue;
       }
 
       // Support standard metric conversions (500 g -> 0.5 kg, 500 ml -> 0.5 L)
-      const productUnit = UNIT_NORMALIZATION_MAP[(matchedProduct.unit || '').trim().toLowerCase()] ?? null;
+      const productUnit = ALL_CLIENT_UNITS_MAP[(matchedProduct.unit || '').trim().toLowerCase()] ?? null;
       const isWeight = (u: CanonicalUnit | null) => u === 'kg' || u === 'g';
       const isVolume = (u: CanonicalUnit | null) => u === 'L' || u === 'ml';
       const isMeasure = (u: CanonicalUnit | null) => isWeight(u) || isVolume(u);
@@ -962,7 +1348,6 @@ export function parseMultilingualVoiceBill(
       }
 
       const effectiveBasis = normalizedBasisQty > 0 ? normalizedBasisQty : 1.0;
-      // A spoken total is the line total; the exact unit price reproduces it (100 for 3 -> 33.333..., never 99.99)
       const calculatedLineTotal = Math.round(((catalogPrice * effectiveQuantity) / effectiveBasis) * 100) / 100;
       const lineTotal = spokenPrice !== null ? spokenPrice : calculatedLineTotal;
       const unitPriceExact = spokenPrice !== null ? spokenPrice / effectiveQuantity : (catalogPrice / effectiveBasis);
@@ -980,6 +1365,26 @@ export function parseMultilingualVoiceBill(
         is_out_of_stock: (matchedProduct.stock ?? 0) <= 0,
         is_insufficient_stock: effectiveQuantity > (matchedProduct.stock ?? 0),
         available_stock: Math.max(0, matchedProduct.stock ?? 0),
+        action: itemClause.action || 'add',
+        explicit_quantity: itemClause.explicit_quantity ?? true,
+        match_confidence: Math.round(confidence * 1000) / 1000,
+        raw_text: itemClause.raw,
+        package_size: itemClause.package_size ?? null,
+      });
+    } else if (candidates.length > 0 && confidence >= 0.60) {
+      const candidatesList: VoiceProductCandidate[] = candidates.map((c) => ({
+        id: c.id,
+        name: c.name,
+        selling_price: c.sellingPrice ?? c.price ?? 0,
+        current_stock: c.stock ?? 0,
+        unit: c.unit || detectedUnit || 'pcs',
+        category: c.category,
+      }));
+      ambiguousItems.push({
+        queried_name: cleanName,
+        quantity,
+        candidates: candidatesList,
+        spoken_price: spokenPrice,
       });
     } else {
       // Never invent product information: unmatched items belong in unmatched_items

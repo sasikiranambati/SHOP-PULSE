@@ -39,6 +39,26 @@ export interface MatchedVoiceItem {
   price_source?: 'spoken' | 'catalogue' | 'edited';
   /** What was said when it differs from the stock quantity (e.g. "500 g" sold as 0.5 kg). */
   spoken_quantity?: string | null;
+  /** Extraction command action ('add' | 'update' | 'remove'). */
+  action?: 'add' | 'update' | 'remove';
+  explicit_quantity?: boolean;
+  match_confidence?: number | null;
+  raw_text?: string | null;
+  package_size?: string | null;
+}
+
+export interface StructuredVoiceItem {
+  raw_text: string;
+  product_name: string;
+  quantity: number;
+  unit?: string | null;
+  package_size?: string | null;
+  action: 'add' | 'update' | 'remove';
+  explicit_quantity: boolean;
+  matched_product_id?: string | null;
+  match_confidence: number;
+  status: 'MATCHED' | 'AMBIGUOUS' | 'UNMATCHED' | 'INVALID';
+  reason?: string | null;
 }
 
 export interface AmbiguousVoiceItem {
@@ -76,6 +96,7 @@ export interface VoiceProcessResponse {
   subtotal: number;
   tax: number;
   total: number;
+  items?: StructuredVoiceItem[];
 }
 
 export interface VoiceStatusResponse {

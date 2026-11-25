@@ -20,12 +20,19 @@ import { Button } from './Button';
 import { useDialog } from '../hooks/useDialog';
 import type { CartItem, Product } from '../types';
 import { catalogPrice, lineTotal, lineTotalPaise, round3 } from '../utils/cartPricing';
-import { voiceLineToCartItem, withEditedLineTotal } from '../utils/voiceBill';
+import {
+  computeDraftMatchedItems,
+  createEmptyVoiceBillDraft,
+  flattenDraftToBase,
+  mergeVoiceMatchedItems,
+  upsertVoiceUtteranceOutcome,
+  voiceLineToCartItem,
+  withEditedLineTotal,
+  type VoiceBillDraftState,
+} from '../utils/voiceBill';
 import {
   voiceApi,
   type MatchedVoiceItem,
-  type AmbiguousVoiceItem,
-  type UnmatchedVoiceItem,
   type VoiceProcessResponse,
   type VoiceProductCandidate
 } from '../api/voice';
@@ -92,10 +99,14 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
   const [editedTranscript, setEditedTranscript] = useState('');
   const [isMockProvider, setIsMockProvider] = useState(true);
 
-  // Recognized items state
-  const [matchedItems, setMatchedItems] = useState<MatchedVoiceItem[]>([]);
-  const [ambiguousItems, setAmbiguousItems] = useState<AmbiguousVoiceItem[]>([]);
-  const [unmatchedItems, setUnmatchedItems] = useState<UnmatchedVoiceItem[]>([]);
+  // Recognized items state (accumulated cleanly across multiple utterances via functional fold reducer)
+  const [draft, setDraft] = useState<VoiceBillDraftState>(() => createEmptyVoiceBillDraft());
+  const matchedItems = useMemo(() => computeDraftMatchedItems(draft), [draft]);
+  const ambiguousItems = draft.ambiguousItems;
+  const unmatchedItems = draft.unmatchedItems;
+  const utteranceSeqRef = useRef(0);
+  const lastUtteranceSeqRef = useRef<number | null>(null);
+  const lastUtteranceTextRef = useRef<string>('');
 
   // Computed subtotal and total
   // Sum of the rounded lines in paise (exact; the same total the sale saves)
@@ -145,6 +156,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
   const silenceTimeoutRef = useRef<any>(null);
   const debouncedPreviewTimerRef = useRef<any>(null);
   const accumulatedFinalRef = useRef<string>('');
+  const interimOnlyRef = useRef<string>('');
 
   const stopRecording = useCallback(() => {
     // Stop Web Speech API recognition session
@@ -203,38 +215,55 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
     closeOnEscape: !isRecording && !isProcessing,
   });
 
+  // Convert current products to candidates format for payload override (memoized to avoid per-render work)
+  const customProductCandidates: VoiceProductCandidate[] = useMemo(
+    () =>
+      products.map(p => ({
+        id: p.id,
+        name: p.name,
+        selling_price: p.sellingPrice ?? p.price ?? 0,
+        current_stock: p.stock ?? 0,
+        unit: p.unit || 'pcs',
+        category: String(p.category || 'General'),
+        sku: p.sku || p.barcode,
+        price_basis_quantity: (p as any).priceBasisQuantity ?? (p as any).price_basis_quantity ?? 1.0,
+        price_basis_unit: (p as any).priceBasisUnit ?? (p as any).price_basis_unit ?? p.unit,
+        pricing_status: (p as any).pricingStatus ?? (p as any).pricing_status ?? 'VERIFIED',
+        mrp: p.mrp,
+        mrp_basis_quantity: (p as any).mrpBasisQuantity ?? (p as any).mrp_basis_quantity,
+        mrp_basis_unit: (p as any).mrpBasisUnit ?? (p as any).mrp_basis_unit,
+      })),
+    [products],
+  );
+
   if (!isOpen) return null;
 
-  // Convert current products to candidates format for payload override
-  const customProductCandidates: VoiceProductCandidate[] = products.map(p => ({
-    id: p.id,
-    name: p.name,
-    selling_price: p.sellingPrice ?? p.price ?? 0,
-    current_stock: p.stock ?? 0,
-    unit: p.unit || 'pcs',
-    category: String(p.category || 'General'),
-    sku: p.sku || p.barcode,
-    price_basis_quantity: (p as any).priceBasisQuantity ?? (p as any).price_basis_quantity ?? 1.0,
-    price_basis_unit: (p as any).priceBasisUnit ?? (p as any).price_basis_unit ?? p.unit,
-    pricing_status: (p as any).pricingStatus ?? (p as any).pricing_status ?? 'VERIFIED',
-    mrp: p.mrp,
-    mrp_basis_quantity: (p as any).mrpBasisQuantity ?? (p as any).mrp_basis_quantity,
-    mrp_basis_unit: (p as any).mrpBasisUnit ?? (p as any).mrp_basis_unit,
-  }));
-
   // ---------------------------------------------------------------------------
-  // Pipeline Processing (English-only)
+  // Pipeline Processing (English-only, multi-utterance safe)
   // ---------------------------------------------------------------------------
-  const handleProcessTranscript = async (textToProcess: string) => {
-    if (!textToProcess.trim()) {
+  const handleProcessTranscript = async (textToProcess: string, options: { replaceLast?: boolean } = {}) => {
+    const cleanedText = textToProcess.trim();
+    if (!cleanedText) {
       setErrorMessage("No speech detected. Please speak clearly or enter items to simulate.");
       setButtonState('ERROR');
       setTimeout(() => setButtonState('IDLE'), 2500);
       return;
     }
 
-    setTranscript(textToProcess.trim());
-    setEditedTranscript(textToProcess.trim());
+    const isReprocess = Boolean(options.replaceLast && lastUtteranceSeqRef.current !== null);
+    if (isReprocess && cleanedText === lastUtteranceTextRef.current) {
+      setIsEditingTranscript(false);
+      return;
+    }
+
+    const seq = isReprocess && lastUtteranceSeqRef.current !== null
+      ? lastUtteranceSeqRef.current
+      : ++utteranceSeqRef.current;
+    lastUtteranceSeqRef.current = seq;
+    lastUtteranceTextRef.current = cleanedText;
+
+    setTranscript(cleanedText);
+    setEditedTranscript(cleanedText);
     setIsEditingTranscript(false);
     setInterimTranscript('');
     setLivePreviewItems([]);
@@ -247,7 +276,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
       selectedLanguage: VOICE_LANGUAGE_NAME,
       speechCode: VOICE_SPEECH_CODE,
       recognitionState: 'PROCESSING',
-      rawTranscript: textToProcess.trim(),
+      rawTranscript: cleanedText,
       detectedLanguage: VOICE_LANGUAGE_NAME,
       apiRequest: 'POST /api/v1/voice/process',
       error: null
@@ -256,16 +285,15 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
     // STEP 1: Instant zero-latency (<1ms) client-side parsing for immediate responsive feedback
     let instantSuccess = false;
     try {
-      const localResult = parseMultilingualVoiceBill(
-        textToProcess.trim(),
-        products,
-        'english'
-      );
+      const localResult = parseMultilingualVoiceBill(cleanedText, products, 'english');
 
       if (localResult.matched_items.length > 0 || localResult.ambiguous_items.length > 0) {
-        setMatchedItems(localResult.matched_items);
-        setAmbiguousItems(localResult.ambiguous_items);
-        setUnmatchedItems(localResult.unmatched_items);
+        setDraft(prev =>
+          upsertVoiceUtteranceOutcome(prev, seq, localResult, {
+            replaceLast: isReprocess,
+            mode: 'preview',
+          }),
+        );
         instantSuccess = true;
         setButtonState('SUCCESS');
         setTimeout(() => setButtonState('IDLE'), 2800);
@@ -277,7 +305,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
     // STEP 2: Concurrently validate & reconcile with backend FastAPI service
     try {
       const response: VoiceProcessResponse = await voiceApi.processVoiceBill({
-        simulation_text: textToProcess.trim(),
+        simulation_text: cleanedText,
         language_code: VOICE_SPEECH_CODE,
         custom_products: customProductCandidates,
       });
@@ -287,25 +315,28 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         apiResponse: `HTTP 200 (matched: ${response.matched_items?.length || 0}, ambiguous: ${response.ambiguous_items?.length || 0}, unmatched: ${response.unmatched_items?.length || 0})`
       }));
 
-      // The backend result is authoritative (exact units and prices): it replaces the instant preview even
-      // when it matched nothing, so an unchecked preview line can never be billed
+      // Backend result replaces ONLY this utterance's optimistic entry (preserving all earlier utterances)
       if (response) {
         const nothingFound =
           !(response.matched_items?.length || response.ambiguous_items?.length || response.unmatched_items?.length);
         if (nothingFound) {
-          setMatchedItems([]);
-          setAmbiguousItems([]);
-          setUnmatchedItems([]);
+          setDraft(prev => ({
+            ...prev,
+            entries: prev.entries.filter(e => e.seq !== seq),
+          }));
           setErrorMessage("Could not detect items. Please try speaking item name and quantity clearly.");
           setButtonState('ERROR');
           setTimeout(() => setButtonState('IDLE'), 3000);
           return;
         }
-        setTranscript(response.transcript || textToProcess);
-        setEditedTranscript(response.transcript || textToProcess);
-        setMatchedItems(response.matched_items);
-        setAmbiguousItems(response.ambiguous_items);
-        setUnmatchedItems(response.unmatched_items);
+        setTranscript(response.transcript || cleanedText);
+        setEditedTranscript(response.transcript || cleanedText);
+        setDraft(prev =>
+          upsertVoiceUtteranceOutcome(prev, seq, response, {
+            replaceLast: isReprocess,
+            mode: 'authoritative',
+          }),
+        );
         setIsMockProvider(response.is_mock);
 
         setDebugInfo(prev => ({
@@ -329,23 +360,21 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
       setIsProcessing(false);
     }
 
-    // STEP 3: Fallback handling if no items were matched yet
+    // STEP 3: Fallback handling if backend failed and instant preview had nothing yet
     if (!instantSuccess) {
       try {
-        const fallbackResult = parseMultilingualVoiceBill(
-          textToProcess.trim(),
-          products,
-          'english'
+        const fallbackResult = parseMultilingualVoiceBill(cleanedText, products, 'english');
+        setDraft(prev =>
+          upsertVoiceUtteranceOutcome(prev, seq, fallbackResult, {
+            replaceLast: isReprocess,
+            mode: 'authoritative',
+          }),
         );
-
-        setMatchedItems(fallbackResult.matched_items);
-        setAmbiguousItems(fallbackResult.ambiguous_items);
-        setUnmatchedItems(fallbackResult.unmatched_items);
 
         if (fallbackResult.matched_items.length > 0) {
           setButtonState('SUCCESS');
           setTimeout(() => setButtonState('IDLE'), 2800);
-        } else if (fallbackResult.unmatched_items.length > 0) {
+        } else if (fallbackResult.unmatched_items.length > 0 || fallbackResult.ambiguous_items.length > 0) {
           setButtonState('IDLE');
         } else {
           setButtonState('ERROR');
@@ -385,6 +414,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
 
     setErrorMessage(null);
     accumulatedFinalRef.current = '';
+    interimOnlyRef.current = '';
     setInterimTranscript('');
     setLivePreviewItems([]);
 
@@ -470,8 +500,9 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         if (newFinalChunk) {
           accumulatedFinalRef.current = (accumulatedFinalRef.current + ' ' + newFinalChunk).trim();
         }
+        interimOnlyRef.current = interimText.trim();
 
-        const fullCurrentTranscript = (accumulatedFinalRef.current + ' ' + interimText).trim();
+        const fullCurrentTranscript = (accumulatedFinalRef.current + ' ' + interimOnlyRef.current).trim();
         setInterimTranscript(fullCurrentTranscript);
 
         // Real-time live item detection preview
@@ -501,7 +532,9 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         }
         if (fullCurrentTranscript) {
           silenceTimeoutRef.current = setTimeout(() => {
-            const finalText = (accumulatedFinalRef.current + ' ' + interimText).trim();
+            const finalText = (accumulatedFinalRef.current + ' ' + interimOnlyRef.current).trim();
+            accumulatedFinalRef.current = '';
+            interimOnlyRef.current = '';
             if (finalText) {
               stopRecording();
               handleProcessTranscript(finalText);
@@ -559,7 +592,9 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
       clearTimeout(silenceTimeoutRef.current);
       silenceTimeoutRef.current = null;
     }
-    const textToCommit = (accumulatedFinalRef.current + ' ' + interimTranscript).trim();
+    const textToCommit = (accumulatedFinalRef.current + ' ' + interimOnlyRef.current).trim();
+    accumulatedFinalRef.current = '';
+    interimOnlyRef.current = '';
     stopRecording();
     if (textToCommit) {
       handleProcessTranscript(textToCommit);
@@ -586,6 +621,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
   // ---------------------------------------------------------------------------
   const handleResolveAmbiguity = (ambiguousIndex: number, candidate: VoiceProductCandidate) => {
     const amb = ambiguousItems[ambiguousIndex];
+    if (!amb) return;
     // The backend prepares each candidate's line (unit converted, spoken price kept); use it as is
     const prepared = amb.options?.find((o) => o.product_id === candidate.id);
     if (amb.options && !prepared) {
@@ -610,20 +646,26 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
       price_source: spokenTotal !== null ? 'spoken' : 'catalogue',
     };
 
-    setMatchedItems(prev => [...prev, newMatchedItem]);
-    setAmbiguousItems(prev => prev.filter((_, idx) => idx !== ambiguousIndex));
+    setDraft(prev => {
+      const flat = flattenDraftToBase(prev);
+      return {
+        ...flat,
+        baseItems: mergeVoiceMatchedItems(flat.baseItems, [newMatchedItem]),
+        ambiguousItems: flat.ambiguousItems.filter((_, idx) => idx !== ambiguousIndex),
+      };
+    });
   };
 
   // ---------------------------------------------------------------------------
   // Item Editing & Deletion
   // ---------------------------------------------------------------------------
   const handleUpdateQuantity = (index: number, delta: number) => {
-    setMatchedItems(prev => {
-      return prev.map((item, idx) => {
+    setDraft(prev => {
+      const flat = flattenDraftToBase(prev);
+      const nextBase = flat.baseItems.map((item, idx) => {
         if (idx === index) {
           const newQty = round3(item.quantity + delta);
           if (newQty <= 0) return null;
-          // Same unit price (spoken prices are per unit), exact line total
           const newTotal = lineTotal(newQty, item.unit_price_exact ?? item.unit_price);
           return {
             ...item,
@@ -634,6 +676,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         }
         return item;
       }).filter(Boolean) as MatchedVoiceItem[];
+      return { ...flat, baseItems: nextBase };
     });
   };
 
@@ -641,15 +684,39 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
   const handleEditLineTotal = (index: number, value: string) => {
     const total = Number(value);
     if (value.trim() === '' || !Number.isFinite(total) || total < 0) return;
-    setMatchedItems(prev => prev.map((item, idx) => (idx === index ? withEditedLineTotal(item, total) : item)));
+    setDraft(prev => {
+      const flat = flattenDraftToBase(prev);
+      return {
+        ...flat,
+        baseItems: flat.baseItems.map((item, idx) => (idx === index ? withEditedLineTotal(item, total) : item)),
+      };
+    });
   };
 
   const handleRemoveMatchedItem = (index: number) => {
-    setMatchedItems(prev => prev.filter((_, idx) => idx !== index));
+    setDraft(prev => {
+      const flat = flattenDraftToBase(prev);
+      return {
+        ...flat,
+        baseItems: flat.baseItems.filter((_, idx) => idx !== index),
+      };
+    });
   };
 
   const handleRemoveUnmatched = (index: number) => {
-    setUnmatchedItems(prev => prev.filter((_, idx) => idx !== index));
+    setDraft(prev => ({
+      ...prev,
+      unmatchedItems: prev.unmatchedItems.filter((_, idx) => idx !== index),
+    }));
+  };
+
+  const handleClearBill = () => {
+    setDraft(createEmptyVoiceBillDraft());
+    setTranscript('');
+    setEditedTranscript('');
+    setErrorMessage(null);
+    lastUtteranceSeqRef.current = null;
+    lastUtteranceTextRef.current = '';
   };
 
   // ---------------------------------------------------------------------------
@@ -948,7 +1015,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                   <Button
                     size="sm"
                     variant="primary"
-                    onClick={() => handleProcessTranscript(editedTranscript)}
+                    onClick={() => handleProcessTranscript(editedTranscript, { replaceLast: true })}
                     className="text-xs font-bold py-1 px-3"
                   >
                     Reprocess
@@ -1036,17 +1103,28 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
               <h3 className="text-xs font-bold uppercase tracking-wider text-[#5E6C64]">
                 Recognized Bill Items ({matchedItems.length})
               </h3>
-              {matchedItems.length > 0 && (
-                <span className="text-xs font-bold text-[#153D32] tabular-nums">
-                  Subtotal: ₹{subtotal}
-                </span>
+              {(matchedItems.length > 0 || unmatchedItems.length > 0 || ambiguousItems.length > 0) && (
+                <div className="flex items-center gap-3">
+                  {matchedItems.length > 0 && (
+                    <span className="text-xs font-bold text-[#153D32] tabular-nums">
+                      Subtotal: ₹{subtotal}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleClearBill}
+                    className="text-[11px] font-bold text-[#5E6C64] hover:text-[#B93838] cursor-pointer transition-colors"
+                  >
+                    Clear
+                  </button>
+                </div>
               )}
             </div>
 
             {matchedItems.length > 0 ? (
               <div className="bg-white border border-[#DDE9DF] rounded-xl divide-y divide-[#DDE9DF] shadow-2xs overflow-hidden">
                 {matchedItems.map((item, idx) => (
-                  <div key={idx} className="p-3.5 flex items-center justify-between gap-3 hover:bg-[#FAF8F2]/60 transition-colors">
+                  <div key={`${item.product_id}-${idx}`} className="p-3.5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 hover:bg-[#FAF8F2]/60 transition-colors">
                     <div className="min-w-0 flex-1">
                       <p className="font-bold text-xs sm:text-sm text-[#153D32] truncate">
                         {item.name}
@@ -1072,6 +1150,11 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                             said {item.spoken_quantity}
                           </span>
                         )}
+                        {item.package_size && (
+                          <span className="text-[10px] font-medium text-[#5E6C64] bg-[#FAF8F2] border border-[#DDE9DF] px-1.5 py-0.5 rounded-md">
+                            {item.package_size} pack
+                          </span>
+                        )}
                         {item.is_out_of_stock ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#FDF1EF] text-[#B93838] border border-[#EF806D]/40">
                             <AlertTriangle className="w-3 h-3" />
@@ -1085,7 +1168,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                         ) : (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-[#E7F3EE] text-[#23866A] border border-[#23866A]/20">
                             <CheckCircle2 className="w-3 h-3" />
-                            Verified
+                            Matched
                           </span>
                         )}
                       </div>
@@ -1119,7 +1202,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                       <label className="inline-flex items-center gap-0.5 text-xs sm:text-sm font-extrabold text-[#153D32] tabular-nums">
                         ₹
                         <input
-                          key={`${idx}-${item.total_price}`}
+                          key={`${item.product_id}-${idx}-${item.total_price}`}
                           type="number"
                           inputMode="decimal"
                           min="0"

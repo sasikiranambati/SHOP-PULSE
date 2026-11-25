@@ -136,18 +136,21 @@ async def process_voice_bill(
             detail=f"Speech-to-Text processing failed: {str(e)}"
         )
 
-    # Step 2: Parse transcript into structured items
+    # Step 2: Resolve product catalog first so multi-item segmentation can use catalog boundaries
     transcript_text = stt_result.transcript or ""
-    extracted_items = extract_items_from_transcript(transcript_text)
-
-    # Step 3: Match with catalog (live authenticated user shop or provided custom products)
     current_user = get_optional_current_user(db, authorization)
     catalog = resolve_catalog_products(db, current_user=current_user, custom_products=request.custom_products)
+
+    # Step 3: Parse transcript into structured items using catalog-aware segmentation & match
+    extracted_items = extract_items_from_transcript(transcript_text, catalog=catalog)
 
     matched, ambiguous, unmatched, subtotal, tax, total = match_items_to_inventory(
         extracted_items=extracted_items,
         catalog=catalog,
     )
+
+    from services.inventory_matcher import build_structured_voice_items
+    structured = build_structured_voice_items(extracted_items, matched, ambiguous, unmatched)
 
     return VoiceProcessResponse(
         transcript=transcript_text,
@@ -160,6 +163,7 @@ async def process_voice_bill(
         subtotal=subtotal,
         tax=tax,
         total=total,
+        items=structured,
     )
 
 @router.post("/upload-audio", response_model=VoiceProcessResponse)
@@ -188,14 +192,17 @@ async def process_voice_audio_upload(
     )
 
     transcript_text = stt_result.transcript or ""
-    extracted_items = extract_items_from_transcript(transcript_text)
-
     current_user = get_optional_current_user(db, authorization)
     catalog = resolve_catalog_products(db, current_user=current_user, custom_products=None)
+
+    extracted_items = extract_items_from_transcript(transcript_text, catalog=catalog)
     matched, ambiguous, unmatched, subtotal, tax, total = match_items_to_inventory(
         extracted_items=extracted_items,
         catalog=catalog,
     )
+
+    from services.inventory_matcher import build_structured_voice_items
+    structured = build_structured_voice_items(extracted_items, matched, ambiguous, unmatched)
 
     return VoiceProcessResponse(
         transcript=transcript_text,
@@ -208,4 +215,5 @@ async def process_voice_audio_upload(
         subtotal=subtotal,
         tax=tax,
         total=total,
+        items=structured,
     )
