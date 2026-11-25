@@ -45,6 +45,7 @@ const CHECKS = {
   stage_6_7_1_browser_acceptance: null,
   demand_forecast_check: null,
   ai_assistant_check: null,
+  actionable_insights_check: null,
 };
 
 const log = (msg) => console.log(`[e2e] ${msg}`);

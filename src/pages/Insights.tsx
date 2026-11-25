@@ -15,13 +15,16 @@ import {
   ChevronRight,
   ShoppingBag,
   Activity,
-  Lock
+  Lock,
+  ClipboardList
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { Card } from '../components/Card';
 import { StatCard } from '../components/StatCard';
 import { SalesChart, type SalesChartDataPoint } from '../components/SalesChart';
 import { DemandForecastSection } from '../components/DemandForecastSection';
+import { ActionableInsightsSection } from '../components/ActionableInsightsSection';
+import { clearRequestedInsightsTab, readRequestedInsightsTab, type InsightsTab } from '../utils/insightsTab';
 import { useShopRole } from '../hooks/useShopRole';
 import { 
   insightsApi, 
@@ -32,7 +35,6 @@ import {
 } from '../api/insights';
 import { notificationsApi } from '../api/notifications';
 
-type InsightsTab = 'sales' | 'inventory' | 'forecast' | 'ai';
 type DateFilter = 'today' | '7d' | '30d' | '90d' | 'custom';
 type PerformanceTab = 'best' | 'slow' | 'rising' | 'declining';
 type InventoryFilter = 'all' | 'low' | 'out' | 'over' | 'healthy';
@@ -41,7 +43,10 @@ export const Insights: React.FC = () => {
   const { role, isCashier, canAccessAnalytics } = useShopRole();
   const isInsightsRestricted = isCashier || !canAccessAnalytics;
 
-  const [activeTab, setActiveTab] = useState<InsightsTab>('sales');
+  const [activeTab, setActiveTab] = useState<InsightsTab>(readRequestedInsightsTab);
+  useEffect(() => {
+    clearRequestedInsightsTab();
+  }, []);
   const [dateFilter, setDateFilter] = useState<DateFilter>('7d');
   const [customStart, setCustomStart] = useState<string>('');
   const [customEnd, setCustomEnd] = useState<string>('');
@@ -178,12 +183,27 @@ export const Insights: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Primary Tabs: Sales Insights | Inventory Insights | Demand Forecast | AI Intelligence */}
+      {/* 2. Primary Tabs: Action Center | Sales Insights | Inventory Insights | Demand Forecast | AI Intelligence */}
       <div
         role="tablist"
         aria-label="Insights sections"
         className="w-full min-w-0 grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 border-b border-[#DDE9DF] pb-2"
       >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'actions'}
+          onClick={() => setActiveTab('actions')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer shrink-0 ${
+            activeTab === 'actions'
+              ? 'bg-[#153D32] text-[#FAF8F2] shadow-sm'
+              : 'text-[#5E6C64] hover:bg-[#FAF8F2] hover:text-[#153D32]'
+          }`}
+        >
+          <ClipboardList className="w-4 h-4 text-[#EF806D]" />
+          <span>Action Center</span>
+        </button>
+
         <button
           type="button"
           role="tab"
@@ -635,6 +655,11 @@ export const Insights: React.FC = () => {
           </Card>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* TAB 0: ACTION CENTER (Stage 7.5: prioritized, evidence-backed insights)    */}
+      {/* ========================================================================= */}
+      {activeTab === 'actions' && <ActionableInsightsSection refreshSignal={forecastRefreshSignal} />}
 
       {/* ========================================================================= */}
       {/* TAB 3: DEMAND FORECAST                                                    */}

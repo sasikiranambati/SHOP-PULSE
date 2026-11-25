@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -19,7 +19,10 @@ from schemas.insights import (
     InventoryInsightsResponse,
     AiInsightsResponse,
 )
+from schemas.actionable_insights import ActionableInsightsResponse, InsightCategory, InsightPriority
 from services import insights as insights_service
+from services.actionable_insights import build_actionable_insights
+from services.insight_rules import DEFAULT_THRESHOLDS
 from services.forecasting import (
     forecast_product_demand,
     forecast_shop_demand,
@@ -195,3 +198,44 @@ def get_demand_forecast(
 
     return result
 
+
+@router.get("/actionable", response_model=ActionableInsightsResponse)
+def get_actionable_insights(
+    *,
+    db: Session = Depends(deps.get_db),
+    priority: Optional[List[InsightPriority]] = Query(None, description="Only these priorities (repeatable)"),
+    category: Optional[List[InsightCategory]] = Query(None, description="Only these categories (repeatable)"),
+    insight_type: Optional[str] = Query(None, alias="type", max_length=64, description="Only this insight type"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    auth_context: tuple[Shop, ShopMember] = Depends(deps.require_roles([ShopRole.OWNER.value, ShopRole.MANAGER.value])),
+) -> Any:
+    """
+    Prioritized, evidence-backed insights for the active shop (Stage 7.5).
+    Deterministic rules over the shop's own sales, stock and demand forecast; read-only.
+    Restricted to Owner and Manager roles. Counts are across all insights; filters apply to the list.
+    """
+    shop, _ = auth_context
+    insights, summary, generated_at = build_actionable_insights(db, shop.id)
+
+    counts_by_priority = {p.value: 0 for p in InsightPriority}
+    counts_by_category = {c.value: 0 for c in InsightCategory}
+    for i in insights:
+        counts_by_priority[i.priority.value] += 1
+        counts_by_category[i.category.value] += 1
+
+    selected = [
+        i for i in insights
+        if (not priority or i.priority in priority)
+        and (not category or i.category in category)
+        and (not insight_type or i.type == insight_type)
+    ]
+    return ActionableInsightsResponse(
+        generated_at=generated_at,
+        counts_by_priority=counts_by_priority,
+        counts_by_category=counts_by_category,
+        total=len(selected),
+        insights=selected[offset: offset + limit],
+        summary=summary,
+        thresholds=DEFAULT_THRESHOLDS.as_dict(),
+    )

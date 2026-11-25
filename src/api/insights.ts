@@ -165,6 +165,80 @@ export interface DemandForecastParams {
   no_cache?: boolean;
 }
 
+// ---------------------------------------------------------------- Stage 7.5: actionable insights
+
+export type InsightPriority = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO';
+export type InsightCategory =
+  | 'INVENTORY_RISK'
+  | 'LOW_STOCK'
+  | 'SALES_TREND'
+  | 'FAST_MOVING'
+  | 'SLOW_MOVING'
+  | 'INVENTORY_OPPORTUNITY'
+  | 'DATA_QUALITY';
+export type EvidenceSource = 'OBSERVED' | 'FORECAST' | 'CONFIGURED';
+export type InsightDataQuality = 'HIGH' | 'MEDIUM' | 'LOW' | 'INSUFFICIENT';
+
+export interface InsightEvidence {
+  label: string;
+  value: string;
+  source: EvidenceSource;
+}
+
+export interface ActionableInsight {
+  id: string;
+  type: string;
+  category: InsightCategory;
+  priority: InsightPriority;
+  title: string;
+  description: string;
+  evidence: InsightEvidence[];
+  product_id: string | null;
+  product_name: string | null;
+  unit: string | null;
+  current_value: number | null;
+  threshold_value: number | null;
+  observation_start: string | null;
+  observation_end: string | null;
+  data_quality: InsightDataQuality;
+  suggested_action: string | null;
+  is_actionable: boolean;
+}
+
+export interface DailyBusinessSummary {
+  period_start: string;
+  period_end: string;
+  today_sales: number;
+  today_transactions: number;
+  products_sold_today: number;
+  same_time_yesterday_sales: number;
+  same_time_yesterday_transactions: number;
+  out_of_stock_count: number;
+  below_minimum_count: number;
+  forecast_stockout_risk_count: number | null;
+  highlights: string[];
+  data_notes: string[];
+  has_sales_history: boolean;
+}
+
+export interface ActionableInsightsData {
+  generated_at: string;
+  counts_by_priority: Record<InsightPriority, number>;
+  counts_by_category: Record<InsightCategory, number>;
+  total: number;
+  insights: ActionableInsight[];
+  summary: DailyBusinessSummary;
+  thresholds: Record<string, number>;
+}
+
+export interface ActionableInsightsParams {
+  priority?: InsightPriority;
+  category?: InsightCategory;
+  type?: string;
+  limit?: number;
+  offset?: number;
+}
+
 export const insightsApi = {
   getSalesInsights: async (
     period: 'today' | '7d' | '30d' | '90d' | 'custom' = '7d',
@@ -184,6 +258,12 @@ export const insightsApi = {
 
   getAiInsights: async (): Promise<AiInsightsData> => {
     return apiClient.get<AiInsightsData>('/api/v1/insights/ai-summary');
+  },
+
+  getActionableInsights: async (params?: ActionableInsightsParams): Promise<ActionableInsightsData> => {
+    return apiClient.get<ActionableInsightsData>('/api/v1/insights/actionable', {
+      params: params as Record<string, string | number | boolean | undefined | null>,
+    });
   },
 
   getDemandForecast: async (

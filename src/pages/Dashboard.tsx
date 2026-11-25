@@ -6,6 +6,8 @@ import { AttentionCard } from '../components/dashboard/AttentionCard';
 import { QuickActionGrid } from '../components/dashboard/QuickActionGrid';
 import { TopSellers } from '../components/dashboard/TopSellers';
 import { SalesOverview } from '../components/dashboard/SalesOverview';
+import { PriorityActionsCard } from '../components/dashboard/PriorityActionsCard';
+import { useShopRole } from '../hooks/useShopRole';
 import { Card } from '../components/Card';
 import { Receipt, ArrowUpRight, AlertCircle, RefreshCw } from 'lucide-react';
 
@@ -28,6 +30,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   shopName,
 }) => {
   const { t } = useLanguage();
+  const { canAccessAnalytics } = useShopRole();
   const { todaySummary, dashboardStats, error: salesError, refreshSales } = useSales();
   const { lowStockAlerts } = useAlerts(products);
   const { 
@@ -143,6 +146,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
         billsCount={billsCount}
         setActivePage={setActivePage}
       />
+
+      {/* 2b. Prioritized actions from shop data (owners and managers) */}
+      {canAccessAnalytics && <PriorityActionsCard setActivePage={setActivePage} />}
 
       {/* 3. Two-column section: Left (Needs Attention) | Right (Quick Actions) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
