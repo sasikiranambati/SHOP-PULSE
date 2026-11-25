@@ -5,15 +5,18 @@ import {
   X,
   AlertTriangle,
   CheckCircle2,
+  Check,
   Trash2,
   Plus,
   Minus,
   ShoppingCart,
   Info,
-  RefreshCw,
   Volume2,
   ChevronDown,
+  ChevronUp,
   Languages,
+  FileText,
+  Loader2,
 } from 'lucide-react';
 import { Button } from './Button';
 import { useDialog } from '../hooks/useDialog';
@@ -863,26 +866,26 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         {/* Modal Header */}
         <div className="px-5 py-4 border-b border-[#DDE9DF] flex items-center justify-between bg-[#FAF8F2]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#E7F3EE] text-[#153D32] border border-[#153D32]/25 flex items-center justify-center shadow-xs shrink-0">
-              <Mic className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-xl bg-[#E7F3EE] text-[#153D32] border border-[#23866A]/25 flex items-center justify-center shadow-2xs shrink-0">
+              <Mic className="w-5 h-5" strokeWidth={2} />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h2 id="voice-to-bill-title" className="text-base font-bold text-[#252D29]">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 id="voice-to-bill-title" className="text-base font-bold text-[#153D32]">
                   {getLocalizedBillLabel('billTitle', displayLanguage)}
                 </h2>
                 {isMockProvider ? (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FEF9EB] text-[#A66A16] border border-[#A66A16]/25">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FEF9EB] text-[#A07828] border border-[#D6AE62]/40">
                     Offline / Dev Mode
                   </span>
                 ) : (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#E7F3EE] text-[#153D32] border border-[#153D32]/25">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#E7F3EE] text-[#153D32] border border-[#23866A]/25">
                     Live STT
                   </span>
                 )}
               </div>
-              <p className="text-xs text-[#5E6C64] font-medium">
-                Speak in Telugu, Hindi, English, Tamil & 12 Indian languages
+              <p className="text-xs text-[#5E6C64] font-medium mt-0.5">
+                Speak in Telugu, Hindi, English, Tamil &amp; 12 Indian languages
               </p>
             </div>
           </div>
@@ -890,7 +893,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-white hover:bg-[#FAF8F2] text-[#5E6C64] hover:text-[#252D29] flex items-center justify-center transition-colors cursor-pointer border border-[#DDE9DF]"
+            className="w-8 h-8 rounded-lg bg-white hover:bg-[#F3EFE3] text-[#5E6C64] hover:text-[#252D29] flex items-center justify-center transition-colors cursor-pointer border border-[#DDE9DF]"
             aria-label="Close Voice-to-Bill"
           >
             <X className="w-4 h-4" />
@@ -898,56 +901,56 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
         </div>
 
         {/* Modal Scrollable Body */}
-        <div className="p-4 sm:p-5 overflow-y-auto space-y-4 sm:space-y-5 flex-1">
+        <div className="p-4 sm:p-5 overflow-y-auto space-y-4 sm:space-y-5 flex-1 bg-white">
           
           {/* Error Banner */}
           {errorMessage && (
             <div 
               role="alert"
-              className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-semibold flex items-start gap-2.5 animate-in fade-in"
+              className="p-3 bg-[#FDF1EF] border border-[#EF806D]/40 text-[#B93838] rounded-xl text-xs font-semibold flex items-start gap-2.5 animate-in fade-in"
             >
-              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-              <div className="flex-1">{errorMessage}</div>
+              <AlertTriangle className="w-4 h-4 text-[#B93838] shrink-0 mt-0.5" />
+              <div className="flex-1 leading-relaxed">{errorMessage}</div>
               <button 
                 type="button" 
                 onClick={() => setErrorMessage(null)} 
-                className="text-rose-500 hover:text-rose-700 text-xs font-bold cursor-pointer"
+                className="text-[#B93838]/70 hover:text-[#B93838] p-0.5 rounded transition-colors cursor-pointer"
                 aria-label="Dismiss error"
               >
-                ✕
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
           )}
 
           {/* ========================================================================= */}
-          {/* Voice to Bill Prominent Hero Section with Two Language Selectors */}
+          {/* Voice to Bill Primary Card with Language Selectors & Microphone Control   */}
           {/* ========================================================================= */}
-          <div className="bg-gradient-to-b from-slate-50 via-emerald-50/20 to-slate-100/70 rounded-3xl p-4 sm:p-6 border border-slate-200/90 shadow-xs relative overflow-hidden">
+          <div className="bg-[#FAF8F2] rounded-2xl p-4 sm:p-5 border border-[#DDE9DF] shadow-2xs space-y-5">
             
-            {/* Top Header Badge */}
-            <div className="flex items-center justify-between gap-2 pb-3 mb-4 border-b border-slate-200/80">
+            {/* Card Sub-Header */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#DDE9DF]">
               <div className="flex items-center gap-2">
-                <span className="text-base sm:text-lg">🎤</span>
-                <span className="font-black text-sm sm:text-base text-slate-900 tracking-tight">
+                <Mic className="w-4 h-4 text-[#153D32]" strokeWidth={2} />
+                <span className="font-bold text-sm text-[#153D32] tracking-tight">
                   Voice to Bill
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-800 bg-emerald-100/80 border border-emerald-300/60 px-2.5 py-0.5 rounded-full">
-                <Languages className="w-3.5 h-3.5 text-emerald-600" />
+              <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#153D32] bg-[#E7F3EE] border border-[#23866A]/25 px-2.5 py-0.5 rounded-full">
+                <Languages className="w-3.5 h-3.5 text-[#23866A]" strokeWidth={2} />
                 <span>12 Indian Languages</span>
               </div>
             </div>
 
-            {/* TWO Language Selectors */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 w-full text-left mb-5">
+            {/* Secondary Controls: Language Selectors */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 w-full text-left">
               
-              {/* 🗣️ Language I Speak */}
+              {/* Language I Speak */}
               <div className="space-y-1.5">
                 <label 
                   htmlFor="spoken-lang-dropdown"
-                  className="text-xs sm:text-sm font-extrabold text-slate-800 flex items-center gap-1.5"
+                  className="text-xs font-bold text-[#153D32] flex items-center gap-1.5"
                 >
-                  <span className="text-sm">🗣️</span>
+                  <Mic className="w-3.5 h-3.5 text-[#23866A]" strokeWidth={2} />
                   <span>Language I Speak</span>
                 </label>
                 <div className="relative">
@@ -955,7 +958,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                     id="spoken-lang-dropdown"
                     value={spokenLanguage}
                     onChange={(e) => handleSelectSpokenLanguage(e.target.value as VoiceLanguageKey)}
-                    className="w-full pl-3.5 pr-8 py-2.5 bg-white border-2 border-emerald-200 hover:border-emerald-400 focus:border-emerald-600 rounded-xl text-xs sm:text-sm font-bold text-slate-900 shadow-2xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer appearance-none transition-all"
+                    className="w-full pl-3.5 pr-8 py-2.5 bg-white border border-[#DDE9DF] hover:border-[#23866A] focus:border-[#153D32] rounded-xl text-xs sm:text-sm font-semibold text-[#252D29] shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#153D32]/15 cursor-pointer appearance-none transition-colors"
                   >
                     {VOICE_LANGUAGES_LIST.map((lang) => (
                       <option key={lang.key} value={lang.key}>
@@ -963,22 +966,22 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                       </option>
                     ))}
                   </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-500">
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-[#5E6C64]">
                     <ChevronDown className="w-4 h-4" />
                   </div>
                 </div>
-                <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium">
-                  Voice input language
+                <p className="text-[11px] text-[#5E6C64]">
+                  Voice input recognition language
                 </p>
               </div>
 
-              {/* 📝 Show Bill In */}
+              {/* Show Bill In */}
               <div className="space-y-1.5">
                 <label 
                   htmlFor="display-lang-dropdown"
-                  className="text-xs sm:text-sm font-extrabold text-slate-800 flex items-center gap-1.5"
+                  className="text-xs font-bold text-[#153D32] flex items-center gap-1.5"
                 >
-                  <span className="text-sm">📝</span>
+                  <FileText className="w-3.5 h-3.5 text-[#153D32]" strokeWidth={2} />
                   <span>Show Bill In</span>
                 </label>
                 <div className="relative">
@@ -986,7 +989,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                     id="display-lang-dropdown"
                     value={displayLanguage}
                     onChange={(e) => setDisplayLanguage(e.target.value as VoiceLanguageKey)}
-                    className="w-full pl-3.5 pr-8 py-2.5 bg-white border-2 border-teal-200 hover:border-teal-400 focus:border-teal-600 rounded-xl text-xs sm:text-sm font-bold text-slate-900 shadow-2xs focus:outline-none focus:ring-2 focus:ring-teal-500/20 cursor-pointer appearance-none transition-all"
+                    className="w-full pl-3.5 pr-8 py-2.5 bg-white border border-[#DDE9DF] hover:border-[#23866A] focus:border-[#153D32] rounded-xl text-xs sm:text-sm font-semibold text-[#252D29] shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#153D32]/15 cursor-pointer appearance-none transition-colors"
                   >
                     {VOICE_LANGUAGES_LIST.map((lang) => (
                       <option key={lang.key} value={lang.key}>
@@ -994,118 +997,106 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                       </option>
                     ))}
                   </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-500">
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-[#5E6C64]">
                     <ChevronDown className="w-4 h-4" />
                   </div>
                 </div>
-                <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium">
+                <p className="text-[11px] text-[#5E6C64]">
                   Generated bill display language
                 </p>
               </div>
 
             </div>
 
-            {/* Prominent Voice-to-Bill Button */}
-            <div className="flex flex-col items-center justify-center pt-2">
-              
+            {/* Primary Action: Microphone Control */}
+            <div className="flex flex-col items-center justify-center pt-1">
               <div className="relative w-full flex justify-center">
-                {/* Subtle soundwave ripple when recording */}
-                {isRecording && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <span className="w-full max-w-[360px] h-[80px] rounded-2xl bg-rose-500/25 animate-ping" />
-                    <span className="w-full max-w-[390px] h-[95px] rounded-2xl bg-rose-400/15 animate-pulse" />
-                  </div>
-                )}
-
                 <button
                   type="button"
                   onClick={handleMainButtonClick}
                   disabled={buttonState === 'PROCESSING' || isProcessing}
-                  className={`relative group w-full max-w-[340px] h-[66px] sm:h-[72px] px-6 py-4 rounded-2xl font-black text-lg sm:text-[20px] tracking-wide flex items-center justify-center gap-3 transition-all duration-200 select-none shadow-xl cursor-pointer ${
+                  className={`relative group w-full max-w-sm h-14 sm:h-15 px-6 rounded-xl font-bold text-sm sm:text-base tracking-wide flex items-center justify-center gap-2.5 transition-all duration-150 select-none shadow-sm cursor-pointer ${
                     buttonState === 'LISTENING'
-                      ? 'bg-gradient-to-r from-rose-600 via-red-600 to-rose-700 text-white shadow-rose-600/40 ring-4 ring-rose-200 active:scale-[0.97]'
+                      ? 'bg-[#B93838] hover:bg-[#9E2E2E] text-white ring-4 ring-[#B93838]/20 active:scale-[0.99]'
                       : buttonState === 'PROCESSING'
-                      ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white opacity-90 cursor-not-allowed shadow-amber-500/20'
+                      ? 'bg-[#FBF4E7] text-[#8A6118] border border-[#D6AE62] cursor-not-allowed shadow-none'
                       : buttonState === 'SUCCESS'
-                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-emerald-600/40 ring-4 ring-emerald-200'
+                      ? 'bg-[#23866A] text-white ring-4 ring-[#23866A]/20'
                       : buttonState === 'ERROR'
-                      ? 'bg-gradient-to-r from-rose-500 via-rose-600 to-amber-600 text-white shadow-rose-500/30 hover:scale-[1.02] active:scale-[0.97]'
-                      : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/35 hover:shadow-2xl hover:shadow-emerald-500/50 hover:scale-[1.02] active:scale-[0.97] ring-4 ring-emerald-100'
+                      ? 'bg-[#B93838] hover:bg-[#9E2E2E] text-white active:scale-[0.99]'
+                      : 'bg-[#153D32] hover:bg-[#0A241D] text-[#FAF8F2] active:scale-[0.99] ring-4 ring-[#153D32]/10'
                   }`}
                   aria-label="Voice-to-Bill primary action button"
                 >
                   {/* Dynamic Visual States */}
                   {buttonState === 'LISTENING' ? (
                     <>
-                      <span className="relative flex h-5 w-5 sm:h-6 sm:w-6 shrink-0">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-5 w-5 sm:h-6 sm:w-6 bg-white flex items-center justify-center text-rose-600 font-black text-xs">
-                          🔴
-                        </span>
+                      <span className="relative flex h-3 w-3 shrink-0" aria-hidden="true">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-white" />
                       </span>
-                      <span>LISTENING...</span>
+                      <span>Listening... Tap to Stop</span>
                     </>
                   ) : buttonState === 'PROCESSING' ? (
                     <>
-                      <RefreshCw className="w-6 h-6 sm:w-7 sm:h-7 animate-spin shrink-0 text-white" />
-                      <span>PROCESSING...</span>
+                      <Loader2 className="w-5 h-5 animate-spin shrink-0" strokeWidth={2} />
+                      <span>Processing Voice...</span>
                     </>
                   ) : buttonState === 'SUCCESS' ? (
                     <>
-                      <CheckCircle2 className="w-6 h-6 sm:w-7 sm:h-7 shrink-0 text-white" />
-                      <span>✓ BILL GENERATED</span>
+                      <CheckCircle2 className="w-5 h-5 shrink-0" strokeWidth={2} />
+                      <span>Bill Updated</span>
                     </>
                   ) : buttonState === 'ERROR' ? (
                     <>
-                      <AlertTriangle className="w-6 h-6 sm:w-7 sm:h-7 shrink-0 text-white" />
-                      <span>⚠️ TRY AGAIN</span>
+                      <AlertTriangle className="w-5 h-5 shrink-0" strokeWidth={2} />
+                      <span>Try Again</span>
                     </>
                   ) : (
                     <>
-                      <Mic className="w-6 h-6 sm:w-7 sm:h-7 shrink-0 drop-shadow-sm transition-transform group-hover:scale-110" />
-                      <span>🎙️ START SPEAKING</span>
+                      <Mic className="w-5 h-5 shrink-0" strokeWidth={2} />
+                      <span>Start Speaking</span>
                     </>
                   )}
                 </button>
               </div>
 
-              {/* Status & Guidance Subtext */}
+              {/* Status & Input Feedback */}
               <div className="mt-3 text-center w-full">
                 {isRecording ? (
-                  <div className="space-y-2">
-                    <p className="text-xs sm:text-sm font-black text-rose-600 animate-pulse flex items-center justify-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-rose-600" />
-                      Listening in {VOICE_LANGUAGES[spokenLanguage]?.name}... Speak continuously ({recordingSeconds}s)
+                  <div className="space-y-2.5">
+                    <p className="text-xs font-bold text-[#B93838] flex items-center justify-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[#B93838] animate-pulse" />
+                      Listening in {VOICE_LANGUAGES[spokenLanguage]?.name} ({recordingSeconds}s)
                     </p>
 
-                    {/* Live streaming interim speech bubble */}
+                    {/* Live streaming interim transcript box */}
                     {interimTranscript && (
-                      <div className="mx-auto max-w-md bg-slate-900 text-white rounded-2xl p-3 shadow-lg border border-slate-700 text-left animate-in fade-in">
-                        <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold mb-1">
-                          <span className="flex items-center gap-1 text-emerald-400">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                      <div className="mx-auto max-w-md bg-white text-[#252D29] rounded-xl p-3 shadow-xs border border-[#23866A]/40 text-left animate-in fade-in">
+                        <div className="flex items-center justify-between text-[10px] text-[#5E6C64] font-bold mb-1">
+                          <span className="flex items-center gap-1.5 text-[#23866A] uppercase tracking-wider">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#23866A] animate-pulse" />
                             Live Speech Stream
                           </span>
                           <span>Auto-commits on pause</span>
                         </div>
-                        <p className="text-xs sm:text-sm font-semibold text-emerald-300 italic">
+                        <p className="text-xs sm:text-sm font-semibold text-[#153D32]">
                           &ldquo;{interimTranscript}&rdquo;
-                          <span className="inline-block w-1.5 h-3 bg-emerald-400 ml-1 animate-pulse" />
                         </p>
 
                         {/* Real-time detected items chips */}
                         {livePreviewItems.length > 0 && (
-                          <div className="mt-2 pt-2 border-t border-slate-700/80 flex flex-wrap gap-1.5 items-center">
-                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Detected:</span>
+                          <div className="mt-2 pt-2 border-t border-[#DDE9DF] flex flex-wrap gap-1.5 items-center">
+                            <span className="text-[10px] text-[#5E6C64] font-bold uppercase tracking-wider">Detected:</span>
                             {livePreviewItems.map((item, idx) => (
                               <span
                                 key={idx}
-                                className="inline-flex items-center gap-1 text-[11px] font-black bg-emerald-950 text-emerald-300 border border-emerald-500/50 px-2 py-0.5 rounded-lg"
+                                className="inline-flex items-center gap-1 text-[11px] font-bold bg-[#E7F3EE] text-[#153D32] border border-[#23866A]/25 px-2 py-0.5 rounded-md"
                               >
-                                <span>{item.quantity}×</span>
+                                <span>{item.quantity}x</span>
                                 <span>{item.name}</span>
                                 {item.price !== undefined && item.price > 0 && (
-                                  <span className="text-emerald-400 font-semibold">(₹{item.price})</span>
+                                  <span className="text-[#23866A] font-semibold">(₹{item.price})</span>
                                 )}
                               </span>
                             ))}
@@ -1118,19 +1109,20 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                       <button
                         type="button"
                         onClick={handleStopRecordingAndProcess}
-                        className="mt-1 text-xs font-bold text-slate-700 bg-white border border-slate-300 px-3.5 py-1.5 rounded-full hover:bg-slate-50 cursor-pointer shadow-2xs transition-all active:scale-95"
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-[#153D32] bg-white border border-[#DDE9DF] px-3.5 py-1.5 rounded-lg hover:bg-[#F3EFE3] cursor-pointer shadow-2xs transition-colors"
                       >
-                        ✓ Done Speaking (Process Now)
+                        <Check className="w-3.5 h-3.5 text-[#23866A]" strokeWidth={2.5} />
+                        <span>Done Speaking (Process Now)</span>
                       </button>
                     </div>
                   </div>
                 ) : isProcessing ? (
-                  <p className="text-xs sm:text-sm font-black text-amber-700 flex items-center justify-center gap-1.5">
-                    Analyzing voice and extracting items...
+                  <p className="text-xs font-semibold text-[#A07828]">
+                    Analyzing voice transcript and matching shop inventory...
                   </p>
                 ) : (
-                  <p className="text-xs text-slate-500 font-medium">
-                    Speak items naturally in {VOICE_LANGUAGES[spokenLanguage]?.name} (e.g. &ldquo;రెండు కిలోల బియ్యం నూట ఇరవై రూపాయలు&rdquo;)
+                  <p className="text-xs text-[#5E6C64]">
+                    Speak items naturally in {VOICE_LANGUAGES[spokenLanguage]?.name} (e.g., &ldquo;2 kg rice 120 rupees&rdquo;)
                   </p>
                 )}
               </div>
@@ -1141,16 +1133,16 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
 
           {/* Transcript Display Card */}
           {transcript && (
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
+            <div className="bg-[#FAF8F2] border border-[#DDE9DF] rounded-xl p-3.5 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1.5">
-                  <Volume2 className="w-3.5 h-3.5 text-slate-500" />
+                <span className="text-[11px] font-bold uppercase text-[#5E6C64] tracking-wider flex items-center gap-1.5">
+                  <Volume2 className="w-3.5 h-3.5 text-[#23866A]" />
                   {getLocalizedBillLabel('speechTranscript', displayLanguage)}
                 </span>
                 <button
                   type="button"
                   onClick={() => setIsEditingTranscript(!isEditingTranscript)}
-                  className="text-xs font-bold text-emerald-700 hover:underline cursor-pointer"
+                  className="text-xs font-bold text-[#153D32] hover:text-[#23866A] hover:underline cursor-pointer"
                 >
                   {isEditingTranscript ? 'Cancel' : 'Edit'}
                 </button>
@@ -1162,7 +1154,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                     type="text"
                     value={editedTranscript}
                     onChange={(e) => setEditedTranscript(e.target.value)}
-                    className="flex-1 px-3 py-1.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium bg-white"
+                    className="flex-1 px-3 py-1.5 text-xs rounded-lg border border-[#DDE9DF] focus:outline-none focus:ring-2 focus:ring-[#153D32]/20 focus:border-[#153D32] font-medium bg-white text-[#252D29]"
                   />
                   <Button
                     size="sm"
@@ -1174,7 +1166,7 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                   </Button>
                 </div>
               ) : (
-                <p className="text-sm font-bold text-slate-800 italic bg-white p-2.5 rounded-xl border border-slate-200/60">
+                <p className="text-sm font-semibold text-[#153D32] bg-white px-3 py-2 rounded-lg border border-[#DDE9DF]">
                   &ldquo;{transcript}&rdquo;
                 </p>
               )}
@@ -1183,16 +1175,16 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
 
           {/* Ambiguity Resolution Section */}
           {ambiguousItems.length > 0 && (
-            <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center gap-2 text-amber-900 font-black text-xs uppercase tracking-wide">
-                <AlertTriangle className="w-4 h-4 text-amber-600" />
-                <span>Multiple Matches Detected — Please Select Product</span>
+            <div className="bg-[#FEF9EB] border border-[#D6AE62] rounded-xl p-4 space-y-3">
+              <div className="flex items-center gap-2 text-[#8A6118] font-bold text-xs uppercase tracking-wide">
+                <AlertTriangle className="w-4 h-4 text-[#A07828]" />
+                <span>Multiple Matches Detected — Select Product</span>
               </div>
 
               {ambiguousItems.map((amb, ambIdx) => (
-                <div key={ambIdx} className="bg-white rounded-xl p-3 border border-amber-200 space-y-2">
-                  <p className="text-xs font-extrabold text-slate-800">
-                    Which <span className="text-amber-800">&ldquo;{amb.queried_name}&rdquo;</span> did you mean? (Qty: {amb.quantity})
+                <div key={ambIdx} className="bg-white rounded-xl p-3 border border-[#D6AE62]/50 space-y-2">
+                  <p className="text-xs font-bold text-[#252D29]">
+                    Which <span className="text-[#8A6118]">&ldquo;{amb.queried_name}&rdquo;</span> did you mean? (Qty: {amb.quantity})
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     {amb.candidates.map((cand) => (
@@ -1200,14 +1192,14 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                         key={cand.id}
                         type="button"
                         onClick={() => handleResolveAmbiguity(ambIdx, cand)}
-                        className="p-2.5 text-left rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 transition-all cursor-pointer flex flex-col justify-between group active:scale-95"
+                        className="p-2.5 text-left rounded-lg border border-[#DDE9DF] hover:border-[#23866A] hover:bg-[#E7F3EE]/40 transition-colors cursor-pointer flex flex-col justify-between group"
                       >
-                        <p className="text-xs font-extrabold text-slate-900 group-hover:text-emerald-800 truncate">
+                        <p className="text-xs font-bold text-[#153D32] group-hover:text-[#0A241D] truncate">
                           {getLocalizedItemName(cand.name, displayLanguage)}
                         </p>
-                        <div className="flex items-center justify-between mt-1 text-[11px] font-bold">
-                          <span className="text-emerald-700">₹{cand.selling_price}</span>
-                          <span className="text-slate-400 font-medium">
+                        <div className="flex items-center justify-between mt-1 text-[11px] font-semibold">
+                          <span className="text-[#23866A] tabular-nums">₹{cand.selling_price}</span>
+                          <span className="text-[#5E6C64]">
                             {cand.current_stock} {getLocalizedBillLabel('inStock', displayLanguage)}
                           </span>
                         </div>
@@ -1221,25 +1213,26 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
 
           {/* Unmatched Items Alert */}
           {unmatchedItems.length > 0 && (
-            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-3.5 space-y-2">
-              <div className="flex items-center gap-2 text-rose-800 font-black text-xs uppercase tracking-wide">
-                <AlertTriangle className="w-4 h-4 text-rose-600" />
+            <div className="bg-[#FDF1EF] border border-[#EF806D]/40 rounded-xl p-3.5 space-y-2">
+              <div className="flex items-center gap-2 text-[#B93838] font-bold text-xs uppercase tracking-wide">
+                <AlertTriangle className="w-4 h-4 text-[#B93838]" />
                 <span>Items Not Found in Inventory</span>
               </div>
               <div className="space-y-1.5">
                 {unmatchedItems.map((un, unIdx) => (
-                  <div key={unIdx} className="flex items-center justify-between text-xs bg-white p-2 rounded-xl border border-rose-100">
-                    <span className="font-extrabold text-slate-800">
-                      {un.quantity}× {un.queried_name}
+                  <div key={unIdx} className="flex items-center justify-between text-xs bg-white px-3 py-2 rounded-lg border border-[#EF806D]/30">
+                    <span className="font-bold text-[#252D29]">
+                      {un.quantity}x {un.queried_name}
                     </span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-rose-600 font-medium">Not in shop catalog</span>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-[11px] text-[#B93838] font-medium">{un.reason || 'Not in shop catalog'}</span>
                       <button
                         type="button"
                         onClick={() => handleRemoveUnmatched(unIdx)}
-                        className="text-slate-400 hover:text-rose-600 font-bold cursor-pointer"
+                        className="text-[#5E6C64] hover:text-[#B93838] p-0.5 rounded transition-colors cursor-pointer"
+                        aria-label={`Remove unmatched item ${un.queried_name}`}
                       >
-                        ✕
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
@@ -1250,67 +1243,82 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
 
           {/* Recognized Bill Items Table - Display Localized via "Show Bill In" */}
           <div className="space-y-2.5">
-            <div className="flex items-center justify-between px-1">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-500">
+            <div className="flex items-center justify-between px-0.5">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[#5E6C64]">
                 {getLocalizedBillLabel('recognizedItems', displayLanguage)} ({matchedItems.length})
               </h3>
               {matchedItems.length > 0 && (
-                <span className="text-xs font-extrabold text-emerald-700">
+                <span className="text-xs font-bold text-[#153D32] tabular-nums">
                   {getLocalizedBillLabel('subtotal', displayLanguage)}: ₹{subtotal}
                 </span>
               )}
             </div>
 
             {matchedItems.length > 0 ? (
-              <div className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100 shadow-2xs overflow-hidden">
+              <div className="bg-white border border-[#DDE9DF] rounded-xl divide-y divide-[#DDE9DF] shadow-2xs overflow-hidden">
                 {matchedItems.map((item, idx) => (
-                  <div key={idx} className="p-3.5 flex items-center justify-between gap-3">
+                  <div key={idx} className="p-3.5 flex items-center justify-between gap-3 hover:bg-[#FAF8F2]/60 transition-colors">
                     <div className="min-w-0 flex-1">
-                      <p className="font-extrabold text-xs sm:text-sm text-slate-900 truncate">
+                      <p className="font-bold text-xs sm:text-sm text-[#153D32] truncate">
                         {getLocalizedItemName(item.name, displayLanguage)}
                       </p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs text-slate-500 font-semibold">
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                        <span className="text-xs text-[#5E6C64] font-medium tabular-nums">
                           ₹{item.unit_price} / {getLocalizedUnit(item.unit, displayLanguage)}
                         </span>
-                        {item.price_source && item.price_source !== 'catalogue' && (
-                          <span data-testid="voice-price-source" className="text-[10px] font-black text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded-md">
+                        {item.price_source && item.price_source !== 'catalogue' ? (
+                          <span
+                            data-testid="voice-price-source"
+                            className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#E7F3EE] text-[#153D32] border border-[#23866A]/25"
+                          >
                             {item.price_source === 'spoken' ? 'Spoken price' : 'Edited price'}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-[#FAF8F2] text-[#5E6C64] border border-[#DDE9DF]">
+                            Catalog price
                           </span>
                         )}
                         {item.spoken_quantity && (
-                          <span className="text-[10px] font-semibold text-slate-500">said {item.spoken_quantity}</span>
-                        )}
-                        {item.is_insufficient_stock && (
-                          <span className="text-[10px] font-black text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-md">
-                            Only {item.available_stock} in stock
+                          <span className="text-[10px] font-medium text-[#5E6C64]">
+                            said {item.spoken_quantity}
                           </span>
                         )}
-                        {item.is_out_of_stock && (
-                          <span className="text-[10px] font-black text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded-md">
+                        {item.is_out_of_stock ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#FDF1EF] text-[#B93838] border border-[#EF806D]/40">
+                            <AlertTriangle className="w-3 h-3" />
                             {getLocalizedBillLabel('outOfStock', displayLanguage)}
+                          </span>
+                        ) : item.is_insufficient_stock ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#FEF9EB] text-[#A07828] border border-[#D6AE62]/40">
+                            <AlertTriangle className="w-3 h-3" />
+                            Only {item.available_stock} in stock
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-[#E7F3EE] text-[#23866A] border border-[#23866A]/20">
+                            <CheckCircle2 className="w-3 h-3" />
+                            Verified
                           </span>
                         )}
                       </div>
                     </div>
 
                     {/* Quantity Stepper [-] Qty [+] */}
-                    <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl shrink-0">
+                    <div className="flex items-center gap-1 bg-[#FAF8F2] border border-[#DDE9DF] p-1 rounded-lg shrink-0">
                       <button
                         type="button"
                         onClick={() => handleUpdateQuantity(idx, -1)}
-                        className="w-7 h-7 rounded-lg bg-white border border-slate-200 text-slate-700 flex items-center justify-center font-bold active:scale-90 cursor-pointer"
+                        className="w-7 h-7 rounded-md bg-white border border-[#DDE9DF] text-[#252D29] hover:border-[#153D32] flex items-center justify-center font-bold transition-colors cursor-pointer"
                         aria-label="Decrease quantity"
                       >
                         <Minus className="w-3 h-3" />
                       </button>
-                      <span className="font-black text-xs sm:text-sm text-slate-900 w-6 text-center">
+                      <span className="font-bold text-xs sm:text-sm text-[#153D32] w-7 text-center tabular-nums">
                         {item.quantity}
                       </span>
                       <button
                         type="button"
                         onClick={() => handleUpdateQuantity(idx, 1)}
-                        className="w-7 h-7 rounded-lg bg-white border border-slate-200 text-slate-700 flex items-center justify-center font-bold active:scale-90 cursor-pointer"
+                        className="w-7 h-7 rounded-md bg-white border border-[#DDE9DF] text-[#252D29] hover:border-[#153D32] flex items-center justify-center font-bold transition-colors cursor-pointer"
                         aria-label="Increase quantity"
                       >
                         <Plus className="w-3 h-3" />
@@ -1318,8 +1326,8 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                     </div>
 
                     {/* Total Price & Delete */}
-                    <div className="text-right shrink-0 min-w-[70px]">
-                      <label className="inline-flex items-center gap-0.5 text-xs sm:text-sm font-black text-emerald-700">
+                    <div className="text-right shrink-0 min-w-[76px]">
+                      <label className="inline-flex items-center gap-0.5 text-xs sm:text-sm font-extrabold text-[#153D32] tabular-nums">
                         ₹
                         <input
                           key={`${idx}-${item.total_price}`}
@@ -1331,37 +1339,39 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                           onBlur={(e) => handleEditLineTotal(idx, e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                           aria-label={`Line total for ${item.name}`}
-                          className="w-16 text-right bg-transparent border-b border-dashed border-emerald-300 focus:outline-none focus:border-emerald-700"
+                          className="w-16 text-right bg-transparent border-b border-dashed border-[#23866A]/60 focus:outline-none focus:border-[#153D32] tabular-nums"
                         />
                       </label>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveMatchedItem(idx)}
-                        className="text-[11px] font-bold text-slate-400 hover:text-rose-600 mt-0.5 inline-flex items-center gap-0.5 cursor-pointer"
-                      >
-                        <Trash2 className="w-3 h-3" /> {getLocalizedBillLabel('remove', displayLanguage)}
-                      </button>
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMatchedItem(idx)}
+                          className="text-[11px] font-semibold text-[#5E6C64] hover:text-[#B93838] mt-1 inline-flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <Trash2 className="w-3 h-3" /> {getLocalizedBillLabel('remove', displayLanguage)}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
 
                 {/* Grand Total Summary Bar */}
-                <div className="p-3.5 bg-slate-50 flex items-center justify-between border-t border-slate-200">
-                  <span className="text-xs font-black uppercase text-slate-600">
+                <div className="px-4 py-3.5 bg-[#FAF8F2] flex items-center justify-between border-t border-[#DDE9DF]">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#5E6C64]">
                     {getLocalizedBillLabel('grandTotal', displayLanguage)}
                   </span>
-                  <span className="text-xl font-black text-emerald-700">
+                  <span className="text-xl font-extrabold text-[#153D32] tabular-nums">
                     ₹{total}
                   </span>
                 </div>
               </div>
             ) : (
-              <div className="py-8 text-center text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-2xl">
-                <ShoppingCart className="w-8 h-8 mx-auto text-slate-300 mb-1" />
-                <p className="text-xs font-bold text-slate-600">
+              <div className="py-8 text-center bg-[#FAF8F2] border border-dashed border-[#DDE9DF] rounded-xl">
+                <ShoppingCart className="w-7 h-7 mx-auto text-[#5E6C64]/50 mb-1.5" strokeWidth={1.75} />
+                <p className="text-xs font-bold text-[#153D32]">
                   {getLocalizedBillLabel('noItemsYet', displayLanguage)}
                 </p>
-                <p className="text-[11px] text-slate-400 mt-0.5">
+                <p className="text-[11px] text-[#5E6C64] mt-0.5">
                   {getLocalizedBillLabel('speakHint', displayLanguage)}
                 </p>
               </div>
@@ -1369,21 +1379,21 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
           </div>
 
           {/* Development Voice Simulation Drawer */}
-          <div className="bg-slate-50 rounded-2xl border border-slate-200 p-3.5 space-y-3">
+          <div className="bg-[#FAF8F2] rounded-xl border border-[#DDE9DF] p-3.5 space-y-3">
             <button
               type="button"
               onClick={() => setShowDevPanel(!showDevPanel)}
               className="flex items-center justify-between w-full text-left cursor-pointer"
             >
-              <div className="flex items-center gap-1.5 text-xs font-black text-slate-700">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-[#153D32]">
+                <Sparkles className="w-3.5 h-3.5 text-[#D6AE62]" />
                 <span>Multilingual Voice Simulation Presets</span>
-                <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#FEF9EB] text-[#A07828] border border-[#D6AE62]/40">
                   Zero-Mic Testing
                 </span>
               </div>
-              <span className="text-xs font-bold text-slate-400">
-                {showDevPanel ? '▲' : '▼'}
+              <span className="text-[#5E6C64] shrink-0">
+                {showDevPanel ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               </span>
             </button>
 
@@ -1399,10 +1409,10 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                         setSimulatedInput(preset.text);
                         handleProcessTranscript(preset.text, preset.langKey);
                       }}
-                      className="px-2.5 py-1.5 text-[11px] font-bold rounded-xl bg-white border border-slate-200 hover:border-emerald-500 hover:text-emerald-700 transition-all cursor-pointer active:scale-95 shadow-2xs text-left"
+                      className="px-2.5 py-1.5 text-[11px] font-semibold rounded-lg bg-white border border-[#DDE9DF] hover:border-[#23866A] hover:text-[#153D32] transition-colors cursor-pointer shadow-2xs text-left"
                       title={preset.label}
                     >
-                      <span className="text-slate-400 text-[10px] mr-1">[{VOICE_LANGUAGES[preset.langKey]?.name}]:</span>
+                      <span className="text-[#5E6C64] text-[10px] mr-1">[{VOICE_LANGUAGES[preset.langKey]?.name}]:</span>
                       &ldquo;{preset.text}&rdquo;
                     </button>
                   ))}
@@ -1419,14 +1429,14 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
                         handleProcessTranscript(simulatedInput, spokenLanguage);
                       }
                     }}
-                    className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium bg-white"
+                    className="flex-1 px-3 py-2 text-xs rounded-lg border border-[#DDE9DF] focus:outline-none focus:ring-2 focus:ring-[#153D32]/15 focus:border-[#153D32] font-medium bg-white text-[#252D29]"
                   />
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => handleProcessTranscript(simulatedInput, spokenLanguage)}
                     disabled={!simulatedInput.trim() || isProcessing}
-                    className="text-xs font-black px-4 rounded-xl cursor-pointer"
+                    className="text-xs font-bold px-4 rounded-lg cursor-pointer"
                   >
                     Simulate
                   </Button>
@@ -1439,20 +1449,28 @@ export const VoiceBillModal: React.FC<VoiceBillModalProps> = ({
           {/* Dev-Only Voice Debug Panel (Hidden in Production) */}
           {/* ========================================================================= */}
           {import.meta.env.DEV && (
-            <div className="bg-slate-900 text-slate-100 rounded-2xl border border-slate-700/80 p-3.5 space-y-2.5 font-mono text-xs shadow-inner">
+            <div className="bg-slate-900 text-slate-100 rounded-xl border border-slate-700/80 p-3.5 space-y-2.5 font-mono text-xs shadow-inner">
               <button
                 type="button"
                 onClick={() => setShowDebugPanel(!showDebugPanel)}
                 className="flex items-center justify-between w-full text-left cursor-pointer select-none"
               >
                 <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="font-extrabold text-slate-200 uppercase tracking-wider text-[11px]">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  <span className="font-bold text-slate-200 uppercase tracking-wider text-[11px]">
                     VOICE DEBUG PANEL (Dev Mode)
                   </span>
                 </div>
-                <span className="text-[11px] font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded-md">
-                  {showDebugPanel ? '▲ Hide' : '▼ Inspect State'}
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-300 bg-slate-800 px-2 py-0.5 rounded-md">
+                  {showDebugPanel ? (
+                    <>
+                      <ChevronUp className="w-3.5 h-3.5" /> Hide
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-3.5 h-3.5" /> Inspect State
+                    </>
+                  )}
                 </span>
               </button>
 
