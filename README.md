@@ -1,166 +1,201 @@
-# 🌿 SHELFORA — Grocery Management & Invoice Intelligence Platform
+# ShopPulse
 
-**Tagline:** *"Smarter Shelves. Better Decisions."*
+ShopPulse is a web application for small shops, with a focus on grocery / Kirana stores. It keeps stock, counter billing and supplier bills in one place: a POS sale reduces stock, a supplier bill can be read into the catalog for review, and the owner sees low-stock items and sales summaries on a dashboard. The UI brands the product as **SHELFORA**.
 
-[![React](https://img.shields.io/badge/React-19.2.8-153D32?style=for-the-badge&logo=react&logoColor=white)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-6.0-23866A?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-8.3-D6AE62?style=for-the-badge&logo=vite&logoColor=black)](https://vitejs.dev/)
-[![TailwindCSS](https://img.shields.io/badge/Tailwind-4.3-153D32?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-B9E5D0.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+## Features
 
-> **SHELFORA** is a premium, offline-first grocery management and invoice intelligence platform engineered specifically for retail stores and Indian Kirana merchants. It blends header-guided dynamic invoice extraction, rapid multi-item POS billing, real-time multi-counter synchronization, AI demand forecasting, smart weighing scale / ESP32 IoT counter integration, and 12-language Voice-to-Bill.
+Verified in code and by automated tests or screenshots:
 
----
+- **Stock catalog** — products, prices, stock levels, low-stock list, product images.
+- **Quick POS** — multi-item basket, payment method (cash, UPI, card, credit), receipts; stock is reduced in the same transaction as the sale.
+- **Scan Bill** — upload or capture supplier invoices (PDF, image, or photos), quality check, rotation, enhancement, OCR, and a review step before stock changes.
+- **Voice-to-Bill** — spoken orders parsed into items for 12 Indian languages. Speech-to-text runs in **mock mode** unless a Sarvam API key is set.
+- **Shop insights** — 7-day sales summary, top sellers, rule-based insight cards, and a simple moving-average demand estimate.
+- **Roles** — owner, manager and cashier access on the shop.
 
-## 🌟 Key Capabilities & Pillars
+See [docs/unbuilt_features_and_reasoning.md](docs/unbuilt_features_and_reasoning.md) for partial and unbuilt features.
 
-| Pillar | Features & Technical Highlights |
-| :--- | :--- |
-| **🧾 Invoice Intelligence Scanner** | Header-guided dynamic invoice extraction layer that isolates Rate, Purchase Price, Selling Price, and MRP with spatial boundary verification and banker's Decimal rounding. Generates audit workbooks (.xlsx) and performs idempotent stock updates. |
-| **📷 Invoice Photo Preparation** | Camera capture of multi-page invoices with automatic quality grading, upright/sideways/upside-down detection, deskewing, perspective correction and measured, adaptive enhancement before the existing OCR engine; manual rotate/retake/reorder, lossless PDF, originals kept. See [docs/document-prep](docs/document-prep/README.md). |
-| **⚡ Lightning POS & Billing** | Rapid multi-item checkout, instant bill calculation, cash & UPI split payments, thermal receipt generator, keyboard shortcuts, and barcode scanner integration. |
-| **🎙️ Voice-to-Bill (12 Languages)** | Fast natural language billing powered by multilingual voice parsing supporting Hindi, Telugu, Tamil, Kannada, Marathi, Bengali, Gujarati, Punjabi, Malayalam, Odia, Assamese, and Urdu. |
-| **📦 Dynamic Inventory & Restocking** | Real-time stock decrement transactions, low-stock threshold triggers, multi-category taxonomy, supplier management, and instant stock adjustments. |
-| **📊 Shelf Analytics & Demand Intelligence** | Rolling daily/weekly/monthly revenue trends, gross margin analytics `(sellingPrice - costPrice)`, top seller rankings, slow-moving dead-capital detection, and velocity-based stockout forecasts. |
-| **📶 Offline-First Resilience** | Zero-latency local caching, persistent queueing of offline sales and product mutations, atomic conflict resolution, and automatic background sync upon reconnection. |
-| **📡 ESP32 IoT Counter & Scale** | Ready-to-pair hardware communication bridge for ESP32 digital scales and smart optical counters with simulator fallback mode. |
-
----
-
-## 🏛️ System Architecture
+## Architecture
 
 ```
-                                  +-----------------------------+
-                                  |     Shelfora Web Client     |
-                                  |   (React 19 + TypeScript)   |
-                                  +--------------+--------------+
-                                                 |
-                       +-------------------------+-------------------------+
-                       |                                                   |
-           [Online Path: Direct Sync]                              [Offline Path]
-                       |                                                   |
-                       v                                                   v
-         +----------------------------+                     +----------------------------+
-         |     FastAPI Cloud Hub      |                     |    Local Storage Cache     |
-         |  OCR Engine & SQLite DB    |                     |  Sales & Inventory Queues  |
-         +-------------+--------------+                     +--------------+-------------+
-                       |                                                   |
-                       |                  Automatic Reconnect              |
-                       +=================== Sync Engine <==================+
-                                       (Exponential Backoff
-                                      & Deterministic Dedupe)
+React 19 + TypeScript + Vite (src/)
+        │  /api  (Vite dev proxy → http://127.0.0.1:8000)
+        ▼
+FastAPI  /api/v1  (backend/api/routes/)      JWT bearer auth
+        │
+        ▼
+Services (backend/services/)                 pricing, sales, invoices, OCR, voice, insights
+        │
+        ▼
+SQLAlchemy ORM → SQLite (backend/shoppulse.db by default)
 ```
 
----
+The invoice OCR also uses a Node worker (`backend/services/ocr_worker.mjs`, tesseract.js) called from Python.
 
-## 📂 Project Structure
+## Tech Stack
 
-```bash
-SHELFORA/
-├── backend/                 # FastAPI REST API & Grocery OCR Engine
-│   ├── api/routes/          # Invoices, Sales, Products, Auth, Voice endpoints
-│   ├── services/grocery_ocr/# Modular OCR preprocessing, table extraction & audit
-│   └── shoppulse.db         # Persistent SQLite database
+| Area | Technologies |
+|---|---|
+| Frontend | React 19, TypeScript 6, Vite 8, Tailwind CSS 4, lucide-react, Capacitor (Android scaffold) |
+| Backend | Python 3.13 (tested), FastAPI, SQLAlchemy, Alembic, Pydantic, PyJWT, bcrypt |
+| Documents / OCR | pdfplumber, pypdfium2, OpenCV (headless), Pillow, pi-heif, openpyxl, tesseract.js |
+| Database | SQLite (PostgreSQL driver listed in requirements; not tested) |
+| Testing | pytest (backend), Vitest (frontend), TypeScript compiler checks, oxlint; Playwright browser checks live in `scripts/e2e/` and are not part of the commands below |
+
+## Project Structure
+
+```
+SHOP-PULSE/
+├── backend/
+│   ├── main.py              # FastAPI app; `python main.py --init-db` creates the schema
+│   ├── api/routes/          # REST routers under /api/v1
+│   ├── services/            # business logic (sales, pricing, invoices, OCR, voice)
+│   ├── db/models/           # SQLAlchemy models
+│   ├── schemas/             # Pydantic request/response models
+│   ├── alembic/             # migrations
+│   └── tests/               # backend test suite
 ├── src/
-│   ├── components/          # Reusable UI components & modals
-│   │   ├── branding/        # ShelforaLogo vector emblem and wordmarks
-│   │   ├── dashboard/       # SalesOverview, TodaySummary, AttentionCard
-│   │   ├── Navbar.tsx       # Minimal Shelfora top navigation
-│   │   ├── Sidebar.tsx      # Grouped collapsible navigation
-│   │   └── VoiceBillModal.tsx # 12-language voice billing interface
-│   ├── pages/               # Top-level page views
-│   │   ├── Dashboard.tsx    # Analytics-first business overview
-│   │   ├── InvoiceScanner.tsx # Intelligent document processing scanner
-│   │   ├── Inventory.tsx    # Shelf stock catalog & restock checklist
-│   │   ├── Sales.tsx        # Fast POS billing terminal
-│   │   ├── Insights.tsx     # Demand forecasting & business telemetry
-│   │   └── Settings.tsx     # Shop profile & multi-language switcher
-│   ├── i18n/                # 12 Indian regional language dictionaries
-│   ├── hooks/               # Custom reactive state hooks
-│   └── types/               # Strict TypeScript models
-├── public/
-│   ├── favicon.svg          # Shelfora vector favicon
-│   ├── logo.svg             # Shelfora horizontal logo
-│   └── manifest.json        # PWA application metadata
-└── dist/                    # Optimized production bundle
+│   ├── pages/               # Dashboard, Sales, Inventory, Insights, InvoiceScanner, Settings
+│   ├── components/          # UI components and modals
+│   ├── api/                 # HTTP client modules for the backend
+│   ├── services/            # frontend services (sales, inventory, sync, device)
+│   └── tests/               # Vitest suites
+├── scripts/                 # backend launcher, debug and browser-check scripts
+├── docs/                    # evaluation documents, OCR and phase reports
+└── validation/              # folder for real invoice photos (empty by design)
 ```
 
----
+## Prerequisites
 
-## 🚀 Quick Start
+- **Node.js** 22 (tested with 22.23)
+- **npm** 10 (tested with 10.9)
+- **Python** 3.13 (tested)
+- Git
 
-### 1. Prerequisites
-* **Node.js** v20+ or v22+
-* **npm** v10+
-* **Python** 3.12+
+## Installation
 
-### 2. Installation
 ```bash
-# Clone the repository
 git clone https://github.com/sasikiranambati/SHOP-PULSE.git
 cd SHOP-PULSE
 
-# Install frontend dependencies
-npm install
+# Frontend dependencies (uses package-lock.json)
+npm ci
 
-# Setup Python backend virtual environment
+# Backend virtual environment and dependencies
 python -m venv backend/.venv
-backend\.venv\Scripts\pip install -r backend/requirements.txt
+# macOS / Linux:
+source backend/.venv/bin/activate
+# Windows (PowerShell):
+#   backend\.venv\Scripts\Activate.ps1
+pip install -r backend/requirements.txt
+pip install pytest            # test runner (not listed in requirements.txt)
+pip install pytest-xdist      # optional: parallel runs with -n 4
 ```
 
-### 3. Running Locally
-```bash
-# Terminal 1: Start FastAPI backend server
-cd backend
-.venv\Scripts\uvicorn main:app --reload --port 8000
+## Environment Setup
 
-# Terminal 2: Start Vite frontend development server
+Both examples contain **placeholder values only**. Copy them before editing.
+
+- `backend/.env.example` → `backend/.env`: API port, JWT settings, voice mode, MRP provider. The development `SECRET_KEY` in the example must be replaced for any deployment.
+- `.env.example` → `.env` (repository root): Firebase web configuration values (`VITE_FIREBASE_*`). These are used by the product-image upload; sign-in does not use Firebase. Empty or default values let the app start.
+
+```bash
+cp backend/.env.example backend/.env
+cp .env.example .env
+```
+
+Without a `backend/.env`, the backend uses its built-in defaults. Speech-to-text stays in mock mode unless `VOICE_MODE=sarvam` and `SARVAM_API_KEY` are set.
+
+## Run the Project
+
+**1. Create the database schema (first run only).** The default database is `backend/shoppulse.db`, which is gitignored.
+
+```bash
+cd backend
+python main.py --init-db
+cd ..
+```
+
+**2. Start the backend** (in one terminal, from the repository root):
+
+```bash
+npm run backend
+```
+
+This launches `backend/main.py` on `http://127.0.0.1:8000` using `backend/.venv` if it exists. Health check: `http://127.0.0.1:8000/api/v1/health`. API docs: `http://127.0.0.1:8000/docs`.
+
+Alternative: `cd backend && python main.py`.
+
+**3. Start the frontend** (in a second terminal):
+
+```bash
 npm run dev
 ```
-Open [http://localhost:5173/](http://localhost:5173/) in your browser.
 
-### 4. Running Verification Test Suites
+Open `http://localhost:5173`. Create an account on the sign-up page, then log in.
+
+## Testing
+
 ```bash
-# Run Frontend Vitest Suite (134 tests across 17 suites)
+# Backend tests (from the repository root; uses a temporary SQLite database)
+python -m pytest -c backend/pytest.ini backend/tests
+
+# Frontend tests (Vitest)
 npm test
 
-# Run Backend Pytest Suite (915 collected: 906 passed, 9 skipped)
-& "backend\.venv\Scripts\python.exe" -m pytest -c backend/pytest.ini backend/tests
-
-# Check TypeScript Projects
+# TypeScript checks
 npx tsc -b
 npx tsc --noEmit -p tests/tsconfig.json
 
-# Check Python Types with Pyrefly
-& "backend\.venv\Scripts\pyrefly.exe" check --config pyrefly.toml backend/db/session.py backend/main.py scripts/debug/verify_voice_sales_live.py
+# Lint (oxlint: 0 errors; warnings are listed in the output)
+npm run lint
+
+# Production build
+npm run build
 ```
 
----
+**Recorded results** (from the working tree this README is part of):
 
-## 🗄️ Database Architecture & Safety
+- Backend: 1257 collected; **1254 passed, 3 failed, 0 skipped**. The 3 failures are environment-dependent: `test_db_initialization_safety.py::test_02_…` and `::test_06_…`, and `test_stage_6_7_acceptance.py::test_01_…`. Each needs the developer's local `backend/shoppulse.db`, which is gitignored and not in a fresh clone; the tests fail with "file not found" and do not create the file.
+- Frontend: 251 tests passed in 21 files
+- TypeScript (app and tests): pass
+- Lint: 0 errors, 21 warnings
+- Production build: pass
 
-- **Engine & Storage:** SQLite3 managed via SQLAlchemy ORM (`backend/shoppulse.db`).
-- **Core Entities:**
-  - `products`: Product master with canonical units, category taxonomy, cost/selling prices, and real-time inventory balances.
-  - `sales` & `sale_items`: POS checkout records with half-up banker's Decimal precision and atomic stock deductions.
-  - `invoices` & `invoice_items`: Extracted wholesale invoices with HSN, tax rate, rate/MRP parsing, and idempotent stock updates.
-  - `purchases`: Supplier procurement bills and payment ledger tracking.
-  - `users` & `shops`: Authentication credentials and multi-tenant shop association.
-  - `mrp`: Cached product barcode-to-MRP mappings for instant invoice auditing.
-- **Test Isolation Safeguards:** When running tests (`SHOPPULSE_TEST_MODE=1`), the session layer (`backend/core/db_safety.py`) strictly enforces that all test operations run in transient temporary directories (`%TEMP%/shoppulse-pytest-*`). The live database is protected from test mutation.
+Run backend tests from the repository root as shown; running from `backend/` makes some fixture paths fail.
 
----
+**Synthetic invoice fixture, benchmark trade-off.** `backend/tests/doc_prep_dataset.py` draws the supplier name at 36 pt (previously 40 pt), so it no longer runs into the metadata block in DejaVu Sans. Geometry is covered by `backend/tests/test_fixture_layout_geometry.py`. On the synthetic benchmark (`tests/evaluate_extraction_baseline.py`), supplier-name and invoice-number extraction improved substantially (supplier correct on 16 of 17 cases, up from 1). Line-level results moved the other way: fully correct cases 106 → 104, three decimal-shift errors appeared on case `10_blurry`, and two product names were lost on `16_similar_background`. The recorded baselines were **not** updated.
 
-## 🎨 Shelfora Design Tokens & Palette
+## Important Commands
 
-The Shelfora interface utilizes a sophisticated natural grocery palette:
-- **Primary Deep Forest Green (`#153D32`):** Brand anchors, primary actions, and prominent typography.
-- **Emerald Green (`#23866A`):** Success states, positive margins, and growth indicators.
-- **Fresh Mint (`#B9E5D0`):** Soft highlights, active pills, and freshness leaf accents.
-- **Warm Ivory (`#FAF8F2`):** Primary canvas backgrounds and soft surfaces.
-- **Premium Gold (`#D6AE62`):** VIP highlights, AI engine badges, and intelligence sparks.
-- **Soft Cream (`#F3EFE3`) & Sage Green (`#DDE9DF`):** Subtle borders and card separators.
-- **Coral (`#EF806D`):** Warning thresholds, low stock alerts, and destructive confirmations.
-- **Charcoal (`#252D29`):** High-contrast body text adhering to WCAG 2.1 AAA accessibility.
+| Task | Command |
+|---|---|
+| Install frontend dependencies | `npm ci` |
+| Create backend DB schema | `cd backend && python main.py --init-db` |
+| Start backend | `npm run backend` |
+| Start frontend dev server | `npm run dev` |
+| Backend tests | `python -m pytest -c backend/pytest.ini backend/tests` |
+| Frontend tests | `npm test` |
+| TypeScript check | `npx tsc -b` |
+| Lint | `npm run lint` |
+| Production build | `npm run build` |
+| Preview production build | `npm run preview` |
+
+Android (Capacitor): `npm run cap:sync` builds the web app and syncs it to `android/`; `npm run cap:android` opens Android Studio. The Android build was not run as part of the evaluation documents.
+
+## Documentation
+
+- [Problem Statement and Field Evidence](docs/problem_statement_and_field_evidence.md) — the problem, target users, and the field-evidence plan (no field interviews are recorded yet).
+- [Unbuilt Features and Reasons](docs/unbuilt_features_and_reasoning.md) — partial and unbuilt features, limitations, scope decisions.
+- [Presentation Notes](docs/presentation_notes.md) — speaking script, demo sequence, backup plan, panel Q&A.
+- [Presentation deck](docs/ShopPulse_Project_Presentation.pptx) — 8 slides.
+- [Scanner architecture](docs/scanner_architecture.md) and [document preparation](docs/document-prep/README.md).
+
+## Project Status
+
+- Working end to end: stock catalog, POS sales with stock deduction, dashboard, insights, role-based access, invoice intake with review.
+- Partial: invoice-scanner accuracy on real photos is **not measured** (`validation/real_invoices/` is empty); speech input is mock by default; offline sync code exists but is **not connected** to the sales or stock flows.
+- Not built: hardware scales, real-time multi-counter sync, payment gateways, supplier integrations.
+- No CI workflow and no `LICENSE` file are present in the repository yet.
 
 ---
