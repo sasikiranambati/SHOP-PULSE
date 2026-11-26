@@ -6,7 +6,6 @@ import {
   Sparkles,
   ScanLine,
   Settings as SettingsIcon,
-  PhoneCall,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -185,37 +184,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ))}
       </nav>
 
-      {/* Sidebar Footer: Support & Collapse Controls */}
-      <div className="pt-3 border-t border-[#DDE9DF] space-y-2 shrink-0">
-        {/* Support Help Banner */}
-        {!isCollapsed ? (
-          <div className="bg-[#FAF8F2] rounded-xl p-3 border border-[#DDE9DF] text-xs">
-            <div className="flex items-center gap-2 text-[#153D32] font-bold mb-0.5">
-              <PhoneCall className="w-3.5 h-3.5 text-[#23866A]" />
-              <span>{t('settings.supportLine')}</span>
-            </div>
-            <p className="text-[#5E6C64] text-[11px]">Help available 24/7</p>
-            <p className="font-extrabold text-[#153D32] mt-1 text-xs tracking-tight">1800-SHELFORA</p>
-          </div>
-        ) : (
-          <div className="flex justify-center relative group">
-            <div 
-              aria-label="Help available 24/7: 1800-SHELFORA"
-              className="w-10 h-10 rounded-xl bg-[#FAF8F2] border border-[#DDE9DF] flex items-center justify-center text-[#153D32] cursor-pointer hover:bg-[#E7F3EE] transition-colors"
-            >
-              <PhoneCall className="w-4 h-4 text-[#23866A]" />
-            </div>
-            <div 
-              role="tooltip"
-              className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2.5 px-2.5 py-1.5 rounded-lg bg-[#153D32] text-[#FAF8F2] text-xs font-medium whitespace-nowrap shadow-md opacity-0 group-hover:opacity-100 transition-opacity z-50"
-            >
-              Support: 1800-SHELFORA (24/7)
-            </div>
-          </div>
-        )}
-
-        {/* Sidebar Collapse Toggle Button */}
-        {onToggleCollapse && (
+      {/* Sidebar Footer: Collapse Controls */}
+      {onToggleCollapse && (
+        <div className="pt-3 border-t border-[#DDE9DF] shrink-0">
           <button
             type="button"
             onClick={onToggleCollapse}
@@ -235,8 +206,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <ChevronRight className="w-4 h-4 text-[#5E6C64]" />
             )}
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </aside>
   );
 };

@@ -55,7 +55,6 @@ describe('Sidebar Component', () => {
 
     // Verify active page indicator
     expect(html).toContain('aria-current="page"');
-    expect(html).toContain('1800-SHELFORA');
     expect(html).toContain('Collapse menu');
   });
 
@@ -152,8 +151,7 @@ describe('MobileNavDrawer Component', () => {
     expect(html).toContain('Shop Insights');
     expect(html).toContain('Settings &amp; More');
 
-    // Support and logout
-    expect(html).toContain('1800-SHELFORA');
+    // Logout
     expect(html).toContain('Logout');
   });
 });

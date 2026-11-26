@@ -8,7 +8,6 @@ import {
   Sparkles, 
   ScanLine,
   Settings as SettingsIcon, 
-  PhoneCall, 
   Wifi, 
   WifiOff, 
   Globe, 
@@ -279,16 +278,8 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({
         </div>
 
         {/* Drawer Footer */}
-        <div className="pt-3.5 border-t border-[#DDE9DF] space-y-2.5 shrink-0">
-          <div className="bg-[#FAF8F2] rounded-xl p-3 border border-[#DDE9DF] text-xs">
-            <div className="flex items-center gap-2 text-[#153D32] font-bold mb-0.5">
-              <PhoneCall className="w-3.5 h-3.5 text-[#23866A]" />
-              <span>{t('settings.supportLine')}</span>
-            </div>
-            <p className="font-extrabold text-[#153D32] text-xs">1800-SHELFORA</p>
-          </div>
-
-          {isLoggedIn && onLogout && (
+        {isLoggedIn && onLogout && (
+          <div className="pt-3.5 border-t border-[#DDE9DF] shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -300,8 +291,8 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({
               <LogOut className="w-4 h-4 text-[#EF806D]" />
               <span>{t('nav.logout')}</span>
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
