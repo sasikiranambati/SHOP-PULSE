@@ -73,8 +73,8 @@ export const QuickActionGrid: React.FC<QuickActionGridProps> = ({
   ];
 
   return (
-    <div className="bg-white rounded-2xl border border-[#DDE9DF] p-5 sm:p-6 shadow-card flex flex-col justify-between h-full transition-all">
-      <div className="flex items-center justify-between pb-3 border-b border-[#DDE9DF] mb-3">
+    <div className="bg-white rounded-2xl border border-[#DDE9DF] p-5 sm:p-6 shadow-card flex flex-col justify-between h-full transition-all min-w-0">
+      <div className="flex items-center justify-between gap-2 pb-3 border-b border-[#DDE9DF] mb-3 flex-wrap">
         <h2 className="font-extrabold text-[#153D32] text-base flex items-center gap-2">
           <span className="w-7 h-7 rounded-xl bg-[#FBF4E7] text-[#D6AE62] flex items-center justify-center shrink-0 border border-[#D6AE62]/30">
             <Zap className="w-4 h-4 text-[#A07828]" />
@@ -93,13 +93,13 @@ export const QuickActionGrid: React.FC<QuickActionGridProps> = ({
             <button
               key={act.id}
               onClick={act.onClick}
-              className="p-3.5 sm:p-4 rounded-xl border border-[#DDE9DF] text-left flex flex-col justify-between transition-all cursor-pointer group active:scale-[0.98] bg-white hover:border-[#153D32]/50 hover:shadow-card"
+              className="min-w-0 p-3 sm:p-4 rounded-xl border border-[#DDE9DF] text-left flex flex-col justify-between transition-all cursor-pointer group active:scale-[0.98] bg-white hover:border-[#153D32]/50 hover:shadow-card"
             >
-              <div className="flex items-center justify-between w-full">
+              <div className="flex items-center justify-between gap-2 w-full">
                 <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl ${act.bg} ${act.iconColor} border ${act.borderColor} flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform`}>
                   <Icon className="w-5 h-5" />
                 </div>
-                <span className="text-[10px] font-bold text-[#5E6C64] bg-[#FAF8F2] px-2 py-0.5 rounded-md border border-[#DDE9DF] hidden sm:inline-block">
+                <span className="text-[10px] font-bold text-[#5E6C64] bg-[#FAF8F2] px-2 py-0.5 rounded-md border border-[#DDE9DF] hidden xl:inline-block shrink-0">
                   {act.badge}
                 </span>
               </div>

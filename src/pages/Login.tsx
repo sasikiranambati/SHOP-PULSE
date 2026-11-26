@@ -6,6 +6,7 @@ import type { PageRoute } from '../types';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useAuth } from '../hooks/useAuth';
 import { ShelforaLogo } from '../components/branding/ShelforaLogo';
+import { readSessionExpiredNotice } from '../utils/posDraftStorage';
 
 interface LoginProps {
   setActivePage: (page: PageRoute) => void;
@@ -20,6 +21,16 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionExpiredNotice] = useState(() => readSessionExpiredNotice());
+
+  const resolvePostLoginPage = (): PageRoute => {
+    const notice = readSessionExpiredNotice();
+    const target = notice?.returnPage;
+    if (target && ['dashboard', 'inventory', 'sales', 'insights', 'scanner', 'settings'].includes(target)) {
+      return target;
+    }
+    return 'dashboard';
+  };
 
   const handleDemoLogin = async () => {
     try {
@@ -27,7 +38,7 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
       setError(null);
       const profile = await loginDemo(rememberMe);
       onLoginSuccess(profile?.shopName || 'Gupta Kirana Store');
-      setActivePage('dashboard');
+      setActivePage(resolvePostLoginPage());
     } catch (err: any) {
       setError(err?.message || 'Failed to enter demo mode.');
     } finally {
@@ -69,7 +80,7 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
       setLoading(true);
       const profile = await login({ email: emailToUse, password }, rememberMe);
       onLoginSuccess(profile?.shopName || profile?.ownerName || 'Gupta Kirana Store');
-      setActivePage('dashboard');
+      setActivePage(resolvePostLoginPage());
     } catch (err: any) {
       setError(err.message || 'Login failed. Please check your credentials.');
       document.getElementById('login-identifier')?.focus();
@@ -100,6 +111,16 @@ export const Login: React.FC<LoginProps> = ({ setActivePage, onLoginSuccess }) =
           <h1 className="text-xl sm:text-2xl font-black text-[#153D32] tracking-tight">{t('auth.welcomeBack')}</h1>
           <p className="text-xs sm:text-sm text-[#5E6C64] font-normal mt-1">{t('auth.logInSub')}</p>
         </div>
+
+        {sessionExpiredNotice && !error && (
+          <div id="session-expired-notice" role="status" className="p-3.5 mb-5 rounded-xl bg-[#FEF9EB] border border-[#D6AE62]/50 text-[#8A6118] text-xs sm:text-sm font-medium flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 shrink-0 text-[#A07828] mt-0.5" />
+            <span>
+              Your session expired. Sign in again to continue.
+              {sessionExpiredNotice.hadActiveDraft ? ' Your active bill draft has been saved and will be restored.' : ''}
+            </span>
+          </div>
+        )}
 
         {error && (
           <div id="login-error-alert" role="alert" className="p-3.5 mb-5 rounded-xl bg-[#FDF1EF] border border-[#EF806D]/30 text-[#EF806D] text-xs sm:text-sm font-medium space-y-2.5">

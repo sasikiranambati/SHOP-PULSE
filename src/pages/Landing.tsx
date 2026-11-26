@@ -227,7 +227,7 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
             <span className="hidden sm:inline-block text-[#DDE9DF]">·</span>
             <span className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-[#16866A]" />
-              12 Indian Regional Languages
+              English Voice-to-Bill
             </span>
           </div>
         </section>
@@ -283,7 +283,7 @@ export const Landing: React.FC<LandingProps> = ({ setActivePage }) => {
                   Voice-to-Bill
                 </h3>
                 <p className="text-sm text-[#5E6C64] leading-relaxed">
-                  Create bills quickly using voice input with support for 12 Indian regional languages.
+                  Create bills quickly using natural English voice input with smart quantity and unit matching.
                 </p>
               </div>
 

@@ -285,7 +285,7 @@ export const Insights: React.FC = () => {
         <div className="space-y-6">
           {/* Period Filter Selector */}
           <div className="bg-white p-3.5 rounded-2xl border border-[#DDE9DF] shadow-xs flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
               <span className="text-xs font-extrabold text-[#153D32] flex items-center gap-1.5 mr-2">
                 <Filter className="w-3.5 h-3.5 text-[#23866A]" />
                 {t('insightsPage.periodLabel')}
@@ -397,7 +397,7 @@ export const Insights: React.FC = () => {
               </div>
 
               {/* Sub-tabs */}
-              <div className="flex items-center gap-1 bg-[#FAF8F2] p-1 rounded-xl border border-[#DDE9DF] text-xs">
+              <div className="flex flex-wrap items-center gap-1 bg-[#FAF8F2] p-1 rounded-xl border border-[#DDE9DF] text-xs">
                 <button
                   type="button"
                   onClick={() => setPerfTab('best')}

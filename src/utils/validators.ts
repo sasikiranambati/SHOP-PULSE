@@ -96,14 +96,23 @@ export interface ParsedProductForm {
 
 const DEFAULT_MIN_STOCK = 5;
 
+export interface ProductFormValidationOptions {
+  allowFractionalStock?: boolean;
+  allowFractionalMinStock?: boolean;
+}
+
 /**
  * Validates the product form field by field so each problem can be shown next to its input.
  * Returns parsed values only when every field is valid.
  */
-export function validateProductForm(values: ProductFormValues): {
+export function validateProductForm(
+  values: ProductFormValues,
+  options: ProductFormValidationOptions = {},
+): {
   errors: Partial<Record<ProductFormField, string>>;
   parsed: ParsedProductForm | null;
 } {
+  const { allowFractionalStock = false, allowFractionalMinStock = false } = options;
   const errors: Partial<Record<ProductFormField, string>> = {};
   const name = values.name.trim();
   if (!name) errors.name = 'Enter a product name.';
@@ -119,15 +128,31 @@ export function validateProductForm(values: ProductFormValues): {
     errors.purchasePrice = 'Purchase price cannot be negative.';
   }
 
+  const hasAtMostThreeDecimals = (n: number) => Math.abs(Math.round(n * 1000) - n * 1000) <= 1e-9;
+
   const stockText = values.stock.trim();
   const stock = Number(stockText);
   if (!stockText) errors.stock = 'Enter the stock quantity (0 if none).';
-  else if (!Number.isInteger(stock) || stock < 0) errors.stock = 'Stock must be a whole number of 0 or more.';
+  else if (!Number.isFinite(stock) || stock < 0) {
+    errors.stock = allowFractionalStock ? 'Stock must be 0 or more.' : 'Stock must be a whole number of 0 or more.';
+  } else if (allowFractionalStock) {
+    if (!hasAtMostThreeDecimals(stock)) errors.stock = 'Stock can have at most 3 decimal places.';
+  } else if (!Number.isInteger(stock)) {
+    errors.stock = 'Stock must be a whole number of 0 or more.';
+  }
 
   const minText = values.minStock.trim();
   const minStock = minText ? Number(minText) : DEFAULT_MIN_STOCK;
-  if (minText && (!Number.isInteger(minStock) || minStock < 0)) {
-    errors.minStock = 'Min stock alert must be a whole number of 0 or more.';
+  if (minText) {
+    if (!Number.isFinite(minStock) || minStock < 0) {
+      errors.minStock = allowFractionalMinStock
+        ? 'Min stock alert must be 0 or more.'
+        : 'Min stock alert must be a whole number of 0 or more.';
+    } else if (allowFractionalMinStock) {
+      if (!hasAtMostThreeDecimals(minStock)) errors.minStock = 'Min stock alert can have at most 3 decimal places.';
+    } else if (!Number.isInteger(minStock)) {
+      errors.minStock = 'Min stock alert must be a whole number of 0 or more.';
+    }
   }
 
   if (Object.keys(errors).length > 0) return { errors, parsed: null };

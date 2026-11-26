@@ -93,7 +93,7 @@ def test_whole_stock_keeps_integer_json_and_update_validates_the_unit(api):
     assert isinstance(p["current_stock"], int) and p["current_stock"] == 5
     r = c.put(f"/api/v1/products/{p['id']}", json={"current_stock": 2.5}, headers=h)
     assert r.status_code == 400 and "whole number" in r.json()["detail"]
-    r = c.put(f"/api/v1/products/{p['id']}", json={"unit": "kg", "current_stock": 2.5}, headers=h)
+    r = c.put(f"/api/v1/products/{p['id']}", json={"unit": "kg", "price_basis_unit": "kg", "mrp_basis_unit": "kg", "current_stock": 2.5}, headers=h)
     assert r.status_code == 200 and r.json()["current_stock"] == 2.5
     r = c.put(f"/api/v1/products/{p['id']}", json={"unit": "pcs"}, headers=h)  # 2.5 would no longer suit pcs
     assert r.status_code == 400

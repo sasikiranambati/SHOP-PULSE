@@ -5,9 +5,11 @@
  */
 
 import type { UserProfile, RegisterInput, LoginCredentials, BusinessType, UserRole } from '../types/user';
+import type { PageRoute } from '../types';
 import { authApi } from '../api/auth';
 import { shopsApi } from '../api/shops';
 import { getAccessToken } from '../api/client';
+import { markSessionExpired } from '../utils/posDraftStorage';
 
 const LOCAL_SESSION_KEY = 'shoppulse_local_session';
 const REMEMBER_ME_KEY = 'shoppulse_remember_me';
@@ -366,6 +368,16 @@ export function onAuthUserChanged(callback: (user: any) => void): () => void {
   };
 
   const handleExpired = () => {
+    let returnPage: PageRoute | undefined;
+    try {
+      const saved = sessionStorage.getItem('shelfora_active_page') as PageRoute | null;
+      if (saved && ['dashboard', 'inventory', 'sales', 'insights', 'scanner', 'settings'].includes(saved)) {
+        returnPage = saved;
+      }
+    } catch {
+      // Ignore sessionStorage errors
+    }
+    markSessionExpired(returnPage);
     signOutUser();
     callback(null);
   };
