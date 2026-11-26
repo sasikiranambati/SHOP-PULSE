@@ -3,11 +3,20 @@ import type { LanguageCode, LanguageMeta } from './languages';
 import { LANGUAGES } from './languages';
 import { translationsMap } from './locales';
 import { en } from './locales/en';
+import { formatNumberFor, formatINRFor, formatDateFor, formatTimeFor } from './format';
+import { reportMissingKey } from './missingKeys';
 
 interface LanguageContextType {
   language: LanguageCode;
   setLanguage: (code: LanguageCode) => void;
   t: (key: string, params?: Record<string, string | number>) => string;
+  /** Locale-bound formatters for the selected language (display only). */
+  format: {
+    number: (value: number | string | null | undefined, options?: Intl.NumberFormatOptions) => string;
+    inr: (value: number | string | null | undefined, options?: { minimumFractionDigits?: number; maximumFractionDigits?: number }) => string;
+    date: (value: Date | string | number, options?: Intl.DateTimeFormatOptions) => string;
+    time: (value: Date | string | number, options?: Intl.DateTimeFormatOptions) => string;
+  };
   currentLanguageMeta: LanguageMeta;
   isRtl: boolean;
   languages: LanguageMeta[];
@@ -65,6 +74,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     // Fallback to English if undefined or missing
     if (result === undefined || typeof result !== 'string') {
+      reportMissingKey(language, key);
       result = en;
       for (const k of keys) {
         if (result && typeof result === 'object' && k in result) {
@@ -96,6 +106,12 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         language,
         setLanguage,
         t,
+        format: {
+          number: (value, options) => formatNumberFor(language, value, options),
+          inr: (value, options) => formatINRFor(language, value, options),
+          date: (value, options) => formatDateFor(language, value, options),
+          time: (value, options) => formatTimeFor(language, value, options),
+        },
         currentLanguageMeta,
         isRtl,
         languages: LANGUAGES,

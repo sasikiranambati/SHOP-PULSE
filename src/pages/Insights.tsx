@@ -23,6 +23,7 @@ import { StatCard } from '../components/StatCard';
 import { SalesChart, type SalesChartDataPoint } from '../components/SalesChart';
 import { DemandForecastSection } from '../components/DemandForecastSection';
 import { useShopRole } from '../hooks/useShopRole';
+import { useLanguage } from '../i18n/LanguageContext';
 import { 
   insightsApi, 
   type SalesInsightsData, 
@@ -39,6 +40,7 @@ type InventoryFilter = 'all' | 'low' | 'out' | 'over' | 'healthy';
 
 export const Insights: React.FC = () => {
   const { role, isCashier, canAccessAnalytics } = useShopRole();
+  const { t, format } = useLanguage();
   const isInsightsRestricted = isCashier || !canAccessAnalytics;
 
   const [activeTab, setActiveTab] = useState<InsightsTab>('sales');
@@ -125,6 +127,17 @@ export const Insights: React.FC = () => {
     return true;
   });
 
+  // Status values from the API are data; these labels are what the user reads.
+  const statusLabel = (status: string): string => {
+    switch (status) {
+      case 'OUT OF STOCK': return t('common.outOfStock');
+      case 'LOW STOCK': return t('common.lowStock');
+      case 'OVERSTOCKED': return t('insightsPage.overstocked');
+      case 'IN STOCK': return t('common.inStock');
+      default: return status;
+    }
+  };
+
   const forecastAttentionCount =
     (forecastSummary?.out_of_stock_count ?? 0) +
     (forecastSummary?.at_risk_stockout_7d_count ?? 0);
@@ -133,8 +146,8 @@ export const Insights: React.FC = () => {
     return (
       <div className="w-full space-y-6 max-w-6xl mx-auto min-w-0 font-sans pb-12">
         <PageHeader
-          title="AI Insights & Analytics"
-          description="Real-time sales performance, stock health intelligence, and grounded business explanations."
+          title={t('insightsPage.title')}
+          description={t('insightsPage.description')}
         />
         <div
           role="alert"
@@ -144,13 +157,11 @@ export const Insights: React.FC = () => {
             <Lock className="w-6 h-6" />
           </div>
           <h2 className="text-lg font-extrabold text-[#153D32]">
-            Access Restricted
+            {t('insightsPage.restrictedTitle')}
           </h2>
           <p className="text-xs sm:text-sm text-[#5E6C64] mt-1.5 leading-relaxed">
-            Shop analytics, demand forecasting, and business insights are restricted to{' '}
-            <strong className="text-[#153D32]">Owner</strong> and{' '}
-            <strong className="text-[#153D32]">Manager</strong> roles.
-            {role ? ` Current role: ${role}.` : ''}
+            {t('insightsPage.restrictedBody')}
+            {role ? ` ${t('insightsPage.currentRole', { role })}` : ''}
           </p>
         </div>
       </div>
@@ -162,8 +173,8 @@ export const Insights: React.FC = () => {
       {/* 1. Header with Module Navigation */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <PageHeader
-          title="AI Insights & Analytics"
-          description="Real-time sales performance, stock health intelligence, and grounded business explanations."
+          title={t('insightsPage.title')}
+          description={t('insightsPage.description')}
         />
         <div className="flex items-center gap-2 self-start md:self-auto">
           <button
@@ -173,7 +184,7 @@ export const Insights: React.FC = () => {
             className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white border border-[#DDE9DF] hover:bg-[#FAF8F2] text-[#153D32] rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 text-[#23866A] ${refreshing ? 'animate-spin' : ''}`} />
-            <span>{refreshing ? 'Evaluating Data...' : 'Refresh Analytics'}</span>
+            <span>{refreshing ? t('insightsPage.refreshing') : t('insightsPage.refreshAnalytics')}</span>
           </button>
         </div>
       </div>
@@ -181,7 +192,7 @@ export const Insights: React.FC = () => {
       {/* 2. Primary Tabs: Sales Insights | Inventory Insights | Demand Forecast | AI Intelligence */}
       <div
         role="tablist"
-        aria-label="Insights sections"
+        aria-label={t('insightsPage.tabsLabel')}
         className="w-full min-w-0 grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 border-b border-[#DDE9DF] pb-2"
       >
         <button
@@ -196,7 +207,7 @@ export const Insights: React.FC = () => {
           }`}
         >
           <TrendingUp className="w-4 h-4 text-[#23866A]" />
-          <span>Sales Insights</span>
+          <span>{t('insightsPage.tabSales')}</span>
         </button>
 
         <button
@@ -211,7 +222,7 @@ export const Insights: React.FC = () => {
           }`}
         >
           <Package className="w-4 h-4 text-[#D6AE62]" />
-          <span>Inventory Insights</span>
+          <span>{t('insightsPage.tabInventory')}</span>
           {inventoryData && inventoryData.counts.needs_attention > 0 && (
             <span className="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-[#EF806D] text-white">
               {inventoryData.counts.needs_attention}
@@ -231,7 +242,7 @@ export const Insights: React.FC = () => {
           }`}
         >
           <Activity className="w-4 h-4 text-[#23866A]" />
-          <span>Demand Forecast</span>
+          <span>{t('insightsPage.tabForecast')}</span>
           {forecastAttentionCount > 0 && (
             <span className="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-[#D6AE62] text-[#153D32]">
               {forecastAttentionCount}
@@ -251,7 +262,7 @@ export const Insights: React.FC = () => {
           }`}
         >
           <Sparkles className="w-4 h-4 text-[#23866A]" />
-          <span>AI Intelligence</span>
+          <span>{t('insightsPage.tabAi')}</span>
           {aiData && (
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#E7F3EE] text-[#153D32] border border-[#23866A]/20">
               {aiData.overall_business_health}
@@ -277,7 +288,7 @@ export const Insights: React.FC = () => {
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-extrabold text-[#153D32] flex items-center gap-1.5 mr-2">
                 <Filter className="w-3.5 h-3.5 text-[#23866A]" />
-                Period:
+                {t('insightsPage.periodLabel')}
               </span>
               {(['today', '7d', '30d', '90d', 'custom'] as const).map((p) => (
                 <button
@@ -290,7 +301,7 @@ export const Insights: React.FC = () => {
                       : 'bg-[#FAF8F2] text-[#5E6C64] hover:bg-[#E7F3EE] hover:text-[#153D32]'
                   }`}
                 >
-                  {p === 'today' ? 'Today' : p === '7d' ? 'Last 7 Days' : p === '30d' ? 'Last 30 Days' : p === '90d' ? 'Last 90 Days' : 'Custom Range'}
+                  {p === 'today' ? t('insightsPage.periodToday') : p === '7d' ? t('insightsPage.periodLast7') : p === '30d' ? t('insightsPage.periodLast30') : p === '90d' ? t('insightsPage.periodLast90') : t('insightsPage.periodCustom')}
                 </button>
               ))}
             </div>
@@ -303,7 +314,7 @@ export const Insights: React.FC = () => {
                   onChange={(e) => setCustomStart(e.target.value)}
                   className="px-2.5 py-1 text-xs border border-[#DDE9DF] rounded-lg bg-[#FAF8F2]"
                 />
-                <span className="text-xs text-[#5E6C64]">to</span>
+                <span className="text-xs text-[#5E6C64]">{t('insightsPage.dateTo')}</span>
                 <input
                   type="date"
                   value={customEnd}
@@ -315,7 +326,7 @@ export const Insights: React.FC = () => {
                   onClick={handleApplyCustomDates}
                   className="px-3 py-1 bg-[#23866A] text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-[#153D32]"
                 >
-                  Apply
+                  {t('insightsPage.apply')}
                 </button>
               </div>
             )}
@@ -324,13 +335,13 @@ export const Insights: React.FC = () => {
           {/* Sales Overview Stat Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard
-              title="Total Revenue"
-              value={salesData ? `₹${salesData.overview.total_sales.toLocaleString('en-IN')}` : '—'}
-              subtitle={`Verified across ${salesData?.overview.transaction_count || 0} bills`}
+              title={t('insightsPage.revenueTitle')}
+              value={salesData ? format.inr(salesData.overview.total_sales) : '—'}
+              subtitle={t('insightsPage.revenueSubtitle', { count: salesData?.overview.transaction_count || 0 })}
               icon={<TrendingUp className="w-5 h-5 text-[#23866A]" />}
               badgeText={
                 salesData?.overview.sales_growth_rate !== null && salesData?.overview.sales_growth_rate !== undefined
-                  ? `${salesData.overview.sales_growth_rate >= 0 ? '+' : ''}${salesData.overview.sales_growth_rate}% vs prior`
+                  ? t('insightsPage.vsPrior', { value: `${salesData.overview.sales_growth_rate >= 0 ? '+' : ''}${salesData.overview.sales_growth_rate}` })
                   : undefined
               }
               badgeColor={
@@ -339,26 +350,26 @@ export const Insights: React.FC = () => {
             />
 
             <StatCard
-              title="Transactions"
+              title={t('insightsPage.transactionsTitle')}
               value={salesData ? `${salesData.overview.transaction_count}` : '—'}
-              subtitle="Customer checkout count"
+              subtitle={t('insightsPage.transactionsSubtitle')}
               icon={<ShoppingBag className="w-5 h-5 text-[#153D32]" />}
-              badgeText={salesData?.has_sufficient_data ? 'Active' : 'No Sales'}
+              badgeText={salesData?.has_sufficient_data ? t('insightsPage.badgeActive') : t('insightsPage.badgeNoSales')}
               badgeColor="emerald"
             />
 
             <StatCard
-              title="Average Bill Value"
-              value={salesData ? `₹${Math.round(salesData.overview.average_transaction_value)}` : '—'}
-              subtitle="Revenue per customer checkout"
+              title={t('insightsPage.avgBillTitle')}
+              value={salesData ? format.inr(Math.round(salesData.overview.average_transaction_value), { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '—'}
+              subtitle={t('insightsPage.avgBillSubtitle')}
               icon={<Award className="w-5 h-5 text-[#D6AE62]" />}
               badgeColor="amber"
             />
 
             <StatCard
-              title="Prior Period Sales"
-              value={salesData ? `₹${salesData.overview.previous_period_sales.toLocaleString('en-IN')}` : '—'}
-              subtitle={`${salesData?.overview.previous_period_transactions || 0} transactions in baseline`}
+              title={t('insightsPage.priorTitle')}
+              value={salesData ? format.inr(salesData.overview.previous_period_sales) : '—'}
+              subtitle={t('insightsPage.priorSubtitle', { count: salesData?.overview.previous_period_transactions || 0 })}
               icon={<Calendar className="w-5 h-5 text-[#5E6C64]" />}
               badgeColor="slate"
             />
@@ -369,11 +380,11 @@ export const Insights: React.FC = () => {
             data={chartPoints}
             peakText={
               salesData?.trends?.peak_day && salesData.trends.peak_revenue > 0
-                ? `Peak: ${salesData.trends.peak_day} (₹${Math.round(salesData.trends.peak_revenue).toLocaleString('en-IN')})`
+                ? t('insightsPage.peakLabel', { day: salesData.trends.peak_day, amount: format.inr(Math.round(salesData.trends.peak_revenue), { minimumFractionDigits: 0, maximumFractionDigits: 0 }) })
                 : undefined
             }
-            title="Sales Velocity Trend"
-            subtitle="Actual daily revenue calculated directly from customer sales"
+            title={t('insightsPage.trendTitle')}
+            subtitle={t('insightsPage.trendSubtitle')}
             isLoading={loading}
           />
 
@@ -381,8 +392,8 @@ export const Insights: React.FC = () => {
           <Card>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-[#DDE9DF] gap-3">
               <div>
-                <h3 className="font-extrabold text-[#153D32] text-base">Product Performance</h3>
-                <p className="text-xs text-[#5E6C64]">Rankings computed directly from item lines sold in this period.</p>
+                <h3 className="font-extrabold text-[#153D32] text-base">{t('insightsPage.perfTitle')}</h3>
+                <p className="text-xs text-[#5E6C64]">{t('insightsPage.perfSubtitle')}</p>
               </div>
 
               {/* Sub-tabs */}
@@ -394,7 +405,7 @@ export const Insights: React.FC = () => {
                     perfTab === 'best' ? 'bg-[#153D32] text-[#FAF8F2]' : 'text-[#5E6C64] hover:text-[#153D32]'
                   }`}
                 >
-                  Best Selling
+                  {t('insightsPage.perfBest')}
                 </button>
                 <button
                   type="button"
@@ -403,7 +414,7 @@ export const Insights: React.FC = () => {
                     perfTab === 'slow' ? 'bg-[#153D32] text-[#FAF8F2]' : 'text-[#5E6C64] hover:text-[#153D32]'
                   }`}
                 >
-                  Slow Moving
+                  {t('insightsPage.perfSlow')}
                 </button>
                 <button
                   type="button"
@@ -412,7 +423,7 @@ export const Insights: React.FC = () => {
                     perfTab === 'rising' ? 'bg-[#153D32] text-[#FAF8F2]' : 'text-[#5E6C64] hover:text-[#153D32]'
                   }`}
                 >
-                  Rising Sales
+                  {t('insightsPage.perfRising')}
                 </button>
                 <button
                   type="button"
@@ -421,7 +432,7 @@ export const Insights: React.FC = () => {
                     perfTab === 'declining' ? 'bg-[#153D32] text-[#FAF8F2]' : 'text-[#5E6C64] hover:text-[#153D32]'
                   }`}
                 >
-                  Declining Sales
+                  {t('insightsPage.perfDeclining')}
                 </button>
               </div>
             </div>
@@ -441,7 +452,7 @@ export const Insights: React.FC = () => {
                 if (list.length === 0) {
                   return (
                     <div className="py-12 text-center text-[#5E6C64] text-xs">
-                      No products recorded in this performance category for the selected period.
+                      {t('insightsPage.perfEmpty')}
                     </div>
                   );
                 }
@@ -450,12 +461,12 @@ export const Insights: React.FC = () => {
                   <table className="w-full text-left text-xs">
                     <thead>
                       <tr className="border-b border-[#DDE9DF] text-[11px] font-extrabold text-[#5E6C64] uppercase tracking-wider">
-                        <th className="py-2.5 px-3">#</th>
-                        <th className="py-2.5 px-3">Product Name</th>
-                        <th className="py-2.5 px-3">Category</th>
-                        <th className="py-2.5 px-3 text-right">Units Sold</th>
-                        <th className="py-2.5 px-3 text-right">Revenue</th>
-                        <th className="py-2.5 px-3 text-right">Growth vs Prior</th>
+                        <th className="py-2.5 px-3">{t('insightsPage.colNumber')}</th>
+                        <th className="py-2.5 px-3">{t('insightsPage.colProduct')}</th>
+                        <th className="py-2.5 px-3">{t('insightsPage.colCategory')}</th>
+                        <th className="py-2.5 px-3 text-right">{t('insightsPage.colUnitsSold')}</th>
+                        <th className="py-2.5 px-3 text-right">{t('insightsPage.colRevenue')}</th>
+                        <th className="py-2.5 px-3 text-right">{t('insightsPage.colGrowth')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#DDE9DF]">
@@ -468,7 +479,7 @@ export const Insights: React.FC = () => {
                             {it.quantity_sold} {it.unit}
                           </td>
                           <td className="py-3 px-3 text-right font-extrabold text-[#153D32]">
-                            ₹{it.revenue.toLocaleString('en-IN')}
+                            {format.inr(it.revenue)}
                           </td>
                           <td className="py-3 px-3 text-right">
                             {it.growth_rate !== null && it.growth_rate !== undefined ? (
@@ -511,33 +522,33 @@ export const Insights: React.FC = () => {
           {/* Inventory Overview Health Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <div className="bg-white p-3.5 rounded-2xl border border-[#DDE9DF] shadow-xs">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-[#5E6C64]">Total Products</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-[#5E6C64]">{t('insightsPage.totalProducts')}</p>
               <p className="text-xl font-extrabold text-[#153D32] mt-1">{inventoryData?.counts.total_products || 0}</p>
-              <p className="text-[10px] text-[#5E6C64] mt-0.5">Active SKU count</p>
+              <p className="text-[10px] text-[#5E6C64] mt-0.5">{t('insightsPage.activeSkuCount')}</p>
             </div>
 
             <div className="bg-white p-3.5 rounded-2xl border border-[#DDE9DF] shadow-xs">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-[#23866A]">In Stock</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-[#23866A]">{t('common.inStock')}</p>
               <p className="text-xl font-extrabold text-[#23866A] mt-1">{inventoryData?.counts.in_stock || 0}</p>
-              <p className="text-[10px] text-[#5E6C64] mt-0.5">Healthy buffer</p>
+              <p className="text-[10px] text-[#5E6C64] mt-0.5">{t('insightsPage.healthyBuffer')}</p>
             </div>
 
             <div className="bg-white p-3.5 rounded-2xl border border-[#D6AE62]/40 shadow-xs bg-[#FEF9EB]/30">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-[#A07828]">Low Stock</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-[#A07828]">{t('common.lowStock')}</p>
               <p className="text-xl font-extrabold text-[#A07828] mt-1">{inventoryData?.counts.low_stock || 0}</p>
-              <p className="text-[10px] text-[#A07828] mt-0.5">Below threshold</p>
+              <p className="text-[10px] text-[#A07828] mt-0.5">{t('insightsPage.belowThreshold')}</p>
             </div>
 
             <div className="bg-white p-3.5 rounded-2xl border border-[#EF806D]/40 shadow-xs bg-[#FDF1EF]/30">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-[#EF806D]">Out of Stock</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-[#EF806D]">{t('common.outOfStock')}</p>
               <p className="text-xl font-extrabold text-[#EF806D] mt-1">{inventoryData?.counts.out_of_stock || 0}</p>
-              <p className="text-[10px] text-[#EF806D] mt-0.5">Depleted items</p>
+              <p className="text-[10px] text-[#EF806D] mt-0.5">{t('insightsPage.depletedItems')}</p>
             </div>
 
             <div className="bg-white p-3.5 rounded-2xl border border-[#DDE9DF] shadow-xs">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-[#5E6C64]">Overstocked</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-[#5E6C64]">{t('insightsPage.overstocked')}</p>
               <p className="text-xl font-extrabold text-[#153D32] mt-1">{inventoryData?.counts.overstocked || 0}</p>
-              <p className="text-[10px] text-[#5E6C64] mt-0.5">&gt;5x reorder level</p>
+              <p className="text-[10px] text-[#5E6C64] mt-0.5">{t('insightsPage.overstockHint')}</p>
             </div>
           </div>
 
@@ -545,8 +556,8 @@ export const Insights: React.FC = () => {
           <Card>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-[#DDE9DF] gap-3">
               <div>
-                <h3 className="font-extrabold text-[#153D32] text-base">Inventory Action Matrix</h3>
-                <p className="text-xs text-[#5E6C64]">Item stock levels, configured thresholds, and deterministic recommended actions.</p>
+                <h3 className="font-extrabold text-[#153D32] text-base">{t('insightsPage.matrixTitle')}</h3>
+                <p className="text-xs text-[#5E6C64]">{t('insightsPage.matrixSubtitle')}</p>
               </div>
 
               {/* Status Filters */}
@@ -563,14 +574,14 @@ export const Insights: React.FC = () => {
                     }`}
                   >
                     {filterKey === 'all'
-                      ? 'All'
+                      ? t('insightsPage.filterAll')
                       : filterKey === 'out'
-                      ? 'Out of Stock'
+                      ? t('common.outOfStock')
                       : filterKey === 'low'
-                      ? 'Low Stock'
+                      ? t('common.lowStock')
                       : filterKey === 'over'
-                      ? 'Overstocked'
-                      : 'Healthy'}
+                      ? t('insightsPage.overstocked')
+                      : t('insightsPage.filterHealthy')}
                   </button>
                 ))}
               </div>
@@ -580,18 +591,18 @@ export const Insights: React.FC = () => {
             <div className="overflow-x-auto mt-3">
               {filteredInventoryItems.length === 0 ? (
                 <div className="py-12 text-center text-[#5E6C64] text-xs">
-                  No inventory items match the selected filter.
+                  {t('insightsPage.noInventoryMatch')}
                 </div>
               ) : (
                 <table className="w-full text-left text-xs">
                   <thead>
                     <tr className="border-b border-[#DDE9DF] text-[11px] font-extrabold text-[#5E6C64] uppercase tracking-wider">
-                      <th className="py-2.5 px-3">Product Name</th>
-                      <th className="py-2.5 px-3">Category</th>
-                      <th className="py-2.5 px-3 text-right">Current Stock</th>
-                      <th className="py-2.5 px-3 text-right">Min Threshold</th>
-                      <th className="py-2.5 px-3">Status</th>
-                      <th className="py-2.5 px-3">Recommended Action</th>
+                      <th className="py-2.5 px-3">{t('insightsPage.colProduct')}</th>
+                      <th className="py-2.5 px-3">{t('insightsPage.colCategory')}</th>
+                      <th className="py-2.5 px-3 text-right">{t('insightsPage.colCurrentStock')}</th>
+                      <th className="py-2.5 px-3 text-right">{t('insightsPage.colMinThreshold')}</th>
+                      <th className="py-2.5 px-3">{t('insightsPage.colStatus')}</th>
+                      <th className="py-2.5 px-3">{t('insightsPage.colRecommended')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#DDE9DF]">
@@ -599,14 +610,14 @@ export const Insights: React.FC = () => {
                       <tr key={item.product_id} className="hover:bg-[#FAF8F2] transition-colors">
                         <td className="py-3 px-3">
                           <p className="font-extrabold text-[#153D32]">{item.product_name}</p>
-                          <p className="text-[10px] text-[#5E6C64]">₹{item.selling_price} / {item.unit}</p>
+                          <p className="text-[10px] text-[#5E6C64]">₹{format.number(item.selling_price, { maximumFractionDigits: 2 })} / {item.unit}</p>
                         </td>
                         <td className="py-3 px-3 text-[#5E6C64]">{item.category}</td>
                         <td className="py-3 px-3 text-right font-extrabold text-[#153D32]">
                           {item.current_stock} {item.unit}
                         </td>
                         <td className="py-3 px-3 text-right text-[#5E6C64]">
-                          {item.is_threshold_configured ? `${item.minimum_stock_threshold} ${item.unit}` : 'Not set'}
+                          {item.is_threshold_configured ? `${item.minimum_stock_threshold} ${item.unit}` : t('insightsPage.thresholdNotSet')}
                         </td>
                         <td className="py-3 px-3">
                           <span
@@ -620,7 +631,7 @@ export const Insights: React.FC = () => {
                                 : 'bg-[#E7F3EE] text-[#23866A] border border-[#23866A]/20'
                             }`}
                           >
-                            {item.status}
+                            {statusLabel(item.status)}
                           </span>
                         </td>
                         <td className="py-3 px-3 text-[#252D29] leading-relaxed max-w-xs">
@@ -658,16 +669,16 @@ export const Insights: React.FC = () => {
                   <Sparkles className="w-4 h-4 text-[#B9E5D0]" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-[#153D32] text-base">AI Decision Explanations</h3>
+                  <h3 className="font-extrabold text-[#153D32] text-base">{t('insightsPage.aiExplanationsTitle')}</h3>
                   <p className="text-xs text-[#5E6C64]">
-                    Clear, narrative business interpretations computed directly from real store transactions and inventory levels.
+                    {t('insightsPage.aiExplanationsSubtitle')}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-[#5E6C64]">Business Health:</span>
+                <span className="text-xs font-bold text-[#5E6C64]">{t('insightsPage.businessHealth')}</span>
                 <span className="px-3 py-1 rounded-xl text-xs font-extrabold bg-[#153D32] text-[#FAF8F2]">
-                  {aiData?.overall_business_health || 'Analyzing...'}
+                  {aiData?.overall_business_health || t('insightsPage.analyzing')}
                 </span>
               </div>
             </div>
@@ -717,7 +728,7 @@ export const Insights: React.FC = () => {
                       {insight.grounded_data_points.length > 0 && (
                         <div className="mt-3 pt-2.5 border-t border-[#DDE9DF]/60 space-y-1">
                           <p className="text-[10px] font-extrabold text-[#5E6C64] uppercase tracking-wider">
-                            Supporting Data Points:
+                            {t('insightsPage.supportingData')}
                           </p>
                           {insight.grounded_data_points.map((dp, idx) => (
                             <p key={idx} className="text-[11px] text-[#5E6C64] flex items-center gap-1.5">
@@ -732,7 +743,7 @@ export const Insights: React.FC = () => {
                     {insight.suggested_action && (
                       <div className="mt-3.5 pt-2.5 border-t border-[#DDE9DF] flex items-center justify-between">
                         <span className="text-[11px] font-bold text-[#153D32]">
-                          Action: {insight.suggested_action}
+                          {t('insightsPage.actionLabel', { action: insight.suggested_action })}
                         </span>
                         <ChevronRight className="w-4 h-4 text-[#23866A]" />
                       </div>
@@ -745,9 +756,9 @@ export const Insights: React.FC = () => {
                 <div className="w-12 h-12 rounded-2xl bg-[#E7F3EE] text-[#23866A] flex items-center justify-center mx-auto">
                   <Sparkles className="w-6 h-6" />
                 </div>
-                <h4 className="font-extrabold text-[#153D32] text-sm">Awaiting Store Activity</h4>
+                <h4 className="font-extrabold text-[#153D32] text-sm">{t('insightsPage.awaitingTitle')}</h4>
                 <p className="text-xs text-[#5E6C64] max-w-md mx-auto leading-relaxed">
-                  {aiData?.note || 'AI recommendations require recorded sales and inventory items to formulate data-backed guidance. Continue recording customer bills.'}
+                  {aiData?.note || t('insightsPage.awaitingDefault')}
                 </p>
               </div>
             )}

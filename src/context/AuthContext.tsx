@@ -60,10 +60,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         document.documentElement.classList.remove('dark');
                     }
                 }
-                if (profile.language) {
-                    localStorage.setItem('shelfora_language', profile.language);
-                    localStorage.setItem('shoppulse_language', profile.language);
-                }
+                // Language is owned by LanguageContext (the selector writes it). The profile's language
+                // comes from the login session and can be stale, so it must not overwrite the choice.
             } else {
                 // Fallback user profile in case Firestore document has not propagated yet
                 setUserProfile((prev) => prev || {
@@ -182,6 +180,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const handleSetLanguage = async (language: UserLanguage): Promise<void> => {
+        // Write both keys that LanguageContext reads, so the two can never disagree.
+        localStorage.setItem('shelfora_language', language);
         localStorage.setItem('shoppulse_language', language);
         if (firebaseUser && userProfile) {
             await handleUpdateProfile({ language });
