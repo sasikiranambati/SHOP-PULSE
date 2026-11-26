@@ -33,7 +33,9 @@ from services.document_prep.document_detector import DocumentDetection, detect_d
 from services.document_prep.enhancement import (binarize, enhancement_is_safe, native_denoise_for_dark_photo,
                                                 plan_and_enhance)
 from services.document_prep.loader import EXIF_ORIENTATION_NAMES, load_image
-from services.document_prep.ocr_scoring import OcrReadout, ocr_engine_available, run_pipeline_ocr, run_raw_ocr
+from services.document_prep.ocr_scoring import (
+    OcrReadout, ocr_engine_available, run_pipeline_ocr_best_contrast, run_raw_ocr,
+)
 from services.document_prep.orientation import OrientationResult, detect_orientation, measure_residual_skew
 from services.document_prep.quality import assess_quality
 
@@ -129,7 +131,7 @@ def prepare_page(
     use_ocr = opts.use_ocr if opts.use_ocr is not None else (config.use_ocr_for_orientation and ocr_engine_available())
     if use_ocr:
         ocr_fn = ocr_fn or run_raw_ocr
-        variant_ocr_fn = variant_ocr_fn or run_pipeline_ocr
+        variant_ocr_fn = variant_ocr_fn or run_pipeline_ocr_best_contrast
     else:
         ocr_fn = None
         variant_ocr_fn = None

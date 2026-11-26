@@ -243,6 +243,97 @@ class InvoicePipeline:
             f"({d_vals} -> {a_vals} amounts, {d_words} -> {a_words} words)")
         return alt_page
 
+    @staticmethod
+    def _item_rows(table: TableResult):
+        """(index, row) of the reconstructed rows that can become line items."""
+        candidate_rows = table.reconstructed_rows if table.reconstructed_rows else table.rows
+        for r_idx, row in enumerate(candidate_rows):
+            if (
+                row.is_header
+                or (table.header_row_index is not None and row.row_index <= table.header_row_index)
+                or row.is_summary
+                or row.is_continuation
+                or not row.cells
+            ):
+                continue
+            yield r_idx, row
+
+    def _page_extraction_evidence(self, page: OCRPageResult) -> Dict[str, int]:
+        """Label-free evidence of how well a page reading extracts: item rows, and rows whose READ
+        quantity x rate (- discount + tax) agrees with the READ amount (VERIFIED) or not (MISMATCH), using
+        the same check that sets each line's arithmetic status (services.invoice.resolve_item_arithmetic_py).
+        Values the pipeline would calculate are not counted."""
+        from services.invoice import resolve_item_arithmetic_py
+
+        evidence = {"rows": 0, "verified": 0, "mismatch": 0}
+        table = self.table_reconstructor.reconstruct_table(page)
+        columns = table.columns or self.column_detector.detect_columns(table)
+        table = table.model_copy(update={"column_positions": columns, "columns": columns})
+        if not table.has_table:
+            return evidence
+        schema = self.column_detector.detect_schema(table) if hasattr(self.column_detector, "detect_schema") else None
+        for _, row in self._item_rows(table):
+            rec = self.column_wise_extractor.extract_row(row, schema or columns)
+            if rec is None or rec.is_bundle_header:
+                continue
+            evidence["rows"] += 1
+            if rec.quantity is None or rec.purchase_price is None or rec.printed_amount is None:
+                continue
+            status = resolve_item_arithmetic_py(
+                float(rec.quantity), float(rec.purchase_price), float(rec.printed_amount),
+                float(rec.tax_amount) if rec.tax_amount is not None else None,
+                discount=float(rec.discount) if rec.discount is not None else None)["status"]
+            if status == "VERIFIED":
+                evidence["verified"] += 1
+            elif status == "MISMATCH":
+                evidence["mismatch"] += 1
+        return evidence
+
+    def _read_page_adaptive(self, img_bytes: bytes, page_idx: int, metadata: InvoiceProcessingMetadata):
+        """Read one page image; returns (chosen reading, its automatic-layout reading).
+
+        Contrast treatment: the processor's automatic choice (CLAHE only for faded ink) is read first, in
+        both layouts. Measured with the full extraction (tests/ocr_fixture_benchmark.py and the document
+        preparation photo set), neither treatment is right for every page: without CLAHE a phone photo
+        (TC03) and a skewed page (TC21) read correctly but some tilted or similar-background photos lose
+        rows that CLAHE recovers, and the reverse. The other treatment is therefore read only when the
+        first reading shows weak extraction evidence (a line whose read quantity x rate disagrees with its
+        read amount, or no item rows), and it replaces the first reading only when it has strictly more
+        agreeing-minus-disagreeing lines. Pages whose lines all agree cost no extra OCR."""
+        prep_res = self.image_processor.preprocess(img_bytes)
+        layout_page, alt_page = self._read_page_both_layouts(prep_res.processed_bytes, page_idx)
+        chosen = self._compare_fallback_segmentation(
+            prep_res.processed_bytes, page_idx, layout_page, metadata, alt_page=alt_page)
+        evidence = self._page_extraction_evidence(chosen)
+        first = (prep_res.metadata or {}).get("contrast_treatment")
+        record: Dict[str, Any] = {"page": page_idx, "first": first, "first_evidence": evidence, "chosen": first}
+        metadata.custom_properties.setdefault("contrast_selection", []).append(record)
+        if first not in ("clahe", "stretch") or (evidence["mismatch"] == 0 and evidence["rows"] > 0):
+            return chosen, layout_page
+        other = "stretch" if first == "clahe" else "clahe"
+        try:
+            other_prep = self.image_processor.preprocess(img_bytes, contrast=other)
+        except TypeError:  # a processor without forced treatments
+            return chosen, layout_page
+        scratch = InvoiceProcessingMetadata(filename=metadata.filename)
+        o_layout, o_alt = self._read_page_both_layouts(other_prep.processed_bytes, page_idx)
+        o_chosen = self._compare_fallback_segmentation(
+            other_prep.processed_bytes, page_idx, o_layout, scratch, alt_page=o_alt)
+        o_evidence = self._page_extraction_evidence(o_chosen)
+        record.update(other=other, other_evidence=o_evidence)
+        score = lambda ev: ev["verified"] - ev["mismatch"]
+        if score(o_evidence) <= score(evidence):
+            return chosen, layout_page
+        record["chosen"] = other
+        metadata.custom_properties.setdefault("ocr_psm_selection", []).extend(
+            dict(r, contrast=other) for r in scratch.custom_properties.get("ocr_psm_selection", []))
+        metadata.warnings.extend(scratch.warnings)
+        metadata.warnings.append(
+            f"Page {page_idx}: read with {'CLAHE' if other == 'clahe' else 'plain'} contrast because its lines "
+            f"agreed better ({evidence['verified']} -> {o_evidence['verified']} agreeing, "
+            f"{evidence['mismatch']} -> {o_evidence['mismatch']} disagreeing)")
+        return o_chosen, o_layout
+
     def _read_page_both_layouts(self, image_bytes: bytes, page_idx: int):
         """Default and single-block readings of one page, run in parallel (separate OCR processes)."""
         fallback_psm = str(getattr(self.config, "fallback_ocr_psm", "") or "")
@@ -337,14 +428,17 @@ class InvoicePipeline:
                     ocr_pages = digital_doc.pages
                     ocr_doc = digital_doc
                 else:
+                    layout_pages: List[OCRPageResult] = []
                     for page_idx, img_bytes in enumerate(page_images, start=1):
-                        # Preprocess image with adaptive OpenCV pipeline
-                        prep_res = self.image_processor.preprocess(img_bytes)
-                        # Recognize characters and extract word coordinates
-                        ocr_page, alt_page = self._read_page_both_layouts(prep_res.processed_bytes, page_idx)
-                        ocr_page = self._compare_fallback_segmentation(
-                            prep_res.processed_bytes, page_idx, ocr_page, metadata, alt_page=alt_page)
+                        # Preprocess (adaptive contrast), read in both layouts and keep the best reading
+                        ocr_page, layout_page = self._read_page_adaptive(img_bytes, page_idx, metadata)
+                        layout_pages.append(layout_page)
                         ocr_pages.append(ocr_page)
+                    if any(lp is not op for lp, op in zip(layout_pages, ocr_pages)):
+                        # Header fields are read from the automatic-layout reading (see
+                        # services.invoice.extract_metadata_from_readings); kept as plain text lines
+                        metadata.custom_properties["layout_reading_lines"] = [
+                            l.text for p in layout_pages for l in p.lines]
 
                     full_text = "\n\n".join(p.raw_text for p in ocr_pages)
                     avg_conf = (
@@ -390,17 +484,7 @@ class InvoicePipeline:
                         continue
 
                     # Extract line items from reconstructed product rows
-                    candidate_rows = table.reconstructed_rows if table.reconstructed_rows else table.rows
-                    for r_idx, row in enumerate(candidate_rows):
-                        if (
-                            row.is_header
-                            or (table.header_row_index is not None and row.row_index <= table.header_row_index)
-                            or row.is_summary
-                            or row.is_continuation
-                            or not row.cells
-                        ):
-                            continue
-
+                    for r_idx, row in self._item_rows(table):
                         schema = (
                             self.column_detector.detect_schema(table)
                             if hasattr(self.column_detector, "detect_schema")
@@ -539,10 +623,11 @@ class InvoicePipeline:
             metadata.stage_timings_ms["table_and_column_detection"] = t.get("duration_ms", 0.0)
 
             # Extract header metadata (supplier, invoice no, date)
-            from services.invoice import extract_metadata
+            from services.invoice import extract_metadata_from_readings
             all_lines = [l.text for p in ocr_pages for l in p.lines] if ocr_pages else []
             hdr_txt = detected_tables[0].header_text if detected_tables else None
-            inv_meta = extract_metadata(all_lines, hdr_txt)
+            inv_meta = extract_metadata_from_readings(
+                all_lines, hdr_txt, metadata.custom_properties.get("layout_reading_lines"))
 
             # Assemble unvalidated invoice
             invoice = ExtractedInvoice(

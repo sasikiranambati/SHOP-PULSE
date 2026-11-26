@@ -764,10 +764,10 @@ export const InvoiceScanner: React.FC = () => {
 
       {/* Error or Success Alerts */}
       {error && (
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-[#FDF1EF] border border-[#EF806D]/30 text-[#EF806D] text-xs sm:text-sm font-medium animate-in fade-in">
+        <div role="alert" className="flex items-center gap-3 p-4 rounded-xl bg-[#FDF1EF] border border-[#EF806D]/30 text-[#EF806D] text-xs sm:text-sm font-medium animate-in fade-in">
           <AlertTriangle className="w-5 h-5 shrink-0" />
           <span className="flex-1">{error}</span>
-          <button type="button" onClick={() => setError(null)} className="cursor-pointer">
+          <button type="button" aria-label="Dismiss message" onClick={() => setError(null)} className="cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>

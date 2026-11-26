@@ -321,7 +321,8 @@ _GSTIN_RE = re.compile(r"\b\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]\b")
 # "(?:in|n)?voice" also accepts OCR output that clipped the first letters of "Invoice"
 _INV_VAL_PATTERN = r"([A-Za-z0-9]+(?:\s*[/\-_#.]\s*(?!(?:date|dated|dt|gstin|ph|phone)\b)[A-Za-z0-9]+)*)"
 _INVNO_RE = re.compile(r"\b(?:(?:in|n)?voice|inv|bill|voucher)\s*(?:no|number|num|#)\.?\s*[:#\-.]?\s*" + _INV_VAL_PATTERN, re.I)
-_INV_COLON_RE = re.compile(r"\b(?:(?:in|n)?voice|inv|bill)\s*[:#\-]\s*" + _INV_VAL_PATTERN, re.I)
+# A dash separates label and value only with spaces around it: "INV-00427" is itself an invoice code
+_INV_COLON_RE = re.compile(r"\b(?:(?:in|n)?voice|inv|bill)(?:\s*[:#]|\s+-)\s*" + _INV_VAL_PATTERN, re.I)
 _INVNO_LABEL_END_RE = re.compile(r"\b(?:(?:in|n)?voice|inv|bill|voucher)\s*(?:no|number|num|#)\.?\s*[:#\-.]?\s*$", re.I)
 _PHONE_RE = re.compile(r"\b(?:\+91[\-\s]?)?[6-9]\d{9}\b")
 # Column headings of an item table; a line with two or more of them is the table header row
@@ -339,12 +340,31 @@ _TOTAL_PRIORITY = [
 ]
 
 
+# Document titles printed on the same line as the business name ("... TRADERS        TAX INVOICE")
+_TITLE_PHRASE_RE = re.compile(
+    r"\b(?:(?:tax|retail|gst|sales|proforma|commercial)\s*invoice|bill\s+of\s+supply|cash\s+memo|invoice|"
+    r"(?:original|duplicate|triplicate)\s+(?:for\s+\w+|copy))\b", re.I)
+# A GSTIN label with its value even when OCR misread the value (14 characters, a wrong letter); the value
+# must contain a digit, so a business word after the label ("GSTIN Wholesale") is never taken as one
+_GSTIN_LABEL_RE = re.compile(r"\b(?i:gst(?:in)?(?:\s*/\s*uin)?(?:\s*(?:no|number))?)\.?\s*[:#\-.]?\s*"
+                             r"(?=[0-9A-Z]*\d)[0-9A-Z]{8,16}\b")
+
+
+def _strip_document_titles(text: str) -> str:
+    return re.sub(r"\s+", " ", _TITLE_PHRASE_RE.sub(" ", text)).strip()
+
+
 def _clean_supplier_candidate(text: str) -> str:
     """Remove known metadata tokens (invoice numbers, GSTIN, dates, phone, email, FSSAI)
     from a header line to reveal the underlying business name if printed side-by-side."""
     cand = text
     cand = _INVNO_RE.sub(" ", cand)
     cand = _INV_COLON_RE.sub(" ", cand)
+    cand = _strip_document_titles(cand)  # after the invoice-number labels, which contain "Invoice"
+    # A document code such as "INV-00427" or "SBW/2026/0912" (letters, a separator, 3+ digits) is never part
+    # of a business name, even when the label in front of it was not read
+    cand = re.sub(r"\b[A-Za-z]{1,6}\s?[-/]\s?\d{3,}(?:[-/][A-Za-z0-9]+)*\b", " ", cand)
+    cand = _GSTIN_LABEL_RE.sub(" ", cand)
     cand = _GSTIN_RE.sub(" ", cand)
     cand = _DATE_RE.sub(" ", cand)
     cand = re.sub(r"\b(?:date|dated)\s*[:#\-.]?\s*\S+", " ", cand, flags=re.I)
@@ -397,6 +417,7 @@ def extract_metadata(lines: List[str], header_text: Optional[str]) -> Dict[str, 
 
     supplier, supplier_conf = None, 0.0
     fallback = None
+    first_standalone = None  # first plausible line printed on its own (nothing but the name was on it)
     for line in _merge_title_fragments(top):
         clean = line.strip()
         if _PARTY_RE.search(clean):
@@ -415,13 +436,22 @@ def extract_metadata(lines: List[str], header_text: Optional[str]) -> Dict[str, 
         if len(_COLUMN_WORD_RE.findall(cand)) >= 2:
             continue
 
+        # A details line is one where metadata had to be removed (GSTIN, phone, invoice number, date...);
+        # what is left of it ("GSTIN: 27... | Wholesale Grocery Distributors") is often a tagline
+        line_words = re.findall(r"[A-Za-z0-9&]+", _strip_document_titles(clean))
+        is_details_line = len(re.findall(r"[A-Za-z0-9&]+", cand)) < len(line_words)
         if _BUSINESS_RE.search(cand):
-            supplier, supplier_conf = cand, 85.0
+            if is_details_line and first_standalone:
+                supplier, supplier_conf = first_standalone, 70.0
+            else:
+                supplier, supplier_conf = cand, 85.0
             break
+        if not is_details_line and first_standalone is None:
+            first_standalone = cand
         fallback = fallback or cand
 
-    if supplier is None and fallback:
-        supplier, supplier_conf = fallback, 55.0
+    if supplier is None and (first_standalone or fallback):
+        supplier, supplier_conf = first_standalone or fallback, 55.0
 
     invoice_number, inv_conf = None, 0.0
     invoice_date, date_conf = None, 0.0
@@ -486,6 +516,35 @@ def extract_metadata(lines: List[str], header_text: Optional[str]) -> Dict[str, 
         "invoice_date": invoice_date, "date_confidence": date_conf,
         "gstin": gstin, "invoice_total": invoice_total,
     }
+
+
+_HEADER_FIELDS = (("supplier_name", "supplier_confidence"), ("invoice_number", "invoice_no_confidence"),
+                  ("invoice_date", "date_confidence"), ("gstin", None))
+
+
+def extract_metadata_from_readings(lines: List[str], header_text: Optional[str],
+                                   layout_lines: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Invoice header fields when a page was read in two layouts.
+
+    The table may be kept from the single-block reading (PSM 6) because it reads ruled tables better, but
+    that reading treats the page as one uniform block and was measured to drop or garble header text in a
+    different size or position (TC13: the large supplier title line is missing; TC02: 'Invoice No' read as
+    'voice No: pasa'; TC03: the invoice number is lost), while the automatic page-layout reading (PSM 3) of
+    the same image keeps it. Each header field is therefore taken from the automatic-layout reading when it
+    has one with at least the same confidence, else from the table reading. The printed total (below the
+    table) always comes from the table reading. No extra OCR: both readings already exist."""
+    meta = extract_metadata(lines, header_text)
+    if not layout_lines or layout_lines == lines:
+        return meta
+    layout = extract_metadata(layout_lines, None)
+    for field, conf in _HEADER_FIELDS:
+        if not layout.get(field):
+            continue
+        if conf is None or not meta.get(field) or float(layout.get(conf) or 0) >= float(meta.get(conf) or 0):
+            meta[field] = layout[field]
+            if conf:
+                meta[conf] = layout[conf]
+    return meta
 
 
 # --------------------------------------------------------------------------
@@ -840,7 +899,8 @@ def _extract_invoice_with_new_pipeline(
     raw_text = extracted.metadata.ocr_evidence.full_text if extracted.metadata.ocr_evidence else ""
     text_lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
     hdr_text = t0.header_text if t0 else None
-    meta = extract_metadata(text_lines, hdr_text)
+    layout_lines = (extracted.metadata.custom_properties or {}).get("layout_reading_lines")
+    meta = extract_metadata_from_readings(text_lines, hdr_text, layout_lines)
 
     # Independent extraction and safe confidence handling
     pipeline_supp = getattr(extracted, "supplier_name", None)

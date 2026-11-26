@@ -45,7 +45,7 @@ class IImageProcessor(ABC):
     """Abstract interface for image preprocessing and normalization."""
 
     @abstractmethod
-    def preprocess(self, image_bytes: bytes) -> ImagePreprocessResult:
+    def preprocess(self, image_bytes: bytes, contrast: Optional[str] = None) -> ImagePreprocessResult:
         """
         Applies end-to-end adaptive preprocessing: orientation, deskewing, resizing,
         contrast enhancement, noise reduction, and format normalization.
@@ -82,7 +82,12 @@ class AdaptiveImageProcessor(IImageProcessor):
     def __init__(self, config: Optional[GroceryOCRConfig] = None):
         self.config = config or default_config
 
-    def preprocess(self, image_bytes: bytes) -> ImagePreprocessResult:
+    def preprocess(self, image_bytes: bytes, contrast: Optional[str] = None) -> ImagePreprocessResult:
+        """``contrast``: None chooses automatically (ink spread, below); "clahe" or "stretch" forces one
+        treatment. The invoice pipeline forces the other treatment only when the automatic one gave weak
+        extraction evidence (see InvoicePipeline._read_page_adaptive)."""
+        if contrast not in (None, "clahe", "stretch"):
+            raise ValueError(f"Unknown contrast treatment '{contrast}'")
         logger.debug("Preprocessing image (bytes=%d)", len(image_bytes))
         steps: List[str] = []
         debug_paths: Dict[str, str] = {}
@@ -164,13 +169,14 @@ class AdaptiveImageProcessor(IImageProcessor):
             # low deviation, which made CLAHE run on clean invoices and on phone photos. Measured: on photos
             # and uneven backgrounds it destroys text (TC03: 0/7 key cells read with CLAHE, 6/7 without; doc-prep
             # shadow/blur/similar-background photos: CER 0.17-0.26 -> 0.53-0.66), and on a clean skewed page it
-            # misreads item names (TC21 "Oil" -> "Oit"). Its one gain on clean pages is faint grey boilerplate
-            # (e.g. a light footer line); table rows read the same. A genuinely faded page (TC20 thermal
-            # receipt: spread 102) still gets it. The 0.2nd percentile still finds the ink on a sparse page
-            # (one printed line is under 1% of the pixels).
+            # misreads item names (TC21 "Oil" -> "Oit"). It is NOT uniformly harmful: on some clean pages it
+            # helps (faint grey text; doc-prep 06_tilted raw 7/7 lines with it vs 6/7 without, 16 raw 6/7 vs
+            # 1/7). No single contrast measure separated those cases from TC03/TC21 (known trade-off). A
+            # genuinely faded page (TC20 thermal receipt: spread 102) still gets it. The 0.2nd percentile
+            # still finds the ink on a sparse page (one printed line is under 1% of the pixels).
             p1, p99 = np.percentile(gray, (0.2, 99))
             ink_spread = float(p99 - p1)
-            is_low_contrast = ink_spread < LOW_CONTRAST_INK_SPREAD
+            is_low_contrast = ink_spread < LOW_CONTRAST_INK_SPREAD if contrast is None else contrast == "clahe"
 
             if is_low_contrast:
                 # Faded invoice or dim photo: apply CLAHE
@@ -227,6 +233,8 @@ class AdaptiveImageProcessor(IImageProcessor):
                     "std_luminance": round(std_lum, 2),
                     "ink_spread": round(ink_spread, 2),
                     "is_low_contrast": is_low_contrast,
+                    "contrast_treatment": "clahe" if is_low_contrast else "stretch",
+                    "contrast_forced": contrast is not None,
                     "laplacian_variance": round(lap_var, 2),
                     "is_blurry": is_blurry,
                     "debug_image_paths": debug_paths,

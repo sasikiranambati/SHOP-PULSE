@@ -145,6 +145,26 @@ def run_pipeline_ocr(img: np.ndarray, psm: str = "3") -> OcrReadout:
     return summarize_ocr(run_ocr_on_preprocessed_png(prepared, psm_mode=psm))
 
 
+def run_pipeline_ocr_best_contrast(img: np.ndarray, psm: str = "3") -> OcrReadout:
+    """The better of the two contrast treatments the invoice pipeline can read a page with.
+
+    The pipeline reads the processor's automatic treatment first and the other one when the first gives
+    weak extraction evidence (InvoicePipeline._read_page_adaptive), so a prepared version is scored by
+    its better reading. Measured on the document-preparation photo set: scoring by the automatic
+    treatment alone preferred a binarized page that reads characters worse (11_low_resolution: 4/7 lines
+    instead of 7/7 with the enhanced page); scoring by the better treatment selected versions that
+    extract 98/103 lines instead of 95/103. Costs one extra reading per compared version."""
+    from services.grocery_ocr.processors.image_processor import AdaptiveImageProcessor
+    from services.ocr import run_ocr_on_preprocessed_png
+
+    png = _encode_png(img)
+    first = AdaptiveImageProcessor().preprocess(png)
+    other = "stretch" if (first.metadata or {}).get("contrast_treatment") == "clahe" else "clahe"
+    readouts = [summarize_ocr(run_ocr_on_preprocessed_png(prep.processed_bytes, psm_mode=psm))
+                for prep in (first, AdaptiveImageProcessor().preprocess(png, contrast=other))]
+    return max(readouts, key=lambda r: r.score)
+
+
 OcrFunction = Callable[[np.ndarray], OcrReadout]
 
 
