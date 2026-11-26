@@ -164,6 +164,3 @@ The Shelfora interface utilizes a sophisticated natural grocery palette:
 - **Charcoal (`#252D29`):** High-contrast body text adhering to WCAG 2.1 AAA accessibility.
 
 ---
-
-## 📄 License
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
