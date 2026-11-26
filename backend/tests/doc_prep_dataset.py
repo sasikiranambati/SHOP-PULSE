@@ -52,6 +52,105 @@ def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
 
 
 # --------------------------------------------------------------------------
+# Supplier header and metadata layout
+# --------------------------------------------------------------------------
+# The supplier name and the invoice metadata share the top rows of the page. The supplier name
+# is drawn at a size that leaves HEADER_CLEARANCE_PT of space before the metadata block, in every
+# font tested (DejaVu Sans, Liberation Sans). If a font is wider, the name shrinks to fit; if it still
+# cannot fit at HEADER_MIN_SUPPLIER_PT, rendering raises ValueError instead of overlapping.
+# Geometry is checked in tests/test_fixture_layout_geometry.py.
+HEADER_SUPPLIER_PT = 36  # supplier name size (was 40, which ran into the metadata in DejaVu Sans Bold)
+HEADER_CLEARANCE_PT = 24  # minimum gap between the supplier name and the metadata block
+HEADER_MIN_SUPPLIER_PT = 20  # floor for the shrink fallback
+
+
+@dataclass(frozen=True)
+class TextBox:
+    x0: int
+    y0: int
+    x1: int
+    y1: int
+
+    def overlaps(self, other: "TextBox", gap: int = 0) -> bool:
+        return not (
+            self.x1 + gap <= other.x0
+            or other.x1 + gap <= self.x0
+            or self.y1 + gap <= other.y0
+            or other.y1 + gap <= self.y0
+        )
+
+
+@dataclass(frozen=True)
+class HeaderMetaLayout:
+    header_font_size: int
+    header_font: ImageFont.FreeTypeFont
+    header_box: TextBox
+    header_line2_box: TextBox
+    meta_font: ImageFont.FreeTypeFont
+    meta_texts: Tuple[str, ...]
+    meta_positions: Tuple[Tuple[float, float], ...]  # (x, y) of each metadata line
+    meta_boxes: Tuple[TextBox, ...]
+
+    def all_boxes(self) -> List[Tuple[str, TextBox]]:
+        boxes = [("supplier", self.header_box), ("header_line2", self.header_line2_box)]
+        boxes += [(f"meta_{i}", b) for i, b in enumerate(self.meta_boxes)]
+        return boxes
+
+
+_MEASURE = ImageDraw.Draw(Image.new("L", (1, 1)))
+
+
+def _text_box(pos: Tuple[float, float], text: str, font: ImageFont.FreeTypeFont) -> TextBox:
+    x0, y0, x1, y1 = _MEASURE.textbbox(pos, text, font=font)
+    return TextBox(int(x0), int(y0), int(x1), int(y1))
+
+
+def header_metadata_layout(width: int, scale: float, landscape: bool, invoice_no: str) -> HeaderMetaLayout:
+    """Where the supplier name and the invoice metadata are drawn for one page size and font set."""
+
+    def s(v: float) -> int:
+        return int(round(v * scale))
+
+    margin = s(80)
+    meta_font = _font(s(24)) if landscape else _font(s(24), True)
+    meta_texts = tuple(m.format(inv=invoice_no) for m in META_LINES_TEMPLATE)
+    meta_positions: List[Tuple[float, float]] = []
+    meta_boxes: List[TextBox] = []
+    for i, text in enumerate(meta_texts):
+        w = _MEASURE.textlength(text, font=meta_font)
+        pos = (width - margin - w, s(70 + 36 * i))
+        meta_positions.append(pos)
+        meta_boxes.append(_text_box(pos, text, meta_font))
+    meta_left = min(b.x0 for b in meta_boxes)
+
+    size = s(HEADER_SUPPLIER_PT)
+    floor = s(HEADER_MIN_SUPPLIER_PT)
+    while True:
+        header_font = _font(size, True)
+        header_box = _text_box((margin, s(70)), HEADER_LINES[0], header_font)
+        if header_box.x1 + s(HEADER_CLEARANCE_PT) <= meta_left:
+            break
+        if size <= floor:
+            # Refuse to render an overlapping fixture rather than produce corrupted test data.
+            raise ValueError(
+                f"supplier header cannot clear the metadata block even at {HEADER_MIN_SUPPLIER_PT} pt "
+                f"(header ends at x={header_box.x1}, metadata starts at x={meta_left})"
+            )
+        size -= 1
+
+    return HeaderMetaLayout(
+        header_font_size=size,
+        header_font=header_font,
+        header_box=header_box,
+        header_line2_box=_text_box((margin, s(130)), HEADER_LINES[1], _font(s(22))),
+        meta_font=meta_font,
+        meta_texts=meta_texts,
+        meta_positions=tuple(meta_positions),
+        meta_boxes=tuple(meta_boxes),
+    )
+
+
+# --------------------------------------------------------------------------
 # Invoice content (ground truth)
 # --------------------------------------------------------------------------
 
@@ -113,15 +212,13 @@ def render_invoice_page(
     lines: List[str] = []
     critical: List[str] = []
 
-    draw.text((margin, s(70)), HEADER_LINES[0], font=_font(s(40), True), fill=ink)
+    layout = header_metadata_layout(width, scale, landscape, invoice_no)
+    draw.text((margin, s(70)), HEADER_LINES[0], font=layout.header_font, fill=ink)
     draw.text((margin, s(130)), HEADER_LINES[1], font=_font(s(22)), fill=ink)
     lines.extend(HEADER_LINES)
-    meta = [m.format(inv=invoice_no) for m in META_LINES_TEMPLATE]
-    meta_font = _font(s(24)) if landscape else _font(s(24), True)
-    for i, m in enumerate(meta):
-        mw = draw.textlength(m, font=meta_font)
-        draw.text((width - margin - mw, s(70 + 36 * i)), m, font=meta_font, fill=ink)
-    lines.extend(meta)
+    for m, pos in zip(layout.meta_texts, layout.meta_positions):
+        draw.text(pos, m, font=layout.meta_font, fill=ink)
+    lines.extend(layout.meta_texts)
     critical.append(f"INV-{invoice_no}")
     draw.line((margin, s(190), width - margin, s(190)), fill=ink, width=max(1, s(3)))
 
