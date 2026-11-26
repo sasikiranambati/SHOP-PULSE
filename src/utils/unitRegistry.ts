@@ -23,6 +23,59 @@ export interface UnitIndex {
   units: UnitDefinition[];
 }
 
+export interface BasisConversionResult {
+  ok: boolean;
+  quantity?: number;
+  reason?: 'unknown' | 'package' | 'incompatible' | 'inexact';
+}
+
+/**
+ * Convert a basis quantity between two registry units strictly using canonical registry metadata
+ * (`factor_to_base`, `convertible`, `allows_fraction`, `maxFractionDigits`).
+ * Never assumes package sizes or guesses conversions across incompatible families.
+ */
+export function convertBasisQuantityUsingRegistry(
+  qty: number,
+  fromUnit: string | null | undefined,
+  toUnit: string | null | undefined,
+  unitIndex: UnitIndex | null,
+): BasisConversionResult {
+  if (!unitIndex || !Number.isFinite(qty) || qty <= 0) {
+    return { ok: false, reason: 'unknown' };
+  }
+  const src = unitIndex.get(fromUnit);
+  const dst = unitIndex.get(toUnit);
+  if (!src || !dst) return { ok: false, reason: 'unknown' };
+  if (src.id === dst.id) return { ok: true, quantity: qty };
+  if (src.family !== dst.family) {
+    return {
+      ok: false,
+      reason: src.kind === 'package' || dst.kind === 'package' ? 'package' : 'incompatible',
+    };
+  }
+  if (!src.convertible || !dst.convertible) {
+    return { ok: false, reason: 'package' };
+  }
+
+  const rawScaled = (qty * src.factor_to_base) / dst.factor_to_base;
+  if (!Number.isFinite(rawScaled) || rawScaled <= 0) {
+    return { ok: false, reason: 'inexact' };
+  }
+  if (!dst.allows_fraction) {
+    if (Math.abs(rawScaled - Math.round(rawScaled)) > 1e-9) {
+      return { ok: false, reason: 'inexact' };
+    }
+    return { ok: true, quantity: Math.round(rawScaled) };
+  }
+
+  const scale = 10 ** unitIndex.maxFractionDigits;
+  const rounded = Math.round(rawScaled * scale) / scale;
+  if (rounded <= 0 || Math.abs(rounded * dst.factor_to_base - qty * src.factor_to_base) > 1e-9) {
+    return { ok: false, reason: 'inexact' };
+  }
+  return { ok: true, quantity: rounded };
+}
+
 export function createUnitIndex(registry: UnitRegistry): UnitIndex {
   const byId = new Map<string, UnitDefinition>();
   const byAlias = new Map<string, UnitDefinition>();

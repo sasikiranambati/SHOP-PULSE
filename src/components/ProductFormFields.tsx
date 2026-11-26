@@ -11,6 +11,7 @@ interface ProductFormFieldsProps {
   values: ProductFormValues;
   errors: Partial<Record<ProductFormField, string>>;
   disabled?: boolean;
+  allowFractionalStock?: boolean;
   onChange: (field: ProductFormField, value: string) => void;
 }
 
@@ -25,6 +26,7 @@ export const ProductFormFields: React.FC<ProductFormFieldsProps> = ({
   values,
   errors,
   disabled = false,
+  allowFractionalStock = false,
   onChange,
 }) => {
   const { t } = useLanguage();
@@ -142,8 +144,8 @@ export const ProductFormFields: React.FC<ProductFormFieldsProps> = ({
             type="number"
             required
             min="0"
-            step="1"
-            inputMode="numeric"
+            step={allowFractionalStock ? '0.001' : '1'}
+            inputMode={allowFractionalStock ? 'decimal' : 'numeric'}
             placeholder={mode === 'add' ? '50' : undefined}
             className={`${inputBase} px-3 py-2.5 text-base sm:text-sm`}
             {...fieldProps('stock')}
@@ -185,6 +187,7 @@ export const ProductFormFields: React.FC<ProductFormFieldsProps> = ({
               ))}
             </datalist>
           )}
+          {fieldError('unit')}
         </div>
       </div>
     </>

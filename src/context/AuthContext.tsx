@@ -18,6 +18,7 @@ import {
     resetPassword as sendPasswordReset,
     updateUserProfile as updateProfileDoc
 } from '../services/authService';
+import { clearPosDraft, clearSessionExpiredNotice } from '../utils/posDraftStorage';
 
 export interface AuthContextType {
     firebaseUser: FirebaseUser | null;
@@ -154,6 +155,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } finally {
             setUserProfile(null);
             setFirebaseUser(null);
+            clearPosDraft();
+            clearSessionExpiredNotice();
+            sessionStorage.removeItem('shelfora_active_page');
             sessionStorage.removeItem('shoppulse_active_page');
             localStorage.removeItem('shoppulse_active_page');
         }

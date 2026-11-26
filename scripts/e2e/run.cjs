@@ -41,10 +41,12 @@ const CHECKS = {
   unit_registry_check: null,
   invoice_units_fraction_check: null,
   voice_bill_price_check: null,
+  voice_pos_401_and_responsive_check: null,
   role_access_check: null,
   stage_6_7_1_browser_acceptance: null,
   demand_forecast_check: null,
   ai_assistant_check: null,
+  edit_product_pricing_basis_check: null,
 };
 
 const log = (msg) => console.log(`[e2e] ${msg}`);

@@ -107,7 +107,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const displayError = salesError || analyticsError;
 
   return (
-    <div className="space-y-4 sm:space-y-6 max-w-5xl mx-auto min-w-0">
+    <div className="w-full space-y-4 sm:space-y-6 max-w-5xl mx-auto min-w-0">
 
       {/* 1. Header Greeting & Store Identity */}
       <DashboardHeader
@@ -145,7 +145,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       />
 
       {/* 3. Two-column section: Left (Needs Attention) | Right (Quick Actions) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <AttentionCard
           lowStockItems={hasAlerts ? lowStockItems : []}
           onRestock={handleRestock}

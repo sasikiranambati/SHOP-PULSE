@@ -37,8 +37,36 @@ export interface MatchedVoiceItem {
   unit_price_exact?: number | null;
   /** 'spoken': the price came from the speech and must be kept; 'catalogue': the selling price. */
   price_source?: 'spoken' | 'catalogue' | 'edited';
+  /** Authoritative catalog line total for reference when a spoken/edited price differs. */
+  catalog_line_total?: number | null;
   /** What was said when it differs from the stock quantity (e.g. "500 g" sold as 0.5 kg). */
   spoken_quantity?: string | null;
+  /** Extraction command action ('add' | 'update' | 'remove'). */
+  action?: 'add' | 'update' | 'remove';
+  explicit_quantity?: boolean;
+  match_confidence?: number | null;
+  quantity_source?: 'explicit' | 'contextual_homophone' | 'stt_alternative' | 'default';
+  quantity_confidence?: number | null;
+  original_quantity_token?: string | null;
+  raw_text?: string | null;
+  package_size?: string | null;
+}
+
+export interface StructuredVoiceItem {
+  raw_text: string;
+  product_name: string;
+  quantity: number;
+  unit?: string | null;
+  package_size?: string | null;
+  action: 'add' | 'update' | 'remove';
+  explicit_quantity: boolean;
+  matched_product_id?: string | null;
+  match_confidence: number;
+  quantity_source?: 'explicit' | 'contextual_homophone' | 'stt_alternative' | 'default';
+  quantity_confidence?: number | null;
+  original_quantity_token?: string | null;
+  status: 'MATCHED' | 'AMBIGUOUS' | 'UNMATCHED' | 'INVALID';
+  reason?: string | null;
 }
 
 export interface AmbiguousVoiceItem {
@@ -49,6 +77,11 @@ export interface AmbiguousVoiceItem {
   spoken_price?: number | null;
   /** Ready sale line per candidate (unit converted, spoken price kept). */
   options?: MatchedVoiceItem[];
+  ambiguity_type?: 'product' | 'quantity';
+  suggested_quantity?: number | null;
+  fallback_quantity?: number | null;
+  raw_phrase?: string | null;
+  reason?: string | null;
 }
 
 export interface UnmatchedVoiceItem {
@@ -63,6 +96,8 @@ export interface VoiceProcessRequest {
   audio_content_type?: string;
   language_code?: string;
   custom_products?: VoiceProductCandidate[];
+  stt_confidence?: number | null;
+  speech_alternatives?: string[];
 }
 
 export interface VoiceProcessResponse {
@@ -76,6 +111,7 @@ export interface VoiceProcessResponse {
   subtotal: number;
   tax: number;
   total: number;
+  items?: StructuredVoiceItem[];
 }
 
 export interface VoiceStatusResponse {

@@ -32,10 +32,12 @@ const VoiceBillModal = lazy(() => import('../components/VoiceBillModal').then(m 
 import type { Product, CartItem, Sale, PaymentMethod } from '../types';
 import { PRODUCT_CATEGORIES } from '../data/mockData';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useAuth } from '../hooks/useAuth';
 import { useSales } from '../hooks/useSales';
 import { getSaleById } from '../services/salesService';
 import { describeError } from '../utils/errorHandler';
 import { cartLineKey, cartLineTotal, cartTotal, cartUnitPrice, displayUnitPrice, mergeIntoCart, round3 } from '../utils/cartPricing';
+import { clearPosDraft, loadPosDraft, savePosDraft } from '../utils/posDraftStorage';
 import { useDialog } from '../hooks/useDialog';
 import { usePrintRequest } from '../hooks/usePrint';
 import { PrintPortal } from '../components/PrintPortal';
@@ -86,6 +88,8 @@ export const Sales: React.FC<SalesProps> = ({
   focusSaleId = null
 }) => {
   const { t } = useLanguage();
+  const { user } = useAuth();
+  const draftOwnerKey = user?.uid || 'anonymous';
   const [activeTab, setActiveTab] = useState<'pos' | 'history'>(focusSaleId ? 'history' : initialTab);
 
   // Live sales hook connected to Firestore and real-time counter updates
@@ -106,12 +110,14 @@ export const Sales: React.FC<SalesProps> = ({
     [rawSales, productNamesById]
   );
 
-  // POS State
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [customerName, setCustomerName] = useState('');
+  // POS State (restored from sessionStorage if the user had an active bill before a 401 session expiry)
+  const initialDraft = useMemo(() => loadPosDraft(draftOwnerKey), [draftOwnerKey]);
+  const [cart, setCart] = useState<CartItem[]>(() => initialDraft?.cart ?? []);
+  const [customerName, setCustomerName] = useState(() => initialDraft?.customerName ?? '');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'UPI' | 'Card'>('Cash');
+  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'UPI' | 'Card'>(() => initialDraft?.paymentMethod ?? 'Cash');
+  const [restoredDraftBanner, setRestoredDraftBanner] = useState<boolean>(() => Boolean(initialDraft?.cart?.length));
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
   const [lastSaleTotal, setLastSaleTotal] = useState(0);
@@ -120,6 +126,26 @@ export const Sales: React.FC<SalesProps> = ({
   const [saleError, setSaleError] = useState<string | null>(null);
   const [showVoiceModal, setShowVoiceModal] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  // Rehydrate POS draft if user identity resolves asynchronously after mount (while cart is still empty)
+  const hydratedOwnerRef = useRef<string>(draftOwnerKey);
+  useEffect(() => {
+    if (hydratedOwnerRef.current !== draftOwnerKey) {
+      hydratedOwnerRef.current = draftOwnerKey;
+      const saved = loadPosDraft(draftOwnerKey);
+      if (saved && saved.cart.length > 0 && cart.length === 0) {
+        setCart(saved.cart);
+        setCustomerName(saved.customerName);
+        setPaymentMethod(saved.paymentMethod);
+        setRestoredDraftBanner(true);
+      }
+    }
+  }, [draftOwnerKey, cart.length]);
+
+  // Persist active POS bill draft across unexpected auth expiries within the browser tab session
+  useEffect(() => {
+    savePosDraft(draftOwnerKey, { cart, customerName, paymentMethod });
+  }, [draftOwnerKey, cart, customerName, paymentMethod]);
 
   // Synchronize mobile cart active state to body for floating elements (e.g. AI Assistant)
   useEffect(() => {
@@ -176,6 +202,8 @@ export const Sales: React.FC<SalesProps> = ({
       setShowSuccessModal(true);
       setCart([]);
       setCustomerName('');
+      clearPosDraft(draftOwnerKey);
+      setRestoredDraftBanner(false);
       onSaleComplete?.(sale);
     } catch (err: any) {
       setSaleError(describeError(err, 'Transaction failed. Please check stock and try again.'));
@@ -276,6 +304,8 @@ export const Sales: React.FC<SalesProps> = ({
       setShowSuccessModal(true);
       setCart([]);
       setCustomerName('');
+      clearPosDraft(draftOwnerKey);
+      setRestoredDraftBanner(false);
       onSaleComplete?.(sale);
     } catch (err: any) {
       // The cart is kept so the sale can be retried after fixing the problem.
@@ -360,7 +390,7 @@ export const Sales: React.FC<SalesProps> = ({
   }, [filteredHistorySales]);
 
   return (
-    <div className="space-y-4 max-w-5xl mx-auto min-w-0">
+    <div className="w-full space-y-4 max-w-5xl mx-auto min-w-0">
       
       {/* Page Header */}
       <PageHeader
@@ -438,7 +468,7 @@ export const Sales: React.FC<SalesProps> = ({
             </Button>
           </div>
         ) : (
-          <div className="flex items-center justify-between sm:justify-start gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center justify-between sm:justify-start gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => setShowVoiceModal(true)}
@@ -494,8 +524,8 @@ export const Sales: React.FC<SalesProps> = ({
 
           {/* Search & Category Filter Bar */}
           <div className="bg-white rounded-xl border border-[#E3E5DE] p-3.5 shadow-xs space-y-3">
-            <div className="flex gap-2 items-center">
-              <div className="relative flex-1">
+            <div className="flex gap-2 items-center min-w-0">
+              <div className="relative flex-1 min-w-0">
                 <Search className="w-5 h-5 absolute left-3.5 top-3 text-[#69736C]" />
                 <input
                   type="text"
@@ -510,8 +540,8 @@ export const Sales: React.FC<SalesProps> = ({
               <button
                 type="button"
                 onClick={() => setShowVoiceModal(true)}
-                className="px-3.5 sm:px-4 py-2 bg-[#234B3A] hover:bg-[#18382B] active:scale-95 text-white font-bold text-xs sm:text-sm rounded-lg shadow-xs flex items-center gap-2 cursor-pointer transition-all shrink-0 min-h-[42px]"
-                title="Create bill with Voice in 12 Indian Languages (बोलकर बिल बनाएं)"
+                className="px-3 sm:px-4 py-2 bg-[#234B3A] hover:bg-[#18382B] active:scale-95 text-white font-bold text-xs sm:text-sm rounded-lg shadow-xs flex items-center gap-2 cursor-pointer transition-all shrink-0 min-h-[42px]"
+                title="Create bill with Voice in English"
                 aria-label="Open Voice-to-Bill"
               >
                 <div className="w-6 h-6 rounded-md bg-white/20 flex items-center justify-center shrink-0">
@@ -519,7 +549,7 @@ export const Sales: React.FC<SalesProps> = ({
                 </div>
                 <div className="flex flex-col text-left">
                   <span className="leading-tight font-bold text-xs sm:text-sm">Voice-to-Bill</span>
-                  <span className="text-[10px] text-[#E5EEE6] font-normal hidden sm:inline">12 Languages</span>
+                  <span className="text-[10px] text-[#E5EEE6] font-normal hidden sm:inline">English Voice</span>
                 </div>
               </button>
             </div>
@@ -546,7 +576,7 @@ export const Sales: React.FC<SalesProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             
             {/* Left Col (2/3): Touch Product Cards Grid */}
-            <div className="lg:col-span-2 space-y-3">
+            <div className="lg:col-span-2 space-y-3 min-w-0">
               <div className="flex items-center justify-between px-1">
                 <h2 className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">
                   {t('sales.tapToBuild')}
@@ -556,7 +586,7 @@ export const Sales: React.FC<SalesProps> = ({
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
                 {filteredProducts.map((prod) => {
                   // All lines of this product (catalogue and spoken-price lines)
                   const inCartQty = round3(cart.filter(item => item.product.id === prod.id).reduce((n, item) => n + item.quantity, 0));
@@ -565,7 +595,7 @@ export const Sales: React.FC<SalesProps> = ({
                     <div
                       key={prod.id}
                       onClick={() => addToCart(prod)}
-                      className={`bg-white rounded-xl border p-4 shadow-xs flex flex-col justify-between transition-all cursor-pointer select-none active:scale-95 min-h-[115px] ${
+                      className={`bg-white rounded-xl border p-3 sm:p-4 shadow-xs flex flex-col justify-between transition-all cursor-pointer select-none active:scale-95 min-h-[110px] min-w-0 ${
                         inCart 
                           ? 'border-[#234B3A] bg-[#E5EEE6]/30 ring-2 ring-[#234B3A]/20' 
                           : 'border-[#E3E5DE] hover:border-[#52745D]/50'
@@ -585,8 +615,8 @@ export const Sales: React.FC<SalesProps> = ({
                         </h3>
                       </div>
 
-                      <div className="mt-3 flex items-baseline justify-between pt-2 border-t border-[#E3E5DE]">
-                        <span className="text-sm sm:text-base font-extrabold text-[#202923]">
+                      <div className="mt-3 flex items-baseline justify-between gap-1 pt-2 border-t border-[#E3E5DE]">
+                        <span className="text-sm sm:text-base font-extrabold text-[#202923] truncate">
                           ₹{prod.price}
                         </span>
                         <button
@@ -595,7 +625,7 @@ export const Sales: React.FC<SalesProps> = ({
                             e.stopPropagation();
                             addToCart(prod);
                           }}
-                          className="px-2.5 py-1 bg-[#234B3A] text-white font-bold rounded-lg hover:bg-[#18382B] text-xs flex items-center gap-1 active:scale-90 transition-transform cursor-pointer"
+                          className="px-2 sm:px-2.5 py-1 bg-[#234B3A] text-white font-bold rounded-lg hover:bg-[#18382B] text-xs flex items-center gap-1 active:scale-90 transition-transform cursor-pointer shrink-0"
                         >
                           <Plus className="w-3.5 h-3.5" /> {t('sales.add')}
                         </button>
@@ -607,8 +637,8 @@ export const Sales: React.FC<SalesProps> = ({
             </div>
 
             {/* Right Col (1/3): Current Customer Basket */}
-            <div id="customer-bill-section" className="space-y-4">
-              <Card className="sticky top-20 border border-[#E3E5DE] shadow-xs">
+            <div id="customer-bill-section" className="space-y-4 min-w-0">
+              <Card className="lg:sticky lg:top-20 border border-[#E3E5DE] shadow-xs">
                 <div className="flex items-center justify-between pb-3 border-b border-[#E3E5DE]">
                   <div className="flex items-center gap-2 text-[#202923] font-bold text-base">
                     <Receipt className="w-5 h-5 text-[#234B3A]" />
@@ -625,6 +655,24 @@ export const Sales: React.FC<SalesProps> = ({
                     </button>
                   )}
                 </div>
+
+                {restoredDraftBanner && cart.length > 0 && (
+                  <div
+                    role="status"
+                    data-testid="restored-pos-draft-banner"
+                    className="mt-2.5 px-2.5 py-2 rounded-lg bg-[#E7F3EE] border border-[#23866A]/30 text-[#153D32] text-xs font-semibold flex items-center justify-between gap-2"
+                  >
+                    <span>Restored your unsaved bill draft.</span>
+                    <button
+                      type="button"
+                      onClick={() => setRestoredDraftBanner(false)}
+                      className="text-[#153D32]/70 hover:text-[#153D32] p-0.5 cursor-pointer"
+                      aria-label="Dismiss restored bill notice"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
 
                 {/* Optional Customer Name Input */}
                 <div className="pt-2.5">
@@ -643,7 +691,7 @@ export const Sales: React.FC<SalesProps> = ({
                 {/* Cart Items List */}
                 <div className="divide-y divide-[#E3E5DE] max-h-[280px] overflow-y-auto my-2 pr-1">
                   {cart.map((item) => (
-                    <div key={cartLineKey(item)} data-testid="cart-line" className="py-2.5 flex items-center justify-between gap-2">
+                    <div key={cartLineKey(item)} data-testid="cart-line" className="py-2.5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 min-w-0">
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-[#202923] text-xs sm:text-sm truncate">
                           {item.product.name}
@@ -1199,6 +1247,9 @@ export const Sales: React.FC<SalesProps> = ({
         tone="danger"
         onConfirm={() => {
           setCart([]);
+          setCustomerName('');
+          clearPosDraft(draftOwnerKey);
+          setRestoredDraftBanner(false);
           setShowClearConfirm(false);
         }}
         onCancel={() => setShowClearConfirm(false)}

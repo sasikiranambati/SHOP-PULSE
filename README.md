@@ -198,10 +198,4 @@ Android (Capacitor): `npm run cap:sync` builds the web app and syncs it to `andr
 - Not built: hardware scales, real-time multi-counter sync, payment gateways, supplier integrations.
 - No CI workflow and no `LICENSE` file are present in the repository yet.
 
-## Future Scope
-
-- One data store (consolidate the Firestore sync path with the API)
-- Connect offline mode to the POS, or remove the unused code
-- Measure invoice accuracy on real supplier photos
-- Real-world speech testing with a Sarvam key
-- CI pipeline and license file
+---
